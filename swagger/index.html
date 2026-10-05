@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>COS360 API Contracts</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui.min.css">
+  <style>body { margin: 0; }</style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="openapi.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui-bundle.min.js"></script>
+  <script>
+    window.onload = function () {
+      SwaggerUIBundle({
+        spec: window.COS360_SPEC,
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        docExpansion: 'none',
+        defaultModelsExpandDepth: 0,
+        tryItOutEnabled: false,
+        filter: true
+      });
+    };
+  </script>
+</body>
+</html>

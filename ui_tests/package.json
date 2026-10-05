@@ -1,0 +1,16 @@
+{
+  "name": "cos360-e2e",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Playwright UI automation for the COS360 web and mobile (Expo web) apps",
+  "scripts": {
+    "test": "playwright test",
+    "test:web": "playwright test --project=web",
+    "test:mobile": "playwright test --project=mobile",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.57.0",
+    "dotenv": "^16.4.5"
+  }
+}
