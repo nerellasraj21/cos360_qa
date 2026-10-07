@@ -295,6 +295,38 @@ def write_cases(sheet, rows) -> None:
     validation.add(f"{get_column_letter(result_col)}2:{get_column_letter(result_col)}{last}")
 
 
+def ui_defects(rows: list) -> dict:
+    """Known UI defects come from the test.fail reasons ("UI-XXX-NN: ...") in the latest UI results."""
+    try:
+        import ui_results
+    except ImportError:
+        return {}
+    triage_path = os.path.join(ROOT, "tools", "defect_triage.json")
+    triage = json.load(open(triage_path, encoding="utf-8")) if os.path.isfile(triage_path) else {}
+    by_id = {row["id"]: row for row in rows}
+    found = {}
+    for case_id, entries in ui_results.load().items():
+        for outcome, reason, project in entries:
+            match = re.match(r"(UI-[A-Z]+-\d+)\s*:?\s*(.*)", reason or "")
+            if outcome != "xfailed" or not match:
+                continue
+            item = found.setdefault(match.group(1), {"title": match.group(2), "cases": set(), "platforms": set()})
+            item["cases"].add(case_id)
+            item["platforms"].add(project.capitalize())
+    out = {}
+    for defect_id, item in found.items():
+        cases = sorted(item["cases"])
+        first = by_id.get(cases[0], {})
+        info = triage.get(defect_id, {})
+        out[defect_id] = [
+            defect_id, item["title"][:200], ", ".join(cases), first.get("module", ""), "/".join(sorted(item["platforms"])),
+            first.get("role", ""), info.get("severity", ""), info.get("priority", ""),
+            "Steps are in the first listed test case.", "As the test case states.", info.get("note", ""),
+            "Automated test (known defect)", "", "UI automation", "2026-10-07", "Open", "",
+        ]
+    return out
+
+
 def main() -> None:
     rows = read_specs()
     if not rows:
@@ -338,8 +370,12 @@ def main() -> None:
 
     dsheet = wb.create_sheet("Defects")
     write_header(dsheet, DEFECT_COLUMNS)
+    automatic = ui_defects(rows)
     for defect in previous_defects:
-        dsheet.append(list(defect))
+        if defect[0] not in automatic:
+            dsheet.append(list(defect))
+    for defect_id in sorted(automatic):
+        dsheet.append(automatic[defect_id])
 
     summary.append(["COS360 test case catalog"])
     summary["A1"].font = Font(bold=True, size=14)

@@ -4,7 +4,7 @@ This module covers everything a user meets after login that summarises the schoo
 
 _Last verified against code: 2026-10-07_
 
-Conventions: test IDs follow `docs/testing/strategy.md` (`TC-RPT-<FF>-<P><NN>`; U unit, A API, E end to end). UI cases (`-E<NN>`) use the manual format (Priority P1 smoke, P2 regression, P3 edge) and run in the seeded tenant `qa_manual` (`docs/testing/test-environment.md`): classes Nursery to Class 5, 30 students (for example Karthik Reddy 001, Harsha Raju 004 and Tanvi Raju 005 with the same parents), 9 staff with attendance, the seeded fee data (see `docs/features/fee.md`), exams "Unit Test 1 - Class 1B", "Unit Test 1 - Class 2A" (published) and "Half Yearly Examination 2026" (active), routes "Route 1 - Kukatpally" and "Route 2 - Uppal" with 2 vehicles and 2 trips, and 12 expense transactions. Admin, Staff and Teacher use the QA logins; Student and Parent cases use a seeded student (login = admission number) or parent login, because the QA Student and Parent logins are not linked to a student. Where a UI label contains the rupee sign or a dash character it is written here as "Rs" or a hyphen (plain text only). "Today" in numeric examples is 2026-10-02.
+Conventions: test IDs follow `docs/testing/strategy.md` (`TC-RPT-<FF>-<P><NN>`; U unit, A API, E end to end). UI cases (`-E<NN>`) use the manual format (Priority P1 smoke, P2 regression, P3 edge) and run in the seeded tenant `qa_manual` (`docs/testing/test-environment.md`): classes Nursery to Class 5, 30 students (for example Karthik Reddy 001, Harsha Raju 004 and Tanvi Raju 005 with the same parents), 9 staff with attendance, the seeded fee data (see `docs/features/fee.md`), exams "Unit Test 1 - Class 1B", "Unit Test 1 - Class 2A" (published) and "Half Yearly Examination 2026" (active), routes "Route 1 - Kukatpally" and "Route 2 - Uppal" with 2 vehicles and 2 trips, and 12 expense transactions. Admin, Staff and Teacher use the QA logins; Student and Parent cases that only depend on the role use the QA Student and QA Parent logins (not linked to a student, so lists are empty); cases that need data use a student or parent created through the API for the test (QA name) that has completed first login, because the seeded student and parent logins have not done first login and cannot be signed in as. Cases that use a class and student use an own QA class and QA student, not the seeded Class 4 or the seeded students. Where a UI label contains the rupee sign or a dash character it is written here as "Rs" or a hyphen (plain text only). "Today" in numeric examples is 2026-10-02.
 
 ## Roles
 
@@ -97,14 +97,14 @@ API tests implemented in: backend/tests/api/reports/test_conventions_audit.py
 
 | ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
 |---|---|---|---|---|---|---|---|
-| TC-RPT-01-E01 | P1 | Web | Admin | Tenant qa_manual | 1. Sign in as Admin.<br>2. Open `/`. | Redirected to `/dashboard`; header "Dashboard"; "Welcome back, <username> (Admin)"; cards Students, Staff, Exam, Fee, Expense, Communication, Reports, Masters, Administration, Transport, then the other menu nodes (Billing Admin, Timetable, Calendar with "Open <name>" descriptions). Observed 2026-10-07: Exam is placed after Billing Admin | planned |
+| TC-RPT-01-E01 | P1 | Web | Admin | Tenant qa_manual | 1. Sign in as Admin.<br>2. Open `/`. | Redirected to `/dashboard`; header "Dashboard"; "Welcome back, <username> (Admin)"; cards in the order Students, Staff, Fee, Expense, Communication, Reports, Masters, Administration, Transport, Billing Admin, Exam, Timetable, Calendar (each with an "Open <name>" description). Exam is not third: it comes after Billing Admin because `MENU_ORDER` in `web/src/lib/menuUtils.ts` lacks "exam" | passing |
 | TC-RPT-01-E02 | P2 | Web | Teacher | None | 1. Sign in as Teacher.<br>2. Open the Dashboard. | No Fee card; other module cards present | planned |
-| TC-RPT-01-E03 | P2 | Web | Student | Signed in as seeded student Karthik Reddy (login 001) | 1. Open the Dashboard. | Cards Students, Fee, Exam only; no Masters, Reports or Communication | planned |
-| TC-RPT-01-E04 | P3 | Web | Parent | Signed in as the seeded parent of Harsha and Tanvi Raju | 1. Open the Dashboard. | Welcome text uses the parent profile name; cards Students, Fee, Exam | planned |
+| TC-RPT-01-E03 | P2 | Web | Student | Signed in with the QA Student login (not linked to a student, so lists are empty) | 1. Open the Dashboard. | Cards Students, Fee, Exam only; no Masters, Reports or Communication | planned |
+| TC-RPT-01-E04 | P3 | Web | Parent | A parent created through the API for the test (QA name, one QA child) that has completed first login, signed in | 1. Open the Dashboard. | Welcome text uses the parent profile name; cards Students, Fee, Exam | planned |
 | TC-RPT-01-E05 | P3 | Web | Admin | None | 1. Click the "Expense" card. | Navigates to `/expense` | planned |
-| TC-RPT-01-E06 | P1 | Mobile | Admin | Signed in to organisation qa_manual | 1. Open the Home tab. | Title "Dashboard"; greeting "Good Morning,", "Good Afternoon," or "Good Evening," with the username, today's date and the avatar letter; "Modules" cards Students, Staff Management, Exam Management, Fee Management, Expense, Communication, Reports, Masters, Administration, Transport, then other menu modules | planned |
+| TC-RPT-01-E06 | P1 | Mobile | Admin | Signed in to organisation qa_manual | 1. Open the Home tab. | Title "Dashboard"; greeting "Good Morning,", "Good Afternoon," or "Good Evening," with the username, today's date and the avatar letter; "Modules" cards Students, Staff Management, Exam Management, Fee Management, Expense, Communication, Reports, Masters, Administration, Transport, then other menu modules | passing |
 | TC-RPT-01-E07 | P2 | Mobile | Teacher | None | 1. Open the Home tab. | No Fee Management card | planned |
-| TC-RPT-01-E08 | P2 | Mobile | Student | Signed in as seeded student Karthik Reddy | 1. Open the Home tab. | Cards Students, Exam Management, Fee Management only | planned |
+| TC-RPT-01-E08 | P2 | Mobile | Student | Signed in with the QA Student login (not linked to a student, so lists are empty) | 1. Open the Home tab. | Cards Students, Exam Management, Fee Management only | planned |
 | TC-RPT-01-E09 | P3 | Mobile | Admin | A user whose role has no permissions and an empty menu (none in the seed) | 1. Sign in and open the Home tab. | Lock icon and "No modules available. Contact your administrator." | blocked: no seeded role without permissions and menu |
 | TC-RPT-01-E10 | P3 | Mobile | Admin | None | 1. Tap the "Reports" card. | Opens the Reports screen with the report cards | planned |
 
@@ -155,7 +155,7 @@ API tests implemented in: backend/tests/api/reports/test_conventions_audit.py
 | ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
 |---|---|---|---|---|---|---|---|
 | TC-RPT-02-E01 | P2 | Web | Admin | None | 1. Open `/admin`. | Header "Administration", label "Administration Sections", cards Users and School Settings | planned |
-| TC-RPT-02-E02 | P1 | Web | Admin | None | 1. Open `/masters`. | "Masters Dashboard", "Masters Sections" with Academic Years, Classes and Sections, Subject Categories, Subjects, Class Subject Mappings, Holidays, Parents, Roles and Permissions | planned |
+| TC-RPT-02-E02 | P1 | Web | Admin | None | 1. Open `/masters`. | "Masters Dashboard", "Masters Sections" with Academic Years, Classes and Sections, Subject Categories, Subjects, Class Subject Mappings, Holidays, Parents, Roles and Permissions | passing |
 | TC-RPT-02-E03 | P2 | Web | Admin | None | 1. Open `/students`. | "Students Dashboard" with Admission, Attendance, Student Documents, Student Certificates, Certificate Types, Certificate Templates; no "Student Transport" card | planned |
 | TC-RPT-02-E04 | P2 | Web | Admin | None | 1. Open `/transport`.<br>2. Click "Routes". | Cards Routes, Vehicles, Trips, Pricing (no Route Stops); navigates to the routes page | planned |
 | TC-RPT-02-E05 | P3 | Web | Admin | A menu child without a path (none in the seeded menu) | 1. Open the hub that holds it. | Card dimmed; click does nothing | blocked: the seeded menu has no child without a path |
@@ -208,12 +208,12 @@ API tests implemented in: backend/tests/api/reports/test_conventions_audit.py
 
 | ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
 |---|---|---|---|---|---|---|---|
-| TC-RPT-03-E01 | P1 | Web | Admin | Seeded Reports menu node has no children | 1. Open Reports. | "Reports", "Comprehensive analytics and reporting across all school modules", "Reports Sections" with "Fee Reports" and "Expense Reports" | planned |
+| TC-RPT-03-E01 | P1 | Web | Admin | Seeded Reports menu node has no children | 1. Open Reports. | "Reports", "Comprehensive analytics and reporting across all school modules", "Reports Sections" with "Fee Reports" and "Expense Reports" | passing |
 | TC-RPT-03-E02 | P2 | Web | Admin | None | 1. Click "Fee Reports". | Opens `/fee/reports` | planned |
 | TC-RPT-03-E03 | P3 | Web | Staff | None | 1. Sign in as Staff.<br>2. Open Reports. | Only "Fee Reports" (Staff has no `expense_reports`) | planned |
 | TC-RPT-03-E04 | P2 | Mobile | Admin | None | 1. Open the Reports screen. | "Reports & Analytics" with Fee Reports, Student Reports, Academic Reports, Staff Reports, Transport Reports | planned |
 | TC-RPT-03-E05 | P2 | Mobile | Teacher | None | 1. Open the Reports screen. | Student Reports, Academic Reports, Transport Reports; no Fee Reports or Staff Reports | planned |
-| TC-RPT-03-E06 | P3 | Mobile | Student | Signed in as seeded student Karthik Reddy | 1. Look for a Reports card on Home.<br>2. Open `/reports` by URL. | No Reports card on Home; the URL still opens "Reports & Analytics" (Fee, Student, Academic Reports cards) | planned |
+| TC-RPT-03-E06 | P3 | Mobile | Student | Signed in with the QA Student login (not linked to a student, so lists are empty) | 1. Look for a Reports card on Home.<br>2. Open `/reports` by URL. | No Reports card on Home; the URL still opens "Reports & Analytics" (Fee, Student, Academic Reports cards) | planned |
 | TC-RPT-03-E07 | P3 | Web | Teacher | None | 1. Sign in as Teacher.<br>2. Open Reports. | Header only, no cards (Teacher has neither fallback grant) | planned |
 
 ---
@@ -432,14 +432,14 @@ API tests implemented in: backend/tests/api/reports/test_fee_reports.py
 
 | ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
 |---|---|---|---|---|---|---|---|
-| TC-RPT-06-E01 | P1 | Web | Admin | Seeded payments in qa_manual | 1. Open Fee > Fee Reports. | Collection Summary loads with statistics and rows; the note "Select at least one filter to generate a report" shows below; "Export" disabled | planned |
+| TC-RPT-06-E01 | P1 | Web | Admin | Seeded payments in qa_manual | 1. Open Fee > Fee Reports. | Collection Summary loads with statistics and rows; the note "Select at least one filter to generate a report" shows below; "Export" disabled | passing |
 | TC-RPT-06-E02 | P2 | Web | Admin | Seeded payments | 1. Choose "Class 1" in "All Classes". | Collection Summary rows and statistics limited to Class 1; the note disappears; "Export" enabled | planned |
 | TC-RPT-06-E03 | P2 | Web | Admin | Seeded data | 1. Click "Pending Fees". | Columns include Balance, Due Date, Days Overdue; statistics Total Pending, Total Overdue, Students Pending, Avg Overdue Days | planned |
 | TC-RPT-06-E04 | P2 | Web | Admin | Seeded class mappings | 1. Click "Fee Structure".<br>2. Choose "Class 1". | Statistics Fee Types, Categories, Terms, Avg Fee and rows per fee type of Class 1 | planned |
 | TC-RPT-06-E05 | P3 | Web | Admin | None | 1. Choose a method in "All Methods" and a status in "All Status".<br>2. Click "Clear". | Filters reset; the "Select at least one filter" note returns | planned |
-| TC-RPT-06-E06 | P1 | Web | Admin | A class filter set | 1. Keep "Excel" and click "Export". | Toast "Report exported successfully"; an .xlsx file downloads | planned |
+| TC-RPT-06-E06 | P1 | Web | Admin | A class filter set | 1. Keep "Excel" and click "Export". | Toast "Report exported successfully"; an .xlsx file downloads | passing |
 | TC-RPT-06-E07 | P3 | Web | Admin | More than 50 pending rows (seeded Pending Fees without filter) | 1. Click "Pending Fees".<br>2. Click "Next". | Page 2 loads with S.No. continuing from 51 | planned |
-| TC-RPT-06-E08 | P3 | Web | Student | Signed in as seeded student Karthik Reddy | 1. Open `/fee/reports` by URL. | "Access Denied", "You don't have permission to view fee reports." (Teacher is redirected to the Dashboard instead) | planned |
+| TC-RPT-06-E08 | P3 | Web | Student | Signed in with the QA Student login (not linked to a student, so lists are empty) | 1. Open `/fee/reports` by URL. | "Access Denied", "You don't have permission to view fee reports." (Teacher is redirected to the Dashboard instead) | planned |
 | TC-RPT-06-E09 | P2 | Mobile | Admin | Seeded payments | 1. Open Reports > "Fee Reports".<br>2. Switch "Collection", "Pending", "Structure". | Each tab shows its tiles (Collected, Due, Rate; Total Pending, Students, Overdue; Avg Fee, Categories, Fee Types) and list | planned |
 | TC-RPT-06-E10 | P3 | Mobile | Admin | Seeded payments | 1. On "Collection" tap "Today". | List and tiles reload for today's range | planned |
 | TC-RPT-06-E11 | P2 | Mobile | Admin | Seeded payments | 1. Tap "Export". | A CSV of the active tab opens in the share sheet | planned |
@@ -521,11 +521,11 @@ API tests implemented in: backend/tests/api/reports/test_attendance_reports.py
 
 | ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
 |---|---|---|---|---|---|---|---|
-| TC-RPT-07-E01 | P1 | Mobile | Admin | Seeded student attendance in qa_manual | 1. Open Reports > "Student Reports".<br>2. Tap "Last 7D". | Banner "Student Attendance Report"; tiles Present, Absent, Late, Present Rate; "ATTENDANCE RECORDS" list | planned |
+| TC-RPT-07-E01 | P1 | Mobile | Admin | Seeded student attendance in qa_manual | 1. Open Reports > "Student Reports".<br>2. Tap "Last 7D". | Banner "Student Attendance Report"; tiles Present, Absent, Late, Present Rate; "ATTENDANCE RECORDS" list | passing |
 | TC-RPT-07-E02 | P3 | Mobile | Admin | A period with no attendance | 1. Tap "Today" on a day with no records. | "No records for this period" and a dash for the rate | planned |
 | TC-RPT-07-E03 | P3 | Mobile | Admin | Records shown | 1. Tap "Export". | A CSV named `student_attendance_report.csv` is shared | planned |
-| TC-RPT-07-E04 | P1 | Mobile | Admin | Seeded staff attendance | 1. Open Reports > "Staff Reports".<br>2. Tap "Last 30D". | Banner "Staff Attendance Report"; tiles Present, Absent, Rate; "RECORDS" list | planned |
-| TC-RPT-07-E05 | P3 | Mobile | Student | Signed in as seeded student Karthik Reddy | 1. Open `/reports/staff-reports` by URL. | Redirected to Home (role student blocked) | planned |
+| TC-RPT-07-E04 | P1 | Mobile | Admin | Seeded staff attendance | 1. Open Reports > "Staff Reports".<br>2. Tap "Last 30D". | Banner "Staff Attendance Report"; tiles Present, Absent, Rate; "RECORDS" list | passing |
+| TC-RPT-07-E05 | P3 | Mobile | Student | Signed in with the QA Student login (not linked to a student, so lists are empty) | 1. Open `/reports/staff-reports` by URL. | Redirected to Home (role student blocked) | planned |
 | TC-RPT-07-E06 | P3 | Web | Admin | None | 1. Look for an attendance report page. | None exists (documents the gap) | planned |
 | TC-RPT-07-E07 | P3 | Mobile | Teacher | None | 1. Open `/reports/staff-reports` by URL. | "Access Denied" with "You don't have permission to view this screen. Please contact your administrator." | planned |
 
@@ -693,9 +693,9 @@ API tests implemented in: backend/tests/api/reports/test_conventions_audit.py
 
 | ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
 |---|---|---|---|---|---|---|---|
-| TC-RPT-10-E01 | P1 | Mobile | Admin | Seeded exams "Unit Test 1 - Class 1B", "Unit Test 1 - Class 2A" (published) and "Half Yearly Examination 2026" (active) | 1. Open Reports > "Academic Reports". | Banner "Academic / Exam Overview"; tiles Published 2, Active 1, Draft 0 (at seed time); "ALL EXAMS" lists the three exams | planned |
+| TC-RPT-10-E01 | P1 | Mobile | Admin | Seeded exams "Unit Test 1 - Class 1B", "Unit Test 1 - Class 2A" (published) and "Half Yearly Examination 2026" (active) | 1. Open Reports > "Academic Reports". | Banner "Academic / Exam Overview"; tiles Published 2, Active 1, Draft 0 (at seed time); "ALL EXAMS" lists the three exams | passing |
 | TC-RPT-10-E02 | P3 | Mobile | Admin | As TC-RPT-10-E01 | 1. Tap "Export". | A CSV of the exams is shared | planned |
-| TC-RPT-10-E03 | P3 | Mobile | Student | Signed in as seeded student Karthik Reddy | 1. Open `/reports/academic-reports` by URL. | Blocked by the screen gate | planned |
+| TC-RPT-10-E03 | P3 | Mobile | Student | Signed in with the QA Student login (not linked to a student, so lists are empty) | 1. Open `/reports/academic-reports` by URL. | Blocked by the screen gate | planned |
 | TC-RPT-10-E04 | P3 | Mobile | Admin | A tenant with no exams (qa_school) | 1. Open Academic Reports. | "No exams found" | planned |
 
 ---
@@ -738,9 +738,9 @@ API tests implemented in: backend/tests/api/reports/test_conventions_audit.py
 
 | ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
 |---|---|---|---|---|---|---|---|
-| TC-RPT-11-E01 | P1 | Mobile | Admin | Seeded routes "Route 1 - Kukatpally" and "Route 2 - Uppal", 2 vehicles, 2 trips | 1. Open Reports > "Transport Reports". | Banner "Transport Overview"; tiles Routes 2, Vehicles 2, Trips 2 with active counts; "ROUTES" and "VEHICLES" lists | planned |
+| TC-RPT-11-E01 | P1 | Mobile | Admin | Seeded routes "Route 1 - Kukatpally" and "Route 2 - Uppal", 2 vehicles, 2 trips | 1. Open Reports > "Transport Reports". | Banner "Transport Overview"; tiles Routes 2, Vehicles 2, Trips 2 with active counts; "ROUTES" and "VEHICLES" lists | passing |
 | TC-RPT-11-E02 | P3 | Mobile | Admin | As TC-RPT-11-E01 | 1. Tap "Export". | `transport_report.csv` is shared | planned |
-| TC-RPT-11-E03 | P3 | Mobile | Student | Signed in as seeded student Karthik Reddy | 1. Open `/reports/transport-reports` by URL. | Blocked by the screen gate | planned |
+| TC-RPT-11-E03 | P3 | Mobile | Student | Signed in with the QA Student login (not linked to a student, so lists are empty) | 1. Open `/reports/transport-reports` by URL. | Blocked by the screen gate | planned |
 | TC-RPT-11-E04 | P3 | Mobile | Admin | A tenant with no transport data | 1. Open Transport Reports. | "No routes configured" and "No vehicles configured" | planned |
 
 ---

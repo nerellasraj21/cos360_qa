@@ -21,11 +21,19 @@ def _walk(suite):
 
 
 def load() -> dict:
-    out = {}
-    for path in sorted(glob.glob(os.path.join(REPORTS, "ui-results*.json"))):
+    """Latest result wins: reports are read oldest first and a later run of the same test replaces the earlier one."""
+    latest = {}
+    for path in sorted(glob.glob(os.path.join(REPORTS, "ui-results*.json")), key=os.path.getmtime):
         with open(path, encoding="utf-8") as handle:
             data = json.load(handle)
-        _collect(data, out)
+        run = {}
+        _collect(data, run)
+        for case_id, entries in run.items():
+            for entry in entries:
+                latest[(case_id, entry[2], entry[3])] = entry
+    out = {}
+    for (case_id, _, _), entry in latest.items():
+        out.setdefault(case_id, []).append(entry[:3])
     return out
 
 
@@ -48,4 +56,4 @@ def _collect(data: dict, out: dict) -> None:
                     outcome, reason = "failed", ""
                 label = f"{test.get('projectName', '')}"
                 for case_id in ids:
-                    out.setdefault(case_id, []).append((outcome, reason, label))
+                    out.setdefault(case_id, []).append((outcome, reason, label, spec.get('title', '')))

@@ -15,3 +15,5 @@ reports/full_backup/
 reports/design/
 ui_tests/.auth/
 ui_tests/test-results*/
+reports/ui_old/
+ui_tests/tests/exam/_dbg/
