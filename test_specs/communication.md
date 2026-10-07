@@ -2,7 +2,7 @@
 
 Code: `COM`. Test case IDs: `TC-COM-<FF>-<P><NN>` (U unit, A API, E end-to-end UI). Conventions: `docs/testing/strategy.md`, layout: `docs/features/README.md`. Module rules: `docs/modules/communication.md`. Graph view: `docs/graph/views/communication.md`.
 
-_Last verified against code: 2026-10-02_
+_Last verified against code: 2026-10-07_
 
 ## Module overview
 
@@ -22,7 +22,9 @@ Backend grants are live `resource_permissions` rows (`docs/permissions.md`); the
 | Student | none | none | none |
 | Parent | none | none | none |
 
-Notes. Menus: the seed gives Admin, Staff and Teacher every menu, so the Communication menu is visible to Staff and Teacher, but their requests are denied (403) and the web Logs page shows "Access Denied". Student and Parent have no Communication menu on web; the mobile tab is hidden for the role names student, parent, guardian, father and mother and the screen itself shows "Access Restricted - Communication tools are only available to staff and admin." There is no frontend permission cap for `communications` (the Teacher and Staff matrices do not list it). The mobile Communication tab performs no per-action permission check: buttons are shown to every non-student, non-parent role and the server decides.
+Observed on 2026-10-07 (login response): in the manual-test tenant `qa_manual` and in `qa_school` Admin holds `communications:create,list,read,update` and no `announcements` or `send_sms` grant (the extras above are not provisioned); Staff, Teacher, Student and Parent hold no `communications` action.
+
+Notes. Menus: the seed gives Admin, Staff and Teacher every menu, so the Communication menu is visible to Staff and Teacher, but their requests are denied (403) and the web Logs page shows "Access Denied". Student and Parent have no Communication menu on web, but the web pages have no page guard except Logs: typing `/communication/compose` or `/communication/templates` opens the page with no templates and no Send Now (observed 2026-10-07); the mobile tab is hidden for the role names student, parent, guardian, father and mother and the screen itself shows "Access Restricted - Communication tools are only available to staff and admin." There is no frontend permission cap for `communications` (the Teacher and Staff matrices do not list it). The mobile Communication tab performs no per-action permission check: buttons are shown to every non-student, non-parent role and the server decides.
 
 Per-action independence: `create` (send, create template), `list` (list or get template, preview count, log list), `read` (log detail) and `update` (edit, deactivate) are separate grants.
 
@@ -39,7 +41,9 @@ Per-action independence: `create` (send, create template), `list` (list or get t
 | F07 | Holiday announcement |
 | F08 | Module-triggered SMS and send_sms gating |
 
-Common test data (QA tenant `qa_school`, seeded by the test setup): templates `QA Notice SMS` (sms, body `Dear {{name}}, this is a QA notice.`), `QA Student SMS` (sms, `Dear {{name}}, notice about {{student_name}} of {{class_name}}-{{section_name}}.`), `QA Custom SMS` (sms, `Hello {{name}}, amount {{amount}} due on {{due_date}}.`), `QA Notice Email` (email, subject `Notice for {{name}}`, body `Dear {{name}}, this is a QA notice.`), `QA Notice WhatsApp` (whatsapp, `Dear {{name}}, this is a QA notice.`) and one inactive template `QA Old SMS`; parents `Parent One` (phone `9876511111`, email `parent1@qa.example`, child `Kid One` in class 5 section A), `Parent Two` (no phone, email only), `Parent Three` (phone only, two children in class 5 section A); staff from the staff doc (`Asha Verma`, `Ravi Kumar`, inactive `Meena Rao`); logs seeded directly in the database (sent, failed and queued examples) because no worker runs in QA; a second tenant `qa_school_b`.
+Common test data. UI cases (E) run in the seeded manual-test tenant `qa_manual` (`backend/scripts/qa/setup_manual_tenant.py`, data from `backend/scripts/seed_demo_data.py`). Seeded there: templates `Exam Schedule` (email, subject "Exam schedule for {{class_name}}", variables exam_name, student_name, class_name, start_date), `Fee Reminder` (sms, variables amount, student_name, due_date) and `Holiday Notice` (whatsapp, variables holiday_date, occasion, resume_date), all active; classes Nursery to Class 5 with sections A and B; 30 students with linked parents (for example Karthik Reddy, Advik Mehta, Saanvi Iyer, and the siblings Harsha Raju (Class 1) and Tanvi Raju (Class 4), whose parents are Venkat and Sirisha Raju); 9 staff (for example Lakshmi Narayana Rao, Sunitha Reddy, Venkatesh Kumar); no log rows. Every seeded template has a non-system variable, so a send with one of them fails with 400 until D-COM-02 is fixed. UI cases that need a sendable template create `QA Notice SMS` (sms, body `Dear {{name}}, this is a QA notice.`) first (TC-COM-01-E01). Do not change seeded rows; delete what you create. On-screen texts with a long dash or an ellipsis are written here with "-" and "...".
+
+API cases (A) run in `qa_school` and create their own data: templates `QA Notice SMS` (sms, body `Dear {{name}}, this is a QA notice.`), `QA Student SMS` (sms, `Dear {{name}}, notice about {{student_name}} of {{class_name}}-{{section_name}}.`), `QA Custom SMS` (sms, `Hello {{name}}, amount {{amount}} due on {{due_date}}.`), `QA Notice Email` (email, subject `Notice for {{name}}`, body `Dear {{name}}, this is a QA notice.`), `QA Notice WhatsApp` (whatsapp, `Dear {{name}}, this is a QA notice.`) and one inactive template `QA Old SMS`; parents `Parent One` (phone `9876511111`, email `parent1@qa.example`, child `Kid One` in class 5 section A), `Parent Two` (no phone, email only), `Parent Three` (phone only, two children in class 5 section A); staff from the staff doc (`Asha Verma`, `Ravi Kumar`, inactive `Meena Rao`); logs seeded directly in the database (sent, failed and queued examples) because no worker runs in QA; a second tenant `qa_school_b`.
 
 ---
 
@@ -55,15 +59,15 @@ Common test data (QA tenant `qa_school`, seeded by the test setup): templates `Q
 
 **Steps, web.**
 1. Communication (`/communication`, "Communication") -> card "Templates" (`/communication/templates`).
-2. Filters: "All Channels" (SMS, WhatsApp, Email), "All Status" (Active, Inactive), search "Search templates...". The table has Name, Channel, Variables, Status, Last Modified and Actions.
-3. "+ New Template": dialog "New Template" with "Template Name *" (placeholder `e.g. fee_reminder`), Channel radios sms, whatsapp, email (only when creating), "Message Body *" (counter `N / 160 (k credit(s))` for SMS), "Insert Variable" menu (name, parent_name, student_name, staff_name, class_name, section_name, amount, due_date, exam_name, month, date, reason), "Detected variables" badges, a "Live Preview" and, for email, "Subject *". "Save Template". Toast "Template created successfully".
+2. Filters: "All Channels" (SMS, WhatsApp, Email), "All Status" (Active, Inactive), search "Search templates...". The table has Name, Channel, Variables ("-" when none), Status, Last Modified and Actions, and the footer "Showing <n> of <total> templates". Without `communications:list` the page shows "No templates found." and no "Load Default Templates" or "+ New Template" (verified for Staff, Teacher, Student and Parent).
+3. "+ New Template": dialog "New Template" with "Template Name *" (placeholder `e.g. fee_reminder`), "Channel *" radios labelled "Sms", "Whatsapp", "Email" (only when creating), "Message Body *" (counter `N / 160 (k credit(s))` for SMS), "Insert Variable" menu (name, parent_name, student_name, staff_name, class_name, section_name, amount, due_date, exam_name, month, date, reason), "Detected variables" badges, a "Live Preview" and, for email, "Subject *". "Save Template". Toast "Template created successfully".
 4. Edit icon ("Edit Template", aria label `Edit <name>`): dialog "Edit Template", name and body (and subject for email) can change, the channel cannot; "Save Changes". Toast "Template updated successfully".
 5. Trash icon ("Deactivate Template") appears for active templates: dialog "Deactivate Template" ("Are you sure you want to deactivate <name>? It will no longer be available for sending messages.") -> "Deactivate". Toast "Template deactivated". Inactive rows have only the edit icon.
 6. "Load Default Templates" creates any of the nine built-in SMS templates (Welcome, Student Absentees, Staff Recruiting, Staff Attendance, Fee Collection, Exam Schedule, Mark Entry, Holiday, Homework Diary) whose name is missing (matched by trimmed lower-case name). Toasts "<n> default template(s) created.", "All default templates already exist.", "Failed to create: <names>", "Could not check existing templates. Please try again."
 7. There is **no Activate button** on web or mobile. An inactive template can be reactivated only through `PUT /communication/templates/{id}` with `{"is_active": true}`.
 
 **Steps, mobile.**
-1. Communication tab (bottom tabs) -> in-page tab "Templates". Chips for channel and status, "Search templates...", "New Template".
+1. Communication tab (bottom tabs) -> in-page tab "Templates". Chips for channel ("All Channels", "SMS", "WhatsApp", "EMAIL") and status ("All Status", "Active", "Inactive"), "Search templates...", "New Template".
 2. "New Template" opens the modal "New Template": "Name *", "Subject *" (email only), "Message Body *", Channel chips (disabled when editing: "Channel cannot be changed on existing templates."), "Save". Toasts "Template Created - New template has been saved.", "Template Updated - Changes have been saved." On failure the generic "Create Failed - Could not create template." or "Update Failed - Could not update template." (the server reason is not shown).
 3. Edit and the ban icon ("Deactivate template") with the confirm "Deactivate Template" (`Deactivate "<name>"? It will no longer be available for sending.`), toast "Deactivated - Template has been deactivated."
 4. The constant `HIDE_TEMPLATES = true` in `app/(tabs)/communication.tsx` forces both the Templates list and the Compose template dropdown to be empty ("No templates found"), so on mobile templates can be created but not seen, edited, deactivated or used to send (defect D-COM-01).
@@ -111,48 +115,54 @@ Common test data (QA tenant `qa_school`, seeded by the test setup): templates `Q
 | TC-COM-01-U11 | Web SMS counter for 0, 1, 160, 161, 320, 321 characters | 0, 1, 1, 2, 2, 3 credits (`Math.ceil(n / 160)`; 0 chars shows no credit text) | blocked: the SMS counter is inline in web/src/pages/Communication/TemplatesTab.tsx |
 | TC-COM-01-U12 | `DEFAULT_COMMUNICATION_TEMPLATES` | nine entries, all `sms`, unique names | passing |
 | TC-COM-01-U13 | `handleLoadDefaults` missing-name logic with existing names " welcome ", "HOLIDAY" | those two (case and whitespace insensitive) are skipped; seven are created | blocked: handleLoadDefaults is inline in web/src/pages/Communication/TemplatesTab.tsx |
-| TC-COM-01-A01 | Admin `POST /communication/templates` `{name:"QA Fee SMS", channel:"sms", body:"Dear {{name}}, fee {{amount}} due."}` | 201; `variables ["name","amount"]`, `is_active` true, `subject` null | planned |
-| TC-COM-01-A02 | Create an email template with `subject:"Notice for {{name}}"` | 201; `subject` echoed | planned |
-| TC-COM-01-A03 | Same `(name, channel)` again; same name on `whatsapp` | 400 "Template with name 'QA Fee SMS' already exists for channel 'sms'."; the second is 201 | planned |
-| TC-COM-01-A04 | Boundary: SMS body of 480 and 481 characters | 201; 422 | planned |
-| TC-COM-01-A05 | `channel:"push"`; missing `name`; missing `body`; missing `channel` | 422 each | planned |
-| TC-COM-01-A06 | Body `{{name}}` with client `variables:["zzz"]` | stored `variables ["name"]` | planned |
-| TC-COM-01-A07 | `GET /communication/templates` | 200 plain array ordered by name, includes active and inactive | planned |
-| TC-COM-01-A08 | `?channel=email`; `?is_active=false`; `?channel=sms&is_active=true`; `?channel=push` | filtered arrays; `?channel=push` returns `[]` (no validation) | planned |
-| TC-COM-01-A09 | `GET /communication/templates/` (trailing slash) | 200 (redirect followed) with the same array | planned |
-| TC-COM-01-A10 | `?page=2&page_size=1` | ignored: the full array is returned | planned |
-| TC-COM-01-A11 | `GET /communication/templates/{id}`; random uuid; `abc` | 200; 404 "Template not found."; 422 | planned |
-| TC-COM-01-A12 | `PUT {body:"Hi {{name}} {{x}}"}` | 200; `variables ["name","x"]`; `updated_at` newer | planned |
-| TC-COM-01-A13 | `PUT {name:"Renamed", subject:"S"}` | 200 with the new values | planned |
-| TC-COM-01-A14 | `PUT {is_active:false}` then `PUT {is_active:true}` | inactive then active again (the only way to reactivate) | planned |
-| TC-COM-01-A15 | `PUT {channel:"email"}` | 200 and the channel is unchanged (field ignored) | planned |
-| TC-COM-01-A16 | `PUT` with a name that clashes with another template of the same channel | error response (400 via the integrity-error mapping); record the observed status; the row is unchanged | planned |
-| TC-COM-01-A17 | `PUT` an SMS body of 481 characters | 200 (no length check on update, documents the gap) | planned |
-| TC-COM-01-A18 | `DELETE /communication/templates/{id}` twice | 200 `TemplateRead` with `is_active` false both times; the row still exists | planned |
-| TC-COM-01-A19 | `PUT` and `DELETE` on a random uuid | 404 "Template not found." | planned |
-| TC-COM-01-A20 | Admin on all five endpoints | 2xx | planned |
-| TC-COM-01-A21 | Staff, Teacher, Student, Parent on all five endpoints | 403 | planned |
-| TC-COM-01-A22 | A custom role with only `communications:list`: GET list and get 200, POST 403, PUT 403, DELETE 403 | actions are independent | planned |
-| TC-COM-01-A23 | A custom role with only `communications:update`: PUT and DELETE 2xx, GET 403, POST 403 | as stated | planned |
-| TC-COM-01-A24 | No token on all five endpoints | 401 | planned |
-| TC-COM-01-A25 | Tenant isolation: template created in `qa_school` | absent from `qa_school_b`'s list; GET by id in B 404; the same `(name, channel)` can be created in B | planned |
-| TC-COM-01-A26 | Token of tenant A with `cschema: qa_school_b` | 403 | planned |
-| TC-COM-01-A27 | Body `{{ 7*7 }}` stored, then a send to one parent | the queued message contains `49` (documents template injection) | planned |
-| TC-COM-01-E01 | Web, Admin: New Template `QA Web SMS` (sms) with body `Dear {{name}}, fee {{amount}} due.` | toast "Template created successfully"; row shows Variables "name, amount" and Status Active | planned |
-| TC-COM-01-E02 | Web: create the same name and channel again | error toast with the backend text "Template with name 'QA Web SMS' already exists for channel 'sms'." | planned |
-| TC-COM-01-E03 | Web: dialog counter for an SMS body of 161 characters | shows "161 / 160 (2 credits)" | planned |
-| TC-COM-01-E04 | Web: Insert Variable -> `{{student_name}}` | inserted at the cursor; "Detected variables" shows `student_name` | planned |
-| TC-COM-01-E05 | Web: email channel | "Subject *" field appears; saved subject is shown when editing | planned |
-| TC-COM-01-E06 | Web: edit name and body, Save Changes | toast "Template updated successfully"; the channel radios are not shown | planned |
-| TC-COM-01-E07 | Web: deactivate an active template and confirm | toast "Template deactivated"; Status Inactive; the trash icon disappears; filter "Inactive" lists it | planned |
-| TC-COM-01-E08 | Web: Load Default Templates on an empty tenant, then again | "9 default template(s) created." then "All default templates already exist." | planned |
-| TC-COM-01-E09 | Web: filters channel "Email" + search "notice" | only matching rows; a status filter "Inactive" shows `QA Old SMS` | planned |
-| TC-COM-01-E10 | Web, Staff and Teacher | the Templates page loads but is empty or shows an error (list returns 403); no New Template button | planned |
-| TC-COM-01-E11 | Mobile, Admin: Templates tab | shows "No templates found" even though templates exist (D-COM-01) | planned |
-| TC-COM-01-E12 | Mobile, Admin: New Template, Save with name `QA Mobile SMS` and a body | toast "Template Created - New template has been saved."; verify through the API that the row exists | planned |
-| TC-COM-01-E13 | Mobile: Save with an empty name | toast "Error - Template name is required" | planned |
-| TC-COM-01-E14 | Mobile: email channel without a subject | toast "Error - Subject is required for email templates" | planned |
-| TC-COM-01-E15 | Mobile, Student and Parent | the tab is hidden; the direct route shows "Access Restricted" | planned |
+| TC-COM-01-A01 | Admin `POST /communication/templates` `{name:"QA Fee SMS", channel:"sms", body:"Dear {{name}}, fee {{amount}} due."}` | 201; `variables ["name","amount"]`, `is_active` true, `subject` null | passing |
+| TC-COM-01-A02 | Create an email template with `subject:"Notice for {{name}}"` | 201; `subject` echoed | passing |
+| TC-COM-01-A03 | Same `(name, channel)` again; same name on `whatsapp` | 400 "Template with name 'QA Fee SMS' already exists for channel 'sms'."; the second is 201 | passing |
+| TC-COM-01-A04 | Boundary: SMS body of 480 and 481 characters | 201; 422 | passing |
+| TC-COM-01-A05 | `channel:"push"`; missing `name`; missing `body`; missing `channel` | 422 each | passing |
+| TC-COM-01-A06 | Body `{{name}}` with client `variables:["zzz"]` | stored `variables ["name"]` | passing |
+| TC-COM-01-A07 | `GET /communication/templates` | 200 plain array ordered by name, includes active and inactive | passing |
+| TC-COM-01-A08 | `?channel=email`; `?is_active=false`; `?channel=sms&is_active=true`; `?channel=push` | filtered arrays; `?channel=push` returns `[]` (no validation) | passing |
+| TC-COM-01-A09 | `GET /communication/templates/` (trailing slash) | 200 (redirect followed) with the same array | passing |
+| TC-COM-01-A10 | `?page=2&page_size=1` | ignored: the full array is returned | passing |
+| TC-COM-01-A11 | `GET /communication/templates/{id}`; random uuid; `abc` | 200; 404 "Template not found."; 422 | passing |
+| TC-COM-01-A12 | `PUT {body:"Hi {{name}} {{x}}"}` | 200; `variables ["name","x"]`; `updated_at` newer | passing |
+| TC-COM-01-A13 | `PUT {name:"Renamed", subject:"S"}` | 200 with the new values | passing |
+| TC-COM-01-A14 | `PUT {is_active:false}` then `PUT {is_active:true}` | inactive then active again (the only way to reactivate) | passing |
+| TC-COM-01-A15 | `PUT {channel:"email"}` | 200 and the channel is unchanged (field ignored) | passing |
+| TC-COM-01-A16 | `PUT` with a name that clashes with another template of the same channel | error response (400 via the integrity-error mapping); record the observed status; the row is unchanged | passing |
+| TC-COM-01-A17 | `PUT` an SMS body of 481 characters | 200 (no length check on update, documents the gap) | passing |
+| TC-COM-01-A18 | `DELETE /communication/templates/{id}` twice | 200 `TemplateRead` with `is_active` false both times; the row still exists | passing |
+| TC-COM-01-A19 | `PUT` and `DELETE` on a random uuid | 404 "Template not found." | passing |
+| TC-COM-01-A20 | Admin on all five endpoints | 2xx | passing |
+| TC-COM-01-A21 | Staff, Teacher, Student, Parent on all five endpoints | 403 | passing |
+| TC-COM-01-A22 | A custom role with only `communications:list`: GET list and get 200, POST 403, PUT 403, DELETE 403 | actions are independent | passing |
+| TC-COM-01-A23 | A custom role with only `communications:update`: PUT and DELETE 2xx, GET 403, POST 403 | as stated | passing |
+| TC-COM-01-A24 | No token on all five endpoints | 401 | passing |
+| TC-COM-01-A25 | Tenant isolation: template created in `qa_school` | absent from `qa_school_b`'s list; GET by id in B 404; the same `(name, channel)` can be created in B | passing |
+| TC-COM-01-A26 | Token of tenant A with `cschema: qa_school_b` | 403 | passing |
+| TC-COM-01-A27 | Body `{{ 7*7 }}` stored, then a send to one parent | the queued message contains `49` (documents template injection) | skipped: would need a real send that queues a message and dispatches the Celery task |
+
+UI test cases (manual format).
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-COM-01-E01 | P1 | Web | Admin | No template named "QA Notice SMS" on sms. | 1. Sign in as Admin.<br>2. Open Communication > Templates.<br>3. Click "+ New Template".<br>4. Enter "Template Name *" = "QA Notice SMS"; keep Channel "Sms".<br>5. Enter "Message Body *" = "Dear {{name}}, this is a QA notice."<br>6. Click "Save Template". | Toast "Template created successfully"; the row "QA Notice SMS" shows Channel SMS, Variables "name", Status Active. Templates cannot be deleted later, only deactivated. | planned |
+| TC-COM-01-E02 | P3 | Web | Admin | TC-COM-01-E01 done. | 1. Sign in as Admin.<br>2. Open Communication > Templates > "+ New Template".<br>3. Enter name "QA Notice SMS", Channel "Sms", any body.<br>4. Click "Save Template". | Error toast with "Template with name 'QA Notice SMS' already exists for channel 'sms'."; no second row. | planned |
+| TC-COM-01-E03 | P3 | Web | Admin | None. | 1. Sign in as Admin.<br>2. Open Communication > Templates > "+ New Template".<br>3. Keep Channel "Sms" and paste a body of exactly 161 characters.<br>4. Click "Cancel". | The counter under the body reads "161 / 160 (2 credits)" (an empty body shows "0 / 160 (0 credits)"); nothing is saved. | planned |
+| TC-COM-01-E04 | P3 | Web | Admin | None. | 1. Sign in as Admin.<br>2. Open "+ New Template".<br>3. Type "Dear " in "Message Body *".<br>4. Open "Insert Variable" and choose student_name.<br>5. Click "Cancel". | `{{student_name}}` is inserted at the cursor; "Detected variables" shows student_name; the "Live Preview" updates. | planned |
+| TC-COM-01-E05 | P2 | Web | Admin | No email template named "QA Notice Email". | 1. Sign in as Admin.<br>2. Open "+ New Template".<br>3. Enter name "QA Notice Email" and choose Channel "Email".<br>4. Enter "Subject *" = "Notice for {{name}}" and body "Dear {{name}}, this is a QA notice."<br>5. Click "Save Template".<br>6. Click "Edit QA Notice Email". | "Subject *" appears only for Email; toast "Template created successfully"; the edit dialog shows the saved subject. | planned |
+| TC-COM-01-E06 | P2 | Web | Admin | TC-COM-01-E01 done. | 1. Sign in as Admin.<br>2. Open Communication > Templates.<br>3. Click "Edit QA Notice SMS".<br>4. Change the body to "Dear {{name}}, this is an updated QA notice."<br>5. Click "Save Changes". | Dialog "Edit Template" without channel radios; toast "Template updated successfully"; Last Modified is today. | planned |
+| TC-COM-01-E07 | P2 | Web | Admin | An active template "QA Old SMS" (sms) created with "+ New Template". | 1. Sign in as Admin.<br>2. Open Communication > Templates.<br>3. Click "Deactivate QA Old SMS".<br>4. In "Deactivate Template" click "Deactivate".<br>5. Set "All Status" to "Inactive". | The dialog reads "Are you sure you want to deactivate QA Old SMS? It will no longer be available for sending messages."; toast "Template deactivated"; Status Inactive; only the edit icon remains; the Inactive filter lists it. There is no Activate button. | planned |
+| TC-COM-01-E08 | P3 | Web | Admin | The nine default templates were never loaded in qa_manual (seeded "Exam Schedule" already matches one default name). | 1. Sign in as Admin.<br>2. Open Communication > Templates.<br>3. Click "Load Default Templates".<br>4. Click it again. | Step 3: toast "8 default template(s) created." (Exam Schedule is skipped by name); step 4: "All default templates already exist." The new rows cannot be deleted, only deactivated. | planned |
+| TC-COM-01-E09 | P3 | Web | Admin | Seeded templates; TC-COM-01-E07 done. | 1. Sign in as Admin.<br>2. Open Communication > Templates.<br>3. Set "All Channels" to "Email" and type "exam" in "Search templates...".<br>4. Reset the filters and set "All Status" to "Inactive". | Step 3 shows only "Exam Schedule"; step 4 shows "QA Old SMS" and other inactive rows only. | planned |
+| TC-COM-01-E10 | P2 | Web | Staff | Seeded templates. | 1. Sign in as Staff.<br>2. Open Communication > Templates. | "No templates found." with no "Load Default Templates" or "+ New Template" (the list call returns 403). Teacher: same (verified 2026-10-07). | planned |
+| TC-COM-01-E11 | P2 | Mobile | Admin | Seeded templates (3 active). | 1. Sign in as Admin.<br>2. Open the Communication tab.<br>3. Tap "Templates". | The three seeded templates are listed with Edit and Deactivate actions. Currently "No templates found" is shown. | blocked: D-COM-01, mobile HIDE_TEMPLATES = true empties every template list |
+| TC-COM-01-E12 | P1 | Mobile | Admin | No sms template named "QA Mobile SMS". | 1. Sign in as Admin.<br>2. Open Communication > "Templates".<br>3. Tap "New Template".<br>4. Enter "Name *" = "QA Mobile SMS", keep the SMS chip, "Message Body *" = "Dear {{name}}, mobile QA notice."<br>5. Tap "Save".<br>6. On web, open Communication > Templates. | Toast "Template Created - New template has been saved."; the row "QA Mobile SMS" is listed on web (not on mobile, D-COM-01). | planned |
+| TC-COM-01-E13 | P3 | Mobile | Admin | None. | 1. Sign in as Admin.<br>2. Open Communication > "Templates" > "New Template".<br>3. Leave "Name *" empty, enter a body.<br>4. Tap "Save". | Toast "Error - Template name is required"; nothing is created. | planned |
+| TC-COM-01-E14 | P3 | Mobile | Admin | None. | 1. Sign in as Admin.<br>2. Open "New Template".<br>3. Enter a name and body, choose the Email chip, leave "Subject *" empty.<br>4. Tap "Save". | Toast "Error - Subject is required for email templates"; nothing is created. | planned |
+| TC-COM-01-E15 | P2 | Mobile | Student | Seeded student login (for example Karthik Reddy, admission 001). | 1. Sign in as the student.<br>2. Look for the Communication tab.<br>3. Open `/communication` by URL. | No Communication tab; the screen shows "Access Restricted - Communication tools are only available to staff and admin." Parent: same. | planned |
+| TC-COM-01-E16 | P3 | Web | Student | Seeded student login (for example Karthik Reddy, admission 001). | 1. Sign in as the student.<br>2. Open `/communication/templates` by URL.<br>3. Open `/communication/logs` by URL. | No Communication menu; step 2 shows the filters and "No templates found." without any buttons (no page guard); step 3 shows "Access Denied" and "You don't have permission to view communication logs." | planned |
 
 Implemented in: backend/tests/unit/communication/test_templates.py (U01-U09), web/src/__tests__/communication/defaultTemplates.test.ts (U12).
 
@@ -174,7 +184,7 @@ Implemented in: backend/tests/unit/communication/test_templates.py (U01-U09), we
 5. The counter under "Preview & send" shows the resolved number with the label "recipients" ("..." while loading, a dash when no target is complete).
 
 **Steps, mobile.**
-1. Communication tab -> Compose -> "2. SELECT RECIPIENTS": "Target Type *" with the same four options, "Class *", "Section *", the Students list with "Search name or admission #", "Staff *" ("Search and select staff..."), and the line "Estimated recipients: ~<n>", "Fetching recipients..." or "Complete fields to see recipient count".
+1. Communication tab -> Compose -> "2. SELECT RECIPIENTS": "Target Type *" with the same four options (Parents, Students, Staff, Entire School), "Class *", "Section *", the Students list with "Search name or admission #", "Staff *" ("Search and select staff..."), and the line "Estimated recipients: ~<n>", "Fetching recipients..." or "Complete fields to see recipient count".
 
 **Expected results.** The clients map the choice to a backend target: Parents -> `multiple_parents` with the parent ids of the checked students (father, mother, guardian and linked parents); Students -> `multiple_students` with the checked student ids; Staff -> `multiple_staff`; Entire School -> `all_users`. The count equals the number of rows the resolver produces for the target, before the channel's missing-contact filter.
 
@@ -201,7 +211,7 @@ Implemented in: backend/tests/unit/communication/test_templates.py (U01-U09), we
 
 1. Students are never contacted directly; student targets resolve to parents. A parent with two selected children appears twice (once per child) so each message can name the child. Only `all_users` de-duplicates.
 2. A missing or empty reference (no `parent_id`, no `class_id`, empty id list, unknown role) resolves to zero recipients, not an error.
-3. `target_type` must be one of the values above: an unknown value gives 422 on the preview endpoint (`Unknown target_type: '<x>'`) but 500 on the send endpoint (F03).
+3. `target_type` must be one of the values above: an unknown value gives 422 on the preview endpoint (`Unknown target_type: '<x>'`) and, since 2026-10-05, on the send endpoint too (F03).
 4. The preview counts every resolved row, including rows without a phone or email, so it can exceed the number actually queued.
 5. A student without an admission renders `class_name` and `section_name` as `None` (left joins).
 6. Row-level security scopes every query to the tenant.
@@ -224,39 +234,44 @@ Implemented in: backend/tests/unit/communication/test_templates.py (U01-U09), we
 | TC-COM-02-U08 | Web `resolveTarget` for ('parents', no parent ids), ('students', ids), ('staff', ids), ('entire_school') | `null`, `multiple_students`, `multiple_staff`, `all_users` with `{}` | blocked: resolveTarget is local to web/src/pages/Communication/SendMessagePanel.tsx |
 | TC-COM-02-U09 | Web `buildPreviewParams` for each resolved target | `parent_ids`, `student_ids`, `staff_ids` or only `target_type` for `all_users`; `null` for no target | blocked: buildPreviewParams is local to web/src/pages/Communication/SendMessagePanel.tsx |
 | TC-COM-02-U10 | Mobile `resolveTarget` and `buildPreviewParams` | identical results to the web functions | blocked: resolveTarget and buildPreviewParams are local to mobile/app/(tabs)/communication.tsx |
-| TC-COM-02-A01 | `all_parents` with `Parent One`, `Parent Two`, `Parent Three` | `{estimated_count: 3}` (parents without a phone are counted) | planned |
-| TC-COM-02-A02 | `multiple_parents&parent_ids=<P1>&parent_ids=<P3>` | 2 | planned |
-| TC-COM-02-A03 | `individual_parent&parent_id=<P1>`; unknown parent id | 1; 0 | planned |
-| TC-COM-02-A04 | `individual_student&student_id=<Kid One>` (one linked parent) | 1 | planned |
-| TC-COM-02-A05 | `multiple_students` with the two children of Parent Three | 2 (one row per parent and child) | planned |
-| TC-COM-02-A06 | `class_section_parents&class_id=<5>&section_id=<A>` | equals the number of (parent, student) pairs in the section | planned |
-| TC-COM-02-A07 | `class_section_students` for the same class and section | same number as `class_section_parents` | planned |
-| TC-COM-02-A08 | `class_section_parents&class_id=<5>` without a section | includes every section of class 5 | planned |
-| TC-COM-02-A09 | `class_section_parents` without `class_id` | 0 | planned |
-| TC-COM-02-A10 | `all_students` | number of distinct (parent, student) rows | planned |
-| TC-COM-02-A11 | `all_staff` with 3 staff of whom 1 inactive | 2 | planned |
-| TC-COM-02-A12 | `multiple_staff` with the inactive staff id | 1 (inactive staff are included for explicit selection) | planned |
-| TC-COM-02-A13 | `all_users` | parents plus active staff with phone or email duplicates removed | planned |
-| TC-COM-02-A14 | `fee_defaulters` with one fully paid and one unpaid student, both with `total_fee > 0` | both students' parents counted (proxy rule) | planned |
-| TC-COM-02-A15 | `role_based&role=Teacher`; `role=teacher`; `role=Nobody` | number of active staff with role Teacher; 0; 0 | planned |
-| TC-COM-02-A16 | Missing `target_type`; `target_type=bogus` | 422 (validation); 422 "Unknown target_type: 'bogus'" | planned |
-| TC-COM-02-A17 | `multiple_parents&parent_ids=abc` | non-2xx (database error, 500) | planned |
-| TC-COM-02-A18 | Admin on the endpoint | 200 | planned |
-| TC-COM-02-A19 | Staff, Teacher, Student, Parent | 403 | planned |
-| TC-COM-02-A20 | A custom role with only `communications:create`: preview-count 403 (needs `list`) | as stated | planned |
-| TC-COM-02-A21 | No token | 401 | planned |
-| TC-COM-02-A22 | Tenant isolation: tenant B calls `all_parents`, `all_staff`, `all_users` | counts of tenant B only (0 for an empty tenant) | planned |
-| TC-COM-02-A23 | Token tenant A with `cschema: qa_school_b` | 403 | planned |
-| TC-COM-02-E01 | Web, Admin: Compose -> Parents -> class 5, section A | student checklist with all students selected; the counter shows the resolved parent count | planned |
-| TC-COM-02-E02 | Web: untick one student | badge `n-1/n`; the counter updates after the request | planned |
-| TC-COM-02-E03 | Web: "Select all" off | counter shows a dash (no target) | planned |
-| TC-COM-02-E04 | Web: select a student with no linked parent while on Parents | warning "1 selected student has no linked parent contact and will be skipped." | planned |
-| TC-COM-02-E05 | Web: Staff -> pick Asha Verma and Ravi Kumar | "2 staff selected"; counter 2 | planned |
-| TC-COM-02-E06 | Web: Entire School | the note text is shown and the counter equals the `all_users` count | planned |
-| TC-COM-02-E07 | Web: switching Target Type clears class, section, students and staff | selections reset | planned |
-| TC-COM-02-E08 | Mobile, Admin: Recipients -> Parents -> class and section | the Students list and "Estimated recipients: ~<n>" | planned |
-| TC-COM-02-E09 | Mobile: Staff -> pick two staff | "Estimated recipients: ~2" | planned |
-| TC-COM-02-E10 | Mobile: no target chosen | "Complete fields to see recipient count" | planned |
+| TC-COM-02-A01 | `all_parents` with `Parent One`, `Parent Two`, `Parent Three` | `{estimated_count: 3}` (parents without a phone are counted) | passing |
+| TC-COM-02-A02 | `multiple_parents&parent_ids=<P1>&parent_ids=<P3>` | 2 | passing |
+| TC-COM-02-A03 | `individual_parent&parent_id=<P1>`; unknown parent id | 1; 0 | passing |
+| TC-COM-02-A04 | `individual_student&student_id=<Kid One>` (one linked parent) | 1 | skipped: needs students, classes and parent links created through the admission flow, which the communication tests do ... |
+| TC-COM-02-A05 | `multiple_students` with the two children of Parent Three | 2 (one row per parent and child) | skipped: needs students, classes and parent links created through the admission flow, which the communication tests do ... |
+| TC-COM-02-A06 | `class_section_parents&class_id=<5>&section_id=<A>` | equals the number of (parent, student) pairs in the section | skipped: needs students, classes and parent links created through the admission flow, which the communication tests do ... |
+| TC-COM-02-A07 | `class_section_students` for the same class and section | same number as `class_section_parents` | skipped: needs students, classes and parent links created through the admission flow, which the communication tests do ... |
+| TC-COM-02-A08 | `class_section_parents&class_id=<5>` without a section | includes every section of class 5 | skipped: needs students, classes and parent links created through the admission flow, which the communication tests do ... |
+| TC-COM-02-A09 | `class_section_parents` without `class_id` | 0 | passing |
+| TC-COM-02-A10 | `all_students` | number of distinct (parent, student) rows | passing |
+| TC-COM-02-A11 | `all_staff` with 3 staff of whom 1 inactive | 2 | passing |
+| TC-COM-02-A12 | `multiple_staff` with the inactive staff id | 1 (inactive staff are included for explicit selection) | passing |
+| TC-COM-02-A13 | `all_users` | parents plus active staff with phone or email duplicates removed | passing |
+| TC-COM-02-A14 | `fee_defaulters` with one fully paid and one unpaid student, both with `total_fee > 0` | both students' parents counted (proxy rule) | skipped: needs fee mappings for students; |
+| TC-COM-02-A15 | `role_based&role=Teacher`; `role=teacher`; `role=Nobody` | number of active staff with role Teacher; 0; 0 | passing |
+| TC-COM-02-A16 | Missing `target_type`; `target_type=bogus` | 422 (validation); 422 "Unknown target_type: 'bogus'" | passing |
+| TC-COM-02-A17 | `multiple_parents&parent_ids=abc` | Error response (status >= 400) | passing |
+| TC-COM-02-A18 | Admin on the endpoint | 200 | passing |
+| TC-COM-02-A19 | Staff, Teacher, Student, Parent | 403 | passing |
+| TC-COM-02-A20 | A custom role with only `communications:create`: preview-count 403 (needs `list`) | as stated | passing |
+| TC-COM-02-A21 | No token | 401 | passing |
+| TC-COM-02-A22 | Tenant isolation: tenant B calls `all_parents`, `all_staff`, `all_users` | counts of tenant B only (0 for an empty tenant) | passing |
+| TC-COM-02-A23 | Token tenant A with `cschema: qa_school_b` | 403 | passing |
+
+UI test cases (manual format).
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-COM-02-E01 | P1 | Web | Admin | Seeded Class 1 with students and linked parents. | 1. Sign in as Admin.<br>2. Open Communication > Compose.<br>3. Click "Parents".<br>4. Choose "Class" = "Class 1" and a "Section". | A "Students" checklist appears with every student of that section ticked and the badge "<selected>/<total>"; the counter under "Preview & send" shows the parent count with "recipients". | planned |
+| TC-COM-02-E02 | P2 | Web | Admin | TC-COM-02-E01 state. | 1. Untick one student in the checklist. | The badge shows one less selected; the counter refreshes to the new count. | planned |
+| TC-COM-02-E03 | P3 | Web | Admin | TC-COM-02-E01 state. | 1. Untick "Select all". | No student is ticked and the counter shows a dash. | planned |
+| TC-COM-02-E04 | P3 | Web | Admin | A student without any linked parent in a known section (seeded students all have parents; admit one named "QA NoParent" through Students). | 1. Sign in as Admin.<br>2. Open Compose, click "Parents".<br>3. Choose that class and section with QA NoParent ticked. | Warning "1 selected student has no linked parent contact and will be skipped." | planned |
+| TC-COM-02-E05 | P2 | Web | Admin | Seeded staff Sunitha Reddy and Venkatesh Kumar. | 1. Sign in as Admin.<br>2. Open Compose and click "Staff".<br>3. In "Search and select staff..." pick Sunitha Reddy and Venkatesh Kumar. | The picker lists staff as "Name (phone)"; "2 staff selected" appears; the counter shows 2. | planned |
+| TC-COM-02-E06 | P2 | Web | Admin | Seeded parents and staff. | 1. Sign in as Admin.<br>2. Open Compose and click "Entire School". | The note "This will send to every parent, student, and staff member in the school." appears; the counter shows "..." and then all parents plus active staff, de-duplicated. | planned |
+| TC-COM-02-E07 | P3 | Web | Admin | None. | 1. Sign in as Admin.<br>2. Open Compose, click "Parents" and choose a class and section.<br>3. Click "Staff" and pick one staff member.<br>4. Click "Parents" again. | Each switch clears the previous class, section, student and staff selections; the counter returns to a dash. | planned |
+| TC-COM-02-E08 | P1 | Mobile | Admin | Seeded Class 1 with students and linked parents. | 1. Sign in as Admin.<br>2. Open the Communication tab ("Compose").<br>3. Tap "SMS".<br>4. Under "Target Type *" tap "Parents".<br>5. Choose "Class *" = "Class 1" and a "Section *". | The Students list with "Search name or admission #" appears and the line "Estimated recipients: ~<n>" (after "Fetching recipients..."). | planned |
+| TC-COM-02-E09 | P2 | Mobile | Admin | Seeded staff Sunitha Reddy and Venkatesh Kumar. | 1. Sign in as Admin.<br>2. Open Communication > "Compose".<br>3. Tap "Staff".<br>4. In "Search and select staff..." pick both. | "Estimated recipients: ~2". | planned |
+| TC-COM-02-E10 | P3 | Mobile | Admin | None. | 1. Sign in as Admin.<br>2. Open Communication > "Compose".<br>3. Tap "Staff" and pick nobody. | The line "Complete fields to see recipient count" (verified 2026-10-07). | planned |
 
 Implemented in: backend/tests/unit/communication/test_recipient_resolver.py (U01-U07).
 
@@ -274,13 +289,13 @@ Implemented in: backend/tests/unit/communication/test_recipient_resolver.py (U01
 1. Communication -> "Compose" (`/communication/compose`).
 2. Left column: choose the "Target Type" and the recipients (F02).
 3. Top right: choose the channel with the buttons "SMS", "WhatsApp", "Email".
-4. Section "1 Context & template": "Context (what this SMS is for)" (General, Exam schedule, Attendance, Fee reminder, Admission, Holiday, Homework; it filters the template list by words in the template name) and "Template" ("Select template..."). Only active templates of the chosen channel are listed. Changing the channel or context clears the template.
+4. Section "1 Context & template": "Context (what this SMS is for)" (General, Exam schedule, Attendance, Fee reminder, Admission, Holiday, Homework; it filters the template list by words in the template name) and "Template" ("Select template..."). Only active templates of the chosen channel are listed. Changing the channel or context clears the template. Without `communications:list` the list stays on "Loading templates..." (Staff, Teacher) or empty (Student, Parent), and "Send Now" is not rendered without `communications:create`.
 5. For each template variable that the page does not treat as a system variable (everything except `name`, `parent_name`, `student_name`, `staff_name`, `class_name`, `section_name`) an input appears; all must be filled.
 6. Section "2 Preview & send": the message preview shows system variables as `[name]` and filled values; for SMS the line "<n> chars - <k> SMS credit(s) - Sender: COS360".
 7. Click "Send Now" (enabled when a template, a complete target and all inputs are present). There is no confirmation dialog. Toast "<n> messages queued successfully" and the app opens `/communication/logs`. Errors: 429 "Rate limit exceeded. Please wait a moment before sending again.", 403 "Permission denied", otherwise the backend detail or "Failed to send notification".
 
 **Steps, mobile.**
-1. Communication tab -> in-page tab "Compose": "1. SELECT CHANNEL" (SMS, WhatsApp, Email), "2. SELECT RECIPIENTS" (F02), "3. SELECT TEMPLATE" ("Template *"), "4. FILL IN VARIABLES" when needed, then "Send Now".
+1. Communication tab -> in-page tab "Compose": "1. SELECT CHANNEL" (SMS, WhatsApp, Email), "2. SELECT RECIPIENTS" (F02), "3. SELECT TEMPLATE" ("Select a channel above to filter templates." until a channel is chosen, then "Template *"), "4. FILL IN VARIABLES" when needed, then "Send Now".
 2. "Send Now" opens the modal "Confirm Send" with Channel, Target, Recipients and Template rows, the message preview and the warning "This will queue <n> message(s) and cannot be undone."; "Cancel" or "Confirm & Send" ("Queuing...").
 3. Success: toast "Messages Queued - <n> messages queued successfully." and the app switches to the Logs tab. Errors: "Rate Limited - Too many requests. Please wait and try again.", "Permission Denied - You do not have permission to send messages.", "Send Failed - <detail>".
 4. Because of `HIDE_TEMPLATES = true` (D-COM-01) the template dropdown is always empty ("No active SMS templates"), so a mobile send cannot be completed.
@@ -297,7 +312,7 @@ Implemented in: backend/tests/unit/communication/test_recipient_resolver.py (U01
 4. Every placeholder of the template that is not a system variable (`name`, `student_name`, `class_name`, `section_name`) must be a key of `variables`, otherwise 400 "Missing user-provided template variables: ['a', 'b']" (sorted) and nothing is queued. Extra keys are accepted. For free-text WhatsApp no variable check is made.
 5. Each message is rendered per recipient with Jinja2: system variables first (`name` is the recipient's name, `student_name`, `class_name`, `section_name` come from the student row or are empty), then `variables`, which may override them. Rendering happens at queue time; later template edits do not change queued messages. A syntax or undefined-attribute error writes a `failed` log (empty `message`, the error text in `error_message`) for that recipient only.
 6. Client contract bug: both clients send `extra_variables`, but the backend field is `variables`, so values typed by the user are dropped and any template with a non-system placeholder fails with 400. The clients also treat `parent_name` and `staff_name` as system variables and never ask for them, but the backend does not resolve them.
-7. An unknown `target_type` is not validated by the schema (plain string); the resolver's ValueError is not converted, so the endpoint answers 500.
+7. An unknown `target_type` answers 422 (fixed 2026-10-05; it used to be 500).
 8. If dispatching the Celery task fails the error is logged and swallowed: rows stay `queued` and the call still returns `queued_count`.
 9. `fee_defaulters` is a proxy (F02), student and class targets fan out per (parent, student), only `all_users` de-duplicates.
 10. Tenant data only; the worker receives the tenant id, never the `cschema` header.
@@ -327,47 +342,53 @@ Implemented in: backend/tests/unit/communication/test_recipient_resolver.py (U01
 | TC-COM-03-U15 | Free-text WhatsApp send with `message="Hi {{name}}"` | rendered per recipient; no template lookup; channel `whatsapp` | passing |
 | TC-COM-03-U16 | Web `buildPreviewText("Hi {{name}} {{amount}}", {amount:"500"})` and with an empty value | `Hi [name] 500`; `Hi [name] [amount]` | blocked: buildPreviewText is local to web/src/pages/Communication/SendMessagePanel.tsx |
 | TC-COM-03-U17 | Web `isAllFilled` for a template with variables `amount` (empty, filled), no template, no target | false, true, false, false | blocked: isAllFilled is an inline expression in web/src/pages/Communication/SendMessagePanel.tsx |
-| TC-COM-03-A01 | Patch `.delay`. Admin `POST /communication/send` `{template_id:<QA Notice SMS>, target_type:"multiple_parents", target_ref:{parent_ids:[P1]}, variables:{}}` | 200 `{queued_count: 1}`; one queue row: status queued, `rendered_message` "Dear Parent One, this is a QA notice.", `recipient_phone` 9876511111; `.delay` called once with the queue id, "sms", the tenant id | planned |
-| TC-COM-03-A02 | `multiple_parents` with `[P1, P2]` where Parent Two has no phone, template sms | `queued_count` 1 (Parent Two skipped, not logged) | planned |
-| TC-COM-03-A03 | The same targets with the email template | `queued_count` 2 if both have emails; recipients without email dropped | planned |
-| TC-COM-03-A04 | Template `QA Student SMS` to `multiple_students` with the two children of Parent Three | `queued_count` 2 (two rows for one parent); messages name each child and `5-A` | planned |
-| TC-COM-03-A05 | Template `QA Custom SMS` without `variables` | 400 "Missing user-provided template variables: ['amount', 'due_date']" | planned |
-| TC-COM-03-A06 | Same with `variables:{amount:"500", due_date:"2026-10-31"}` | 200; message "Hello <name>, amount 500 due on 2026-10-31." | planned |
-| TC-COM-03-A07 | Same with `extra_variables:{...}` instead of `variables` (the clients' field name) | 400 (the field is ignored; documents D-COM-02) | planned |
-| TC-COM-03-A08 | `variables` with a key overriding a system variable, `{"name":"Override"}` | the message uses "Override" | planned |
-| TC-COM-03-A09 | Inactive template `QA Old SMS` | 400 "Template is inactive and cannot be used for sending." | planned |
-| TC-COM-03-A10 | Random `template_id`; non-UUID `template_id` | 404 "Template not found."; 422 | planned |
-| TC-COM-03-A11 | `channel:"email"` sent together with an sms `template_id` | the template's channel (sms) is used; the queue rows have channel sms | planned |
-| TC-COM-03-A12 | Missing `target_type`; no `template_id` and no `channel` | 422 each | planned |
-| TC-COM-03-A13 | `target_type:"bogus"` with a valid template | 500 (unhandled ValueError); no queue rows | planned |
-| TC-COM-03-A14 | Free-text WhatsApp: `{channel:"whatsapp", message:"Hello {{name}}", target_type:"multiple_staff", target_ref:{staff_ids:[Asha]}}` | 200 `queued_count` 1 (phone present); queue row `template_id` null | planned |
-| TC-COM-03-A15 | Free-text WhatsApp to `all_users` | 422 "target_type 'all_users' is not allowed for a template-less WhatsApp send. ..." | planned |
-| TC-COM-03-A16 | Free text on sms | 422 | planned |
-| TC-COM-03-A17 | Template body with a Jinja syntax error `Hi {% if %}` | 200 `queued_count 0`; the log list contains a `failed` entry per recipient with `message` "" and an `error_message` | planned |
-| TC-COM-03-A18 | Audience resolving to nobody (`role_based` role "Nobody") | 200 `{queued_count: 0}`; `.delay` not called | planned |
-| TC-COM-03-A19 | `.delay` patched to raise | 200 `{queued_count: n}` and the queue rows exist | planned |
-| TC-COM-03-A20 | Edit the template after sending | the already queued `rendered_message` is unchanged | planned |
-| TC-COM-03-A21 | `all_users` | one queue row per de-duplicated recipient with the needed contact | planned |
-| TC-COM-03-A22 | 201 requests from one client IP inside one minute | the 201st returns 429 | planned |
-| TC-COM-03-A23 | Admin | 200 | planned |
-| TC-COM-03-A24 | Staff, Teacher, Student, Parent | 403 | planned |
-| TC-COM-03-A25 | A custom role with only `communications:list`: 403; with only `create`: 200 | as stated | planned |
-| TC-COM-03-A26 | No token | 401 | planned |
-| TC-COM-03-A27 | Tenant isolation: send in tenant A using a template id of tenant B | 404 "Template not found."; queue rows only in the tenant that sent; tenant B sees none | planned |
-| TC-COM-03-A28 | Token tenant A with `cschema: qa_school_b` | 403 | planned |
-| TC-COM-03-E01 | Web, Admin: Compose -> Parents -> class 5 / A -> channel SMS -> template `QA Notice SMS` -> Send Now (worker not running) | toast "<n> messages queued successfully"; the app opens `/communication/logs` | planned |
-| TC-COM-03-E02 | Web: before choosing a template | "Send Now" is disabled; the preview shows "Select a template to preview the message." | planned |
-| TC-COM-03-E03 | Web: choose `QA Custom SMS` and fill "amount" and "due date" | the preview shows the filled values; Send Now becomes enabled; after sending the toast shows the backend error "Missing user-provided template variables: ['amount', 'due_date']" (D-COM-02) | planned |
-| TC-COM-03-E04 | Web: channel "WhatsApp" then "Email" | the Template list changes to that channel's active templates; the previous selection is cleared | planned |
-| TC-COM-03-E05 | Web: Context "Holiday" | the template list is limited to templates whose name contains "holiday" | planned |
-| TC-COM-03-E06 | Web: SMS body of 161 characters | the line "161 chars - 2 SMS credits - Sender: COS360" | planned |
-| TC-COM-03-E07 | Web: Staff -> Asha Verma -> `QA Notice SMS` -> Send Now | toast "1 messages queued successfully" | planned |
-| TC-COM-03-E08 | Web: Entire School -> `QA Notice Email` | toast with the queued count (recipients without email are excluded) | planned |
-| TC-COM-03-E09 | Web: rate limited (backend patched to return 429) | toast "Rate limit exceeded. Please wait a moment before sending again." | planned |
-| TC-COM-03-E10 | Web, Staff and Teacher | Compose loads without a Send Now button and with no templates (list 403) | planned |
-| TC-COM-03-E11 | Mobile, Admin: SMS, Parents, class, section | the template dropdown shows "No active SMS templates" (D-COM-01); Send Now stays disabled | planned |
-| TC-COM-03-E12 | Mobile, Admin: tap Send Now without a target | toast "Error - Please select a target type" | planned |
-| TC-COM-03-E13 | Mobile, Student and Parent | no Communication tab; direct route shows "Access Restricted" | planned |
+| TC-COM-03-A01 | Patch `.delay`. Admin `POST /communication/send` `{template_id:<QA Notice SMS>, target_type:"multiple_parents", target_ref:{parent_ids:[P1]}, variables:{}}` | 200 `{queued_count: 1}`; one queue row: status queued, `rendered_message` "Dear Parent One, this is a QA notice.", `recipient_phone` 9876511111; `.delay` called once with the queue id, "sms", the tenant id | skipped: would queue a message and dispatch the Celery task; |
+| TC-COM-03-A02 | `multiple_parents` with `[P1, P2]` where Parent Two has no phone, template sms | `queued_count` 1 (Parent Two skipped, not logged) | skipped: would queue a message and dispatch the Celery task; |
+| TC-COM-03-A03 | The same targets with the email template | `queued_count` 2 if both have emails; recipients without email dropped | skipped: would queue a message and dispatch the Celery task; |
+| TC-COM-03-A04 | Template `QA Student SMS` to `multiple_students` with the two children of Parent Three | `queued_count` 2 (two rows for one parent); messages name each child and `5-A` | skipped: would queue a message and dispatch the Celery task; |
+| TC-COM-03-A05 | Template `QA Custom SMS` without `variables` | 400 "Missing user-provided template variables: ['amount', 'due_date']" | passing |
+| TC-COM-03-A06 | Same with `variables:{amount:"500", due_date:"2026-10-31"}` | 200; message "Hello <name>, amount 500 due on 2026-10-31." | skipped: would queue a message and dispatch the Celery task; |
+| TC-COM-03-A07 | Same with `extra_variables:{...}` instead of `variables` (the clients' field name) | 400 (the field is ignored; documents D-COM-02) | passing |
+| TC-COM-03-A08 | `variables` with a key overriding a system variable, `{"name":"Override"}` | the message uses "Override" | skipped: would queue a message and dispatch the Celery task; |
+| TC-COM-03-A09 | Inactive template `QA Old SMS` | 400 "Template is inactive and cannot be used for sending." | passing |
+| TC-COM-03-A10 | Random `template_id`; non-UUID `template_id` | 404 "Template not found."; 422 | passing |
+| TC-COM-03-A11 | `channel:"email"` sent together with an sms `template_id` | the template's channel (sms) is used; the queue rows have channel sms | skipped: would queue a message and dispatch the Celery task; |
+| TC-COM-03-A12 | Missing `target_type`; no `template_id` and no `channel` | 422 each | passing |
+| TC-COM-03-A13 | `target_type:"bogus"` with a valid template | Client error, 400 or 422 (not a 500) | passing |
+| TC-COM-03-A14 | Free-text WhatsApp: `{channel:"whatsapp", message:"Hello {{name}}", target_type:"multiple_staff", target_ref:{staff_ids:[Asha]}}` | 200 `queued_count` 1 (phone present); queue row `template_id` null | skipped: would queue a message and dispatch the Celery task; |
+| TC-COM-03-A15 | Free-text WhatsApp to `all_users` | 422 "target_type 'all_users' is not allowed for a template-less WhatsApp send. ..." | passing |
+| TC-COM-03-A16 | Free text on sms | 422 | passing |
+| TC-COM-03-A17 | Template body with a Jinja syntax error `Hi {% if %}` | 200 `queued_count 0`; the log list contains a `failed` entry per recipient with `message` "" and an `error_message` | passing |
+| TC-COM-03-A18 | Audience resolving to nobody (`role_based` role "Nobody") | 200 `{queued_count: 0}`; `.delay` not called | passing |
+| TC-COM-03-A19 | `.delay` patched to raise | 200 `{queued_count: n}` and the queue rows exist | skipped: needs the Celery dispatch patched, which cannot be done against a running server |
+| TC-COM-03-A20 | Edit the template after sending | the already queued `rendered_message` is unchanged | skipped: would queue a message and dispatch the Celery task; |
+| TC-COM-03-A21 | `all_users` | one queue row per de-duplicated recipient with the needed contact | skipped: would queue a message and dispatch the Celery task; |
+| TC-COM-03-A22 | 201 requests from one client IP inside one minute | the 201st returns 429 | skipped: needs the rate limiter enabled; |
+| TC-COM-03-A23 | Admin | 200 | passing |
+| TC-COM-03-A24 | Staff, Teacher, Student, Parent | 403 | passing |
+| TC-COM-03-A25 | A custom role with only `communications:list`: 403; with only `create`: 200 | as stated | passing |
+| TC-COM-03-A26 | No token | 401 | passing |
+| TC-COM-03-A27 | Tenant isolation: send in tenant A using a template id of tenant B | 404 "Template not found."; queue rows only in the tenant that sent; tenant B sees none | passing |
+| TC-COM-03-A28 | Token tenant A with `cschema: qa_school_b` | 403 | passing |
+
+UI test cases (manual format).
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-COM-03-E01 | P1 | Web | Admin | TC-COM-01-E01 done ("QA Notice SMS" active); seeded Class 1 parents with phones. | 1. Sign in as Admin.<br>2. Open Communication > Compose.<br>3. Click "Parents"; choose "Class 1" and a Section.<br>4. Click "SMS".<br>5. Choose "Template" = "QA Notice SMS".<br>6. Check the preview.<br>7. Click "Send Now". | The preview shows "Dear [name], this is a QA notice." and "<n> chars - 1 SMS credit - Sender: COS360"; no confirmation dialog; toast "<n> messages queued successfully"; the app opens `/communication/logs`. Rows stay queued (no worker), so no log row appears. | planned |
+| TC-COM-03-E02 | P3 | Web | Admin | None. | 1. Sign in as Admin.<br>2. Open Compose and click "Staff"; pick Sunitha Reddy.<br>3. Do not choose a template. | "Send Now" is disabled; the preview reads "Select a template to preview the message." (verified 2026-10-07). | planned |
+| TC-COM-03-E03 | P2 | Web | Admin | Seeded sms template "Fee Reminder" (amount, student_name, due_date); seeded Class 1 parents. | 1. Sign in as Admin.<br>2. Open Compose; click "Parents"; choose "Class 1" and a Section.<br>3. Click "SMS"; choose "Fee Reminder".<br>4. Fill "amount" = 500 and "due date" = 2026-10-31.<br>5. Click "Send Now". | Inputs appear for amount and due date only; the preview shows the filled values; "Send Now" becomes enabled; after sending, toast "<n> messages queued successfully". Currently the toast shows "Missing user-provided template variables: ['amount', 'due_date']". | blocked: D-COM-02, clients send extra_variables so non-system variables are dropped and the send fails with 400 |
+| TC-COM-03-E04 | P3 | Web | Admin | Seeded templates on each channel. | 1. Sign in as Admin.<br>2. Open Compose; click "SMS" and choose "Fee Reminder".<br>3. Click "WhatsApp".<br>4. Click "Email". | Step 3 clears the selection and lists "Holiday Notice"; step 4 lists "Exam Schedule". | planned |
+| TC-COM-03-E05 | P3 | Web | Admin | Seeded templates. | 1. Sign in as Admin.<br>2. Open Compose; click "WhatsApp".<br>3. Set "Context (what this SMS is for)" to "Holiday".<br>4. Click "SMS". | Step 3 lists only templates whose name contains "holiday" ("Holiday Notice"); step 4 lists none of the seeded SMS templates. | planned |
+| TC-COM-03-E06 | P3 | Web | Admin | An active sms template "QA Long SMS" whose body is 161 characters with no variables. | 1. Sign in as Admin.<br>2. Open Compose; click "Staff" and pick Sunitha Reddy.<br>3. Click "SMS" and choose "QA Long SMS". | The line "161 chars - 2 SMS credits - Sender: COS360". Do not send. | planned |
+| TC-COM-03-E07 | P1 | Web | Admin | TC-COM-01-E01 done; seeded staff Sunitha Reddy (phone 9000010002). | 1. Sign in as Admin.<br>2. Open Compose; click "Staff".<br>3. Pick Sunitha Reddy.<br>4. Click "SMS"; choose "QA Notice SMS".<br>5. Click "Send Now". | Toast "1 messages queued successfully"; the app opens Logs; one queue row exists for her phone (status queued). | planned |
+| TC-COM-03-E08 | P2 | Web | Admin | TC-COM-01-E05 done ("QA Notice Email" active). | 1. Sign in as Admin.<br>2. Open Compose; click "Entire School".<br>3. Click "Email"; choose "QA Notice Email".<br>4. Click "Send Now". | Toast "<n> messages queued successfully" where n counts only recipients with an email (can be lower than the preview count). | planned |
+| TC-COM-03-E09 | P3 | Web | Admin | A backend that answers 429 on `/communication/send`. | 1. Sign in as Admin.<br>2. Prepare a complete send as in TC-COM-03-E07.<br>3. Click "Send Now". | Toast "Rate limit exceeded. Please wait a moment before sending again." | blocked: rate limiting is switched off on the QA API (RATE_LIMIT_ENABLED=false) |
+| TC-COM-03-E10 | P2 | Web | Staff | Seeded templates. | 1. Sign in as Staff.<br>2. Open Communication > Compose. | The page loads with the target buttons; "Template" stays on "Loading templates..." and there is no "Send Now" button. Teacher: same (verified 2026-10-07). | planned |
+| TC-COM-03-E11 | P2 | Mobile | Admin | Seeded sms template "Fee Reminder"; TC-COM-01-E01 done. | 1. Sign in as Admin.<br>2. Open Communication > "Compose".<br>3. Tap "SMS"; tap "Staff" and pick Sunitha Reddy.<br>4. Open "Template *". | The active SMS templates ("Fee Reminder", "QA Notice SMS") are offered. Currently the field shows "No active SMS templates" and "Send Now" cannot complete. | blocked: D-COM-01, mobile HIDE_TEMPLATES = true empties every template list |
+| TC-COM-03-E12 | P3 | Mobile | Admin | None. | 1. Sign in as Admin.<br>2. Open Communication > "Compose".<br>3. Tap "Send Now" without choosing a target type. | Toast "Error - Please select a target type"; nothing is queued. | planned |
+| TC-COM-03-E13 | P2 | Mobile | Parent | Seeded parent login (for example anil.kumar@example.com). | 1. Sign in as the parent.<br>2. Open `/communication` by URL. | No Communication tab; "Access Restricted - Communication tools are only available to staff and admin." | planned |
+| TC-COM-03-E14 | P3 | Web | Student | Seeded student login (for example Karthik Reddy, admission 001). | 1. Sign in as the student.<br>2. Open `/communication/compose` by URL. | The page opens (no page guard) with an empty "Template" list and no "Send Now" (verified 2026-10-07 with the QA Student login). | planned |
 
 Implemented in: backend/tests/unit/communication/test_send_pipeline.py (U01-U15).
 
@@ -409,21 +430,26 @@ Implemented in: backend/tests/unit/communication/test_send_pipeline.py (U01-U15)
 | TC-COM-04-U02 | `missingVars` for body variables [staff_name, school_name, date] with prefill {date} | `["school_name"]` | blocked: logic is inline in web/src/components/communication/QuickSendButton.tsx |
 | TC-COM-04-U03 | Payload building with merged variables {staff_name, school_name:"QA School"} | system variables are removed, `{school_name:"QA School"}` remains (sent under `extra_variables`) | blocked: logic is inline in web/src/components/communication/QuickSendButton.tsx |
 | TC-COM-04-U04 | `canSubmit` for no template, a template with an empty missing variable, a complete state, a pending mutation | false, false, true, false | blocked: logic is inline in web/src/components/communication/QuickSendButton.tsx |
-| TC-COM-04-A01 | `POST /communication/send` with the exact payload the dialog builds for `Staff Recruiting` (`extra_variables` only) | 400 "Missing user-provided template variables: ['school_name', 'staff_name']" (D-COM-02) | planned |
-| TC-COM-04-A02 | Same send with `variables:{staff_name:"Asha Verma", school_name:"QA School"}` | 200 `queued_count` 1 for an `individual_staff` target with a phone | planned |
-| TC-COM-04-A03 | `individual_staff` for a staff member without a phone on sms | 200 `queued_count` 0 | planned |
-| TC-COM-04-A04 | `individual_staff` with an unknown staff id | 200 `queued_count` 0 | planned |
-| TC-COM-04-A05 | Template list used by the dialog: `GET /communication/templates?channel=sms&page_size=100` | 200 array including inactive rows (the client filters `is_active`) | planned |
-| TC-COM-04-A06 | Staff, Teacher, Student, Parent on the send call | 403 | planned |
-| TC-COM-04-A07 | No token | 401 | planned |
-| TC-COM-04-E01 | Web, Admin: Staff Enrollment, click the Send icon of Asha Verma | dialog "Send Message", "To: Asha Verma", template "Staff Recruiting" preselected, preview with `[...]` placeholders | planned |
-| TC-COM-04-E02 | Web: fill "school name" and press Send Now | a toast shows the backend error "Missing user-provided template variables: ['school_name', 'staff_name']" (D-COM-02); the dialog stays open | planned |
-| TC-COM-04-E03 | Web: first edit the `Staff Recruiting` template body to `Dear {{name}}, welcome to the team.` (system variables only), then use the Send icon of Asha Verma | toast "1 messages queued successfully"; the dialog closes | planned |
-| TC-COM-04-E04 | Web: channel switched to Email with no active email template | text "No active EMAIL templates. Create one in Communication -> Templates." | planned |
-| TC-COM-04-E05 | Web, Staff Attendance: present staff row | the Send icon is disabled with the tooltip "Staff is present - no notification needed" | planned |
-| TC-COM-04-E06 | Web, Staff Attendance: absent staff row | the icon opens the dialog preselecting "Staff Attendance" | planned |
-| TC-COM-04-E07 | Web, Staff role (no `communications:create`) | no Send icon on staff rows | planned |
-| TC-COM-04-E08 | Mobile, Admin: the staff screens | no QuickSend button exists | planned |
+| TC-COM-04-A01 | `POST /communication/send` with the exact payload the dialog builds for `Staff Recruiting` (`extra_variables` only) | 400 "Missing user-provided template variables: ['school_name', 'staff_name']" (D-COM-02) | passing |
+| TC-COM-04-A02 | Same send with `variables:{staff_name:"Asha Verma", school_name:"QA School"}` | 200 `queued_count` 1 for an `individual_staff` target with a phone | skipped: would queue a message and dispatch the Celery task; |
+| TC-COM-04-A03 | `individual_staff` for a staff member without a phone on sms | 200 `queued_count` 0 | passing |
+| TC-COM-04-A04 | `individual_staff` with an unknown staff id | 200 `queued_count` 0 | passing |
+| TC-COM-04-A05 | Template list used by the dialog: `GET /communication/templates?channel=sms&page_size=100` | 200 array including inactive rows (the client filters `is_active`) | passing |
+| TC-COM-04-A06 | Staff, Teacher, Student, Parent on the send call | 403 | passing |
+| TC-COM-04-A07 | No token | 401 | passing |
+
+UI test cases (manual format).
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-COM-04-E01 | P1 | Web | Admin | TC-COM-01-E08 done ("Staff Recruiting" exists); seeded staff Sunitha Reddy. | 1. Sign in as Admin.<br>2. Open Staff > Enrollment.<br>3. Click "Send Welcome/Recruiting Message" on Sunitha Reddy.<br>4. Click "Cancel". | Dialog "Send Message" with "To: Sunitha Reddy", "Channel" (SMS, WhatsApp, Email), "Template" preselected "Staff Recruiting", a "Preview" with [..] placeholders and "Cancel" and "Send Now". | planned |
+| TC-COM-04-E02 | P2 | Web | Admin | TC-COM-04-E01 done. | 1. Open the dialog again for Sunitha Reddy.<br>2. Fill "school name" = "QA School".<br>3. Click "Send Now". | Toast "1 messages queued successfully" and the dialog closes. Currently the toast shows "Missing user-provided template variables: ['school_name', 'staff_name']" and the dialog stays open. | blocked: D-COM-02, clients send extra_variables so non-system variables are dropped and the send fails with 400 |
+| TC-COM-04-E03 | P1 | Web | Admin | TC-COM-01-E08 done; the tester-created "Staff Recruiting" body changed to "Dear {{name}}, welcome to the team." (system variables only). | 1. Sign in as Admin.<br>2. Open Staff > Enrollment.<br>3. Click "Send Welcome/Recruiting Message" on Sunitha Reddy.<br>4. Click "Send Now". | Toast "1 messages queued successfully"; the dialog closes. | planned |
+| TC-COM-04-E04 | P3 | Web | Admin | No active template on the chosen channel. | 1. Open the "Send Message" dialog for a staff row.<br>2. Switch "Channel" to that channel. | Text "No active <CHANNEL> templates. Create one in Communication -> Templates."; "Send Now" disabled. | blocked: qa_manual has an active seeded template on every channel and seeded rows must not be deactivated |
+| TC-COM-04-E05 | P2 | Web | Admin | Seeded staff, all Present today. | 1. Sign in as Admin.<br>2. Open Staff > Staff Attendance (today).<br>3. Hover the Send icon of a Present row. | The icon is disabled with the tooltip "Staff is present - no notification needed" (verified 2026-10-07). | planned |
+| TC-COM-04-E06 | P2 | Web | Admin | TC-COM-01-E08 done; QA Asha Verma Absent today (TC-STF-10-E02 done). | 1. Sign in as Admin.<br>2. Open Staff > Staff Attendance.<br>3. Click the Send icon of QA Asha Verma.<br>4. Click "Cancel". | Dialog "Send Message" with "To: QA Asha Verma" and the template "Staff Attendance" preselected. | planned |
+| TC-COM-04-E07 | P2 | Web | Staff | Seeded staff. | 1. Sign in as Staff.<br>2. Open Staff > Enrollment. | No "Send Welcome/Recruiting Message" icon on any row (verified 2026-10-07). | planned |
+| TC-COM-04-E08 | P3 | Mobile | Admin | Seeded staff. | 1. Sign in as Admin.<br>2. Open Staff hub > "Staff Enrollment" and "Attendance". | The cards offer only View, Edit and Delete; no send button exists on the staff screens. | planned |
 
 Implemented in: no unit case of this feature is implemented; all U cases are blocked (see Status).
 
@@ -486,15 +512,20 @@ Implemented in: no unit case of this feature is implemented; all U cases are blo
 | TC-COM-05-U20 | `_send_email` payload (mocked httpx, env set) | subject "Notification from COS360", content type `text/html`, from `EMAIL_FROM` or `noreply@example.com`; returns `X-Message-Id` or `email_sent` | passing |
 | TC-COM-05-U21 | `_call_provider("push", {})` | ValueError "Unknown channel: 'push'" | passing |
 | TC-COM-05-U22 | `send_notification_batch` where `_process_batch` raises | `self.retry` is called with `countdown=60` | passing |
-| TC-COM-05-A01 | Insert a queue row (sms, recipient phone, `target_ref` with template id and DLT id) and run `_process_batch` with `_call_provider` patched to return "REQ1" | queue row `done`; one `notification_log` row `sent` with `provider_message_id` "REQ1" and the rendered message | planned |
-| TC-COM-05-A02 | Same with `_call_provider` raising ValueError("boom") | the task raises; after the rolled-back transaction no log row exists and the queue row is `queued` again (documents rule 7) | planned |
-| TC-COM-05-A03 | Batch of two rows where the second fails | the first row's `done` state and its log are rolled back too; both are `queued` | planned |
-| TC-COM-05-A04 | Run the task for a queue id of tenant A with tenant B's id | the row is not visible; skipped with a warning; no log written | planned |
-| TC-COM-05-A05 | Queue id "not-a-uuid" | skipped; no exception | planned |
-| TC-COM-05-A06 | Real `_send_sms` with no provider settings in the QA environment | ValueError "MSG91_AUTH_KEY not configured in environment" and the same rollback result as A02 | planned |
-| TC-COM-05-A07 | Rows produced by `/communication/send` for sms (template UUID, no DLT id) processed with a patched `msg91` HTTP client | fails with "template_id not found" or "dlt_te_id not found in row_data" (documents rule 3) | planned |
-| TC-COM-05-E01 | Web, Admin, no worker running: send from Compose, then open Logs | the send toast appears; the Logs list shows no new rows (rows remain queued) | planned |
-| TC-COM-05-E02 | Web: with the QA seeded logs (sent, failed) | Logs shows "Sent" and "Failed" badges (see F06); no UI can start the worker | planned |
+| TC-COM-05-A01 | Insert a queue row (sms, recipient phone, `target_ref` with template id and DLT id) and run `_process_batch` with `_call_provider` patched to return "REQ1" | queue row `done`; one `notification_log` row `sent` with `provider_message_id` "REQ1" and the rendered message | skipped: exercises the Celery task and provider code directly against the database; |
+| TC-COM-05-A02 | Same with `_call_provider` raising ValueError("boom") | the task raises; after the rolled-back transaction no log row exists and the queue row is `queued` again (documents rule 7) | skipped: exercises the Celery task and provider code directly against the database; |
+| TC-COM-05-A03 | Batch of two rows where the second fails | the first row's `done` state and its log are rolled back too; both are `queued` | skipped: exercises the Celery task and provider code directly against the database; |
+| TC-COM-05-A04 | Run the task for a queue id of tenant A with tenant B's id | the row is not visible; skipped with a warning; no log written | skipped: exercises the Celery task and provider code directly against the database; |
+| TC-COM-05-A05 | Queue id "not-a-uuid" | skipped; no exception | skipped: exercises the Celery task and provider code directly against the database; |
+| TC-COM-05-A06 | Real `_send_sms` with no provider settings in the QA environment | ValueError "MSG91_AUTH_KEY not configured in environment" and the same rollback result as A02 | skipped: exercises the Celery task and provider code directly against the database; |
+| TC-COM-05-A07 | Rows produced by `/communication/send` for sms (template UUID, no DLT id) processed with a patched `msg91` HTTP client | fails with "template_id not found" or "dlt_te_id not found in row_data" (documents rule 3) | skipped: exercises the Celery task and provider code directly against the database; |
+
+UI test cases (manual format).
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-COM-05-E01 | P1 | Web | Admin | TC-COM-03-E07 done; no worker running. | 1. Sign in as Admin.<br>2. Open Communication > Logs. | The send toast appeared earlier, but Logs shows no row for that send (rows stay queued without a worker); in an otherwise empty tenant the page shows "No logs found." | planned |
+| TC-COM-05-E02 | P3 | Web | Admin | Log rows with status sent and failed. | 1. Sign in as Admin.<br>2. Open Communication > Logs. | Rows show "Sent" and "Failed" badges; no screen can start the worker. | blocked: no worker runs and qa_manual has no sent log rows |
 
 Implemented in: backend/tests/unit/communication/test_providers.py.
 
@@ -511,11 +542,11 @@ Implemented in: backend/tests/unit/communication/test_providers.py.
 **Steps, web.**
 1. Communication -> "Logs" (`/communication/logs`).
 2. Filters: "All Channels", "All Status" (Queued, Sent, Delivered, Failed), "From" and "To" dates. There is no target-type filter on the page (the API supports it).
-3. Columns: Recipient (name and phone or email), Channel, Status badge, Target Group (the target type with spaces), Triggered By (user id), Date/Time, Actions. 20 rows per page, "Showing a-b of N" and page buttons.
-4. The View icon ("View log for <name>") opens "Notification Detail": Recipient, Channel, Phone, Email, Status, Provider ID, Triggered By, Target Group, Sent At, an "Error" box when present and the "Message" text.
+3. Columns: Recipient (name and phone or email), Channel, Status badge, Target Group (the target type with spaces), Triggered By (user id), Date/Time (for example "10/7/2026, 10:28:51 AM"), Actions. 20 rows per page, "Showing a-b of N" and page buttons. An empty list shows "No logs found." (the state of `qa_manual`, verified 2026-10-07).
+4. The View icon ("View log for <name>") opens "Notification Detail": Recipient, Channel, Phone, Email, Status, Provider ID, Triggered By, Target Group, Sent At, an "Error" box when present and the "Message" text (hidden when the message is empty, as for render failures), and "Close".
 
 **Steps, mobile.**
-1. Communication tab -> "Logs": channel and status dropdowns ("All Channels", "All Status"), "From" and "To" fields in `YYYY-MM-DD`, cards with recipient, channel chip, status chip, target group, phone or email and date; the eye icon ("View log detail") opens "Log Detail" with Recipient, Channel, Phone, Email, Status, Target Group, Triggered By, Provider ID, Sent At, Error and Message; pagination arrows with "a-b of N".
+1. Communication tab -> "Logs": channel and status dropdowns ("All Channels", "All Status"), "From" and "To" fields in `YYYY-MM-DD`, cards with recipient, channel chip, status chip, target group, "Phone: ..." and "Email: ..." and the date as "DD/MM/YY, h:mm am"; the eye icon ("View log detail") opens "Log Detail" with Recipient, Channel, Phone, Email, Status, Target Group, Triggered By, Provider ID, Sent At, Error and Message; pagination arrows with "a-b of N".
 
 **Expected results.** Newest first. `status` is one of `queued`, `sent`, `delivered`, `failed`; in practice only `sent` and `failed` are written (`delivered` needs webhooks, which do not exist). Phone numbers and emails are shown in full (the masking in the spec is not implemented).
 
@@ -526,7 +557,7 @@ Implemented in: backend/tests/unit/communication/test_providers.py.
 **Rules and validations.**
 1. `page >= 1`, `1 <= page_size <= 100` (422 otherwise).
 2. Sort is `created_at` descending.
-3. `date_from` and `date_to` are compared as raw strings against the timestamp column; `date_to=2026-10-02` means up to midnight at the start of that day, so rows created later on 2 October are excluded (no end-of-day handling). A value that is not a date or timestamp, or an invalid `status` or `channel`, fails in the database (500).
+3. `date_from` and `date_to` take an ISO date or datetime; a date-only `date_to` includes that whole day; anything else is a 422 (fixed 2026-10-05 per `docs/modules/communication.md`; TC-COM-06-A05 and A06 still state the old behaviour).
 4. `target_ref` is a JSON object; the mobile type declares it as a string and `updated_at` that the API does not return (typing drift only).
 5. A failed render row has an empty `message` and the render error in `error_message`.
 6. Logs are tenant scoped by row-level security.
@@ -544,32 +575,37 @@ Implemented in: backend/tests/unit/communication/test_providers.py.
 | TC-COM-06-U03 | Web pagination for total 41 and page 3 | `totalPages` 3; text "Showing 41-41 of 41" | blocked: pagination arithmetic is inline in web/src/pages/Communication/LogsTab.tsx |
 | TC-COM-06-U04 | Web `StatusBadge` mapping for sent, delivered, failed, queued, and an unknown status | labels Sent, Delivered, Failed, Queued; unknown shows the raw text | blocked: STATUS_CONFIG and StatusBadge are not exported from web/src/pages/Communication/LogsTab.tsx |
 | TC-COM-06-U05 | Mobile `getLogs` parameter cleaning for `{channel:"", status:undefined, page:1}` | only `page` is sent | passing |
-| TC-COM-06-A01 | Seed 25 logs. Admin `GET /communication/logs` | 200; 20 items; `total` 25; `page` 1; `page_size` 20; ordered by `created_at` descending | planned |
-| TC-COM-06-A02 | `?page=2` | 5 items | planned |
-| TC-COM-06-A03 | `?page_size=100`; `?page_size=101`; `?page_size=0`; `?page=0` | 200; 422; 422; 422 | planned |
-| TC-COM-06-A04 | `?channel=sms`; `?status=failed`; `?target_type=multiple_parents` | only matching rows; `total` reflects the filter | planned |
-| TC-COM-06-A05 | `?date_from=2026-10-01&date_to=2026-10-03` | rows created in the range; a row at 2026-10-03 10:00 is excluded (midnight boundary) | planned |
-| TC-COM-06-A06 | `?date_from=abc`; `?status=bogus`; `?channel=bogus` | 500 (database error), no data | planned |
-| TC-COM-06-A07 | A render-failure log created through F03 (`Hi {% if %}`) | listed with `status` failed, `message` "", non-empty `error_message`, `provider_message_id` null | planned |
-| TC-COM-06-A08 | `GET /communication/logs/{id}` | 200 `LogRead` including `target_ref` as an object | planned |
-| TC-COM-06-A09 | Random id; `abc` | 404 "Log entry not found."; 422 | planned |
-| TC-COM-06-A10 | Phone and email in the response | complete values, not masked (documents the gap) | planned |
-| TC-COM-06-A11 | Admin | list and detail 200 | planned |
-| TC-COM-06-A12 | Staff, Teacher, Student, Parent | 403 on both | planned |
-| TC-COM-06-A13 | A custom role with only `communications:list`: list 200, detail 403; with only `read`: detail 200, list 403 | as stated | planned |
-| TC-COM-06-A14 | No token | 401 on both | planned |
-| TC-COM-06-A15 | Tenant isolation: tenant A logs absent from tenant B's list; detail by id in B returns 404 | as stated | planned |
-| TC-COM-06-A16 | Token tenant A with `cschema: qa_school_b` | 403 | planned |
-| TC-COM-06-E01 | Web, Admin: Logs with seeded rows | table shows Recipient, Channel, Status, Target Group, Triggered By, Date/Time; newest first | planned |
-| TC-COM-06-E02 | Web: filter "Failed" | only failed rows; page resets to 1 | planned |
-| TC-COM-06-E03 | Web: filter by channel "Email" and a date range | matching rows only | planned |
-| TC-COM-06-E04 | Web: View a failed row | dialog "Notification Detail" with the "Error" box text and the Message | planned |
-| TC-COM-06-E05 | Web: pagination Next and Previous with 25 rows | page 2 shows "Showing 21-25 of 25" | planned |
-| TC-COM-06-E06 | Web: tenant without logs | "No logs found." | planned |
-| TC-COM-06-E07 | Web, Staff and Teacher | "Access Denied - You don't have permission to view communication logs." | planned |
-| TC-COM-06-E08 | Mobile, Admin: Logs tab, filter status "Failed", open the eye icon | "Log Detail" shows the error text | planned |
-| TC-COM-06-E09 | Mobile: enter `From` as `2026-10-01` | list filtered; the API receives `date_from` | planned |
-| TC-COM-06-E10 | Mobile: after a send the app switches to Logs | the tab is active and the list refetches | planned |
+| TC-COM-06-A01 | Seed 25 logs. Admin `GET /communication/logs` | 200; 20 items; `total` 25; `page` 1; `page_size` 20; ordered by `created_at` descending | passing |
+| TC-COM-06-A02 | `?page=2` | 5 items | passing |
+| TC-COM-06-A03 | `?page_size=100`; `?page_size=101`; `?page_size=0`; `?page=0` | 200; 422; 422; 422 | passing |
+| TC-COM-06-A04 | `?channel=sms`; `?status=failed`; `?target_type=multiple_parents` | only matching rows; `total` reflects the filter | passing |
+| TC-COM-06-A05 | `?date_from=2026-10-01&date_to=2026-10-03` | The log row is returned with `date_from` equal to its creation date and is not returned with `date_from=2999-01-01` | passing |
+| TC-COM-06-A06 | `?date_from=abc`; `?status=bogus`; `?channel=bogus` | Error response (status >= 400) for each; the body has no `items` | passing |
+| TC-COM-06-A07 | A render-failure log created through F03 (`Hi {% if %}`) | listed with `status` failed, `message` "", non-empty `error_message`, `provider_message_id` null | passing |
+| TC-COM-06-A08 | `GET /communication/logs/{id}` | 200 `LogRead` including `target_ref` as an object | passing |
+| TC-COM-06-A09 | Random id; `abc` | 404 "Log entry not found."; 422 | passing |
+| TC-COM-06-A10 | Phone and email in the response | complete values, not masked (documents the gap) | passing |
+| TC-COM-06-A11 | Admin | list and detail 200 | passing |
+| TC-COM-06-A12 | Staff, Teacher, Student, Parent | 403 on both | passing |
+| TC-COM-06-A13 | A custom role with only `communications:list`: list 200, detail 403; with only `read`: detail 200, list 403 | as stated | passing |
+| TC-COM-06-A14 | No token | 401 on both | passing |
+| TC-COM-06-A15 | Tenant isolation: tenant A logs absent from tenant B's list; detail by id in B returns 404 | as stated | passing |
+| TC-COM-06-A16 | Token tenant A with `cschema: qa_school_b` | 403 | passing |
+
+UI test cases (manual format).
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-COM-06-E01 | P1 | Web | Admin | Failed log rows exist: as Admin create the sms template "QA Broken SMS" with body `Hi {% if %}` (Communication > Templates > "+ New Template") and send it from Compose to Staff Sunitha Reddy; the render error writes one failed log per recipient. | 1. Sign in as Admin.<br>2. Open Communication > Logs. | Columns Recipient, Channel, Status, Target Group, Triggered By, Date/Time, Actions; the newest row first: Sunitha Reddy, SMS, Failed, "multiple staff", the admin user id, today; footer "Showing 1-n of n". | planned |
+| TC-COM-06-E02 | P2 | Web | Admin | TC-COM-06-E01 precondition. | 1. Open Communication > Logs.<br>2. Set "All Status" to "Failed".<br>3. Set it to "Sent". | Step 2 lists only failed rows and returns to page 1; step 3 shows "No logs found." | planned |
+| TC-COM-06-E03 | P3 | Web | Admin | TC-COM-06-E01 precondition. | 1. Open Communication > Logs.<br>2. Set "All Channels" to "Email".<br>3. Reset it to "All Channels"; set "From" and "To" to today. | Step 2 shows "No logs found."; step 3 lists today's rows (a date-only "To" includes the whole day). | planned |
+| TC-COM-06-E04 | P1 | Web | Admin | TC-COM-06-E01 precondition. | 1. Open Communication > Logs.<br>2. Click "View log for Sunitha Reddy". | Dialog "Notification Detail" with Recipient, Channel, Phone, Email, Status "Failed", Provider ID "-", Triggered By, Target Group, Sent At, an "Error" box with the template error text, and "Close". | planned |
+| TC-COM-06-E05 | P3 | Web | Admin | At least 25 log rows: send "QA Broken SMS" to "Entire School". | 1. Open Communication > Logs.<br>2. Click page 2.<br>3. Click page 1. | 20 rows on page 1 with "Showing 1-20 of N"; page 2 shows "Showing 21-..." of N. | planned |
+| TC-COM-06-E06 | P3 | Web | Admin | qa_manual before any failed send (no log rows). | 1. Sign in as Admin.<br>2. Open Communication > Logs. | "No logs found." (verified 2026-10-07). | planned |
+| TC-COM-06-E07 | P2 | Web | Staff | None. | 1. Sign in as Staff.<br>2. Open Communication > Logs. | "Access Denied" and "You don't have permission to view communication logs." Teacher: same (verified 2026-10-07). | planned |
+| TC-COM-06-E08 | P1 | Mobile | Admin | TC-COM-06-E01 precondition. | 1. Sign in as Admin.<br>2. Open the Communication tab and tap "Logs".<br>3. Set the status dropdown to "Failed".<br>4. Tap the eye icon ("View log detail") on the newest card. | Cards show recipient, SMS, Failed, the target group, "Phone: ..." and the date; "Log Detail" shows the Error text. | planned |
+| TC-COM-06-E09 | P3 | Mobile | Admin | TC-COM-06-E01 precondition. | 1. Open Communication > "Logs".<br>2. Enter "From" = today as YYYY-MM-DD.<br>3. Enter "From" = tomorrow. | Step 2 keeps today's rows; step 3 shows "No logs found." | planned |
+| TC-COM-06-E10 | P3 | Mobile | Admin | A completed mobile send. | 1. Complete a send from the mobile Compose tab with "Confirm & Send". | Toast "Messages Queued - <n> messages queued successfully." and the Logs tab becomes active and refetches. | blocked: D-COM-01, mobile HIDE_TEMPLATES = true empties every template list |
 
 Implemented in: backend/tests/unit/communication/test_logs_and_triggers.py (U01-U02), mobile/__tests__/communication/communicationApi.test.ts (U05).
 
@@ -579,7 +615,7 @@ Implemented in: backend/tests/unit/communication/test_logs_and_triggers.py (U01-
 
 **Purpose.** An administrator announces a school holiday by SMS to all parents.
 
-**Roles and permissions.** `announcements:send_sms` (a resource that no seed grants; the QA tenant adds it for Admin). Mobile admin hub card "Announcements" requires `announcements:send_sms`; the screen itself accepts `read` or `list` on `announcements`. Web has no UI.
+**Roles and permissions.** `announcements:send_sms` (a resource that no seed grants; the QA tenant adds it for Admin). Mobile admin hub card "Announcements" requires `announcements:send_sms`; without it the card is still shown but disabled with the text "No access - contact admin" (observed 2026-10-07). The screen itself accepts `read` or `list` on `announcements` and otherwise shows "Access Denied - You don't have permission to view this screen. Please contact your administrator." Web has no UI.
 
 **Preconditions.** The user holds `announcements:send_sms`.
 
@@ -614,24 +650,29 @@ Implemented in: backend/tests/unit/communication/test_logs_and_triggers.py (U01-
 | TC-COM-07-U02 | Mobile `DATE_RE` for "2026-08-15", "15-08-2026", "2026-8-5", "" | match, no match, no match, no match | blocked: DATE_RE is local to mobile/app/admin/announcements.tsx |
 | TC-COM-07-U03 | Mobile `isFormValid` for each missing field | false when any of the three is empty or the date is malformed | blocked: isFormValid is local to mobile/app/admin/announcements.tsx |
 | TC-COM-07-U04 | `announcementsApi.sendHolidayNotice` request shape (mocked axios) | `POST` with `null` body and `params {holiday_name, holiday_date, reason}` | passing |
-| TC-COM-07-A01 | Patch `.delay`. Admin (with `announcements:send_sms`) `POST /announcements/send-holiday-notice?holiday_name=Independence%20Day&holiday_date=2026-08-15&reason=National%20holiday` | 200 `{"status":"queued","detail":"Holiday announcement queued: Independence Day on 2026-08-15."}`; one queue row with recipient "All Parents", `recipient_phone` null, `target_type` "holiday_announcement", `target_ref.variables {var1:"Independence Day", var2:"2026-08-15", var3:"National holiday"}`; `.delay` called once with ([id], "sms", tenant id) | planned |
-| TC-COM-07-A02 | Missing each parameter in turn | 422 each | planned |
-| TC-COM-07-A03 | `holiday_date=not-a-date` | 200 (no server validation) | planned |
-| TC-COM-07-A04 | Env `MSG91_TEMPLATE_ID_HOLIDAY` unset | `target_ref.msg91_template_id` is null | planned |
-| TC-COM-07-A05 | `.delay` patched to raise | 500; the queue row is already committed | planned |
-| TC-COM-07-A06 | Process the produced row with the real `_send_sms` (credentials mocked) | fails: "template_id not found in row_data" or "dlt_te_id not found in row_data" (the message can never be delivered) | planned |
-| TC-COM-07-A07 | A JSON body instead of query parameters | 422 (parameters missing) | planned |
-| TC-COM-07-A08 | Admin without `announcements:send_sms` (default seed) | 403 | planned |
-| TC-COM-07-A09 | Staff, Teacher, Student, Parent | 403 | planned |
-| TC-COM-07-A10 | No token | 401 | planned |
-| TC-COM-07-A11 | Tenant isolation: the queue row exists only in the calling tenant; the worker call uses that tenant id | tenant B sees no row | planned |
-| TC-COM-07-E01 | Mobile, Admin with the grant: fill the form and tap "Send to All Parents" | toast "Announcement Queued - Holiday announcement queued: <name> on <date>."; the form clears | planned |
-| TC-COM-07-E02 | Mobile: empty "Holiday Name" | the send button is disabled; tapping shows "Error - Holiday name is required" when forced | planned |
-| TC-COM-07-E03 | Mobile: date "15-08-2026" | "Error - Holiday date must be in YYYY-MM-DD format" | planned |
-| TC-COM-07-E04 | Mobile: message preview appears only when all three fields are filled | preview shows `School will remain closed on <date> for <name>.` | planned |
-| TC-COM-07-E05 | Mobile, Admin without `announcements:send_sms` | the Announcements card is hidden on the Admin hub | planned |
-| TC-COM-07-E06 | Mobile, Staff, Teacher, Student, Parent | no card; opening `/admin/announcements` directly shows the access-denied panel | planned |
-| TC-COM-07-E07 | Web | no menu entry or route for announcements exists | planned |
+| TC-COM-07-A01 | Patch `.delay`. Admin (with `announcements:send_sms`) `POST /announcements/send-holiday-notice?holiday_name=Independence%20Day&holiday_date=2026-08-15&reason=National%20holiday` | 200 `{"status":"queued","detail":"Holiday announcement queued: Independence Day on 2026-08-15."}`; one queue row with recipient "All Parents", `recipient_phone` null, `target_type` "holiday_announcement", `target_ref.variables {var1:"Independence Day", var2:"2026-08-15", var3:"National holiday"}`; `.delay` called once with ([id], "sms", tenant id) | skipped: would queue a message and dispatch the Celery task; |
+| TC-COM-07-A02 | Missing each parameter in turn | 422 each | passing |
+| TC-COM-07-A03 | `holiday_date=not-a-date` | 200 (no server validation) | skipped: would queue a message and dispatch the Celery task; |
+| TC-COM-07-A04 | Env `MSG91_TEMPLATE_ID_HOLIDAY` unset | `target_ref.msg91_template_id` is null | skipped: would queue a message and dispatch the Celery task; |
+| TC-COM-07-A05 | `.delay` patched to raise | 500; the queue row is already committed | skipped: needs the Celery dispatch patched to raise, which cannot be done against a running server |
+| TC-COM-07-A06 | Process the produced row with the real `_send_sms` (credentials mocked) | fails: "template_id not found in row_data" or "dlt_te_id not found in row_data" (the message can never be delivered) | skipped: processes a queue row with the provider code; |
+| TC-COM-07-A07 | A JSON body instead of query parameters | 422 (parameters missing) | passing |
+| TC-COM-07-A08 | Admin without `announcements:send_sms` (default seed) | 403 | passing |
+| TC-COM-07-A09 | Staff, Teacher, Student, Parent | 403 | passing |
+| TC-COM-07-A10 | No token | 401 | passing |
+| TC-COM-07-A11 | Tenant isolation: the queue row exists only in the calling tenant; the worker call uses that tenant id | tenant B sees no row | skipped: would queue a message and dispatch the Celery task; |
+
+UI test cases (manual format).
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-COM-07-E01 | P1 | Mobile | Admin | Admin holds `announcements:send_sms` (and read or list). | 1. Sign in as Admin.<br>2. Open the Admin tab > "Announcements".<br>3. Enter "Holiday Name *" = "QA Founders Day", "Holiday Date *" = "2026-12-01", "Reason *" = "QA holiday".<br>4. Tap "Send to All Parents". | Toast "Announcement Queued - Holiday announcement queued: QA Founders Day on 2026-12-01."; the form clears; one queue row named "All Parents" without a phone (D-COM-04). | blocked: the QA Admin in qa_manual has no announcements grant, so the screen shows Access Denied |
+| TC-COM-07-E02 | P3 | Mobile | Admin | Same as TC-COM-07-E01. | 1. Open "Announcements".<br>2. Leave "Holiday Name *" empty and fill the other two. | "Send to All Parents" is disabled; forcing it shows "Error - Holiday name is required". | blocked: the QA Admin in qa_manual has no announcements grant, so the screen shows Access Denied |
+| TC-COM-07-E03 | P3 | Mobile | Admin | Same as TC-COM-07-E01. | 1. Open "Announcements".<br>2. Fill the name and reason, Holiday Date "15-08-2026". | "Send to All Parents" stays disabled; forcing it shows "Error - Holiday date must be in YYYY-MM-DD format". | blocked: the QA Admin in qa_manual has no announcements grant, so the screen shows Access Denied |
+| TC-COM-07-E04 | P3 | Mobile | Admin | Same as TC-COM-07-E01. | 1. Open "Announcements".<br>2. Fill the three fields one by one. | "Message Preview" appears only when all three are filled and reads "School will remain closed on <date> for <name>." with the COS360 sign-off. | blocked: the QA Admin in qa_manual has no announcements grant, so the screen shows Access Denied |
+| TC-COM-07-E05 | P2 | Mobile | Admin | QA Admin without `announcements:send_sms` (qa_manual default). | 1. Sign in as Admin.<br>2. Open the Admin tab.<br>3. Open `/admin/announcements` by URL. | The card "Announcements" is shown but disabled with "No access - contact admin"; the screen shows "Access Denied - You don't have permission to view this screen. Please contact your administrator." (verified 2026-10-07). | planned |
+| TC-COM-07-E06 | P2 | Mobile | Staff | None. | 1. Sign in as Staff.<br>2. Open `/admin/announcements` by URL. | "Access Denied - You don't have permission to view this screen. Please contact your administrator." Student: same (verified 2026-10-07). | planned |
+| TC-COM-07-E07 | P3 | Web | Admin | None. | 1. Sign in as Admin.<br>2. Look through the sidebar and the Communication hub. | No menu entry, card or route for announcements exists on web. | planned |
 
 Implemented in: backend/tests/unit/communication/test_logs_and_triggers.py (U01), mobile/__tests__/communication/communicationApi.test.ts (U04).
 
@@ -685,23 +726,28 @@ Implemented in: backend/tests/unit/communication/test_logs_and_triggers.py (U01)
 | TC-COM-08-U01 | Name composition for staff with `last_name=None` | `"Ravi None"` (documents the defect; expected `"Ravi"`) | passing (asserts current behaviour, defect D-COM-05) |
 | TC-COM-08-U02 | Registry check: `staff_attendance` variables versus the endpoint's `var1..var2` | the registry has 4 variables, the endpoint sends 2 (mismatch documented) | passing |
 | TC-COM-08-U03 | Message text for `period="July"` and for the interview inputs | the sentences from rule 3 with the values inserted | passing |
-| TC-COM-08-A01 | Patch `.delay`. Admin with the grant: `POST /staff/send-attendance-summary?period=July` body `[<Asha>, <Ravi>]` | 200 `{status:"queued", queued_count:2, skipped_count:0, detail:"SMS queued for 2 staff. 0 skipped."}`; two rows with `target_type` "staff_attendance_summary", `target_ref.variables {var1:<name>, var2:"July"}`; `.delay` called once with the two ids, "sms", the tenant id | planned |
-| TC-COM-08-A02 | A staff id without a phone, an unknown uuid and a valid one | `queued_count` 1, `skipped_count` 2 | planned |
-| TC-COM-08-A03 | `[]` | 200 `queued_count` 0, `skipped_count` 0; `.delay` not called | planned |
-| TC-COM-08-A04 | Missing `period`; body `{}` instead of an array; body with a non-UUID | 422 each | planned |
-| TC-COM-08-A05 | `.delay` patched to raise | 500; the rows remain committed | planned |
-| TC-COM-08-A06 | Interview: `POST /staff/send-interview-calls?interview_date=2026-10-10&interview_time=10:30 AM&position=Teacher` body `[<Asha>]` | 200 `queued_count` 1, detail "SMS queued for 1 candidate(s). 0 skipped."; row `target_type` "interview_call", variables `var1..var4` | planned |
-| TC-COM-08-A07 | Interview without `position`; without `interview_time`; without `interview_date` | 422 each | planned |
-| TC-COM-08-A08 | Env `MSG91_TEMPLATE_ID_STAFF_ATTENDANCE` unset | `target_ref.msg91_template_id` null | planned |
-| TC-COM-08-A09 | Process a produced row with the real `_send_sms` (credentials mocked) | fails: "dlt_te_id not found in row_data" | planned |
-| TC-COM-08-A10 | Admin without the grant (default seed) on both endpoints | 403 | planned |
-| TC-COM-08-A11 | `staff_attendance:send_sms` granted but not `staff_enrollment:send_sms`: attendance summary 200, interview 403 | the resources are independent | planned |
-| TC-COM-08-A12 | Staff, Teacher, Student, Parent on both endpoints | 403 | planned |
-| TC-COM-08-A13 | No token | 401 on both | planned |
-| TC-COM-08-A14 | Tenant isolation: staff ids from tenant A sent with a tenant B token | `queued_count` 0, `skipped_count` equal to the ids count; no rows in either tenant | planned |
-| TC-COM-08-A15 | The other trigger endpoints listed in the table (student, exam, fee) without their `send_sms` grant | 403 each (parametrised gating check; their own behaviour is tested in their feature docs) | planned |
-| TC-COM-08-E01 | Web and mobile: search for any control that calls the two staff endpoints | none exists; the staff pages offer only QuickSend (F04) | planned |
-| TC-COM-08-E02 | Web, Admin: Staff Attendance row Send icon for an absent staff member | opens QuickSend, not the attendance-summary endpoint (confirm through the network log that `/staff/send-attendance-summary` is not called) | planned |
+| TC-COM-08-A01 | Patch `.delay`. Admin with the grant: `POST /staff/send-attendance-summary?period=July` body `[<Asha>, <Ravi>]` | 200 `{status:"queued", queued_count:2, skipped_count:0, detail:"SMS queued for 2 staff. 0 skipped."}`; two rows with `target_type` "staff_attendance_summary", `target_ref.variables {var1:<name>, var2:"July"}`; `.delay` called once with the two ids, "sms", the tenant id | skipped: would queue a message and dispatch the Celery task; |
+| TC-COM-08-A02 | A staff id without a phone, an unknown uuid and a valid one | `queued_count` 1, `skipped_count` 2 | passing |
+| TC-COM-08-A03 | `[]` | 200 `queued_count` 0, `skipped_count` 0; `.delay` not called | passing |
+| TC-COM-08-A04 | Missing `period`; body `{}` instead of an array; body with a non-UUID | 422 each | passing |
+| TC-COM-08-A05 | `.delay` patched to raise | 500; the rows remain committed | skipped: needs the Celery dispatch patched to raise, which cannot be done against a running server |
+| TC-COM-08-A06 | Interview: `POST /staff/send-interview-calls?interview_date=2026-10-10&interview_time=10:30 AM&position=Teacher` body `[<Asha>]` | 200 `queued_count` 1, detail "SMS queued for 1 candidate(s). 0 skipped."; row `target_type` "interview_call", variables `var1..var4` | skipped: would queue a message and dispatch the Celery task; |
+| TC-COM-08-A07 | Interview without `position`; without `interview_time`; without `interview_date` | 422 each | passing |
+| TC-COM-08-A08 | Env `MSG91_TEMPLATE_ID_STAFF_ATTENDANCE` unset | `target_ref.msg91_template_id` null | skipped: would queue a message and dispatch the Celery task; |
+| TC-COM-08-A09 | Process a produced row with the real `_send_sms` (credentials mocked) | fails: "dlt_te_id not found in row_data" | skipped: processes a queue row with the provider code; |
+| TC-COM-08-A10 | Admin without the grant (default seed) on both endpoints | 403 | passing |
+| TC-COM-08-A11 | `staff_attendance:send_sms` granted but not `staff_enrollment:send_sms`: attendance summary 200, interview 403 | the resources are independent | passing |
+| TC-COM-08-A12 | Staff, Teacher, Student, Parent on both endpoints | 403 | passing |
+| TC-COM-08-A13 | No token | 401 on both | passing |
+| TC-COM-08-A14 | Tenant isolation: staff ids from tenant A sent with a tenant B token | `queued_count` 0, `skipped_count` equal to the ids count; no rows in either tenant | skipped: the second tenant has no role holding the send_sms grant and its role grants are out of scope for these tests |
+| TC-COM-08-A15 | The other trigger endpoints listed in the table (student, exam, fee) without their `send_sms` grant | 403 each (parametrised gating check; their own behaviour is tested in their feature docs) | skipped: the homework router is not registered in main_router.py, so the endpoint answers 404 |
+
+UI test cases (manual format).
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-COM-08-E01 | P1 | Web | Admin | Seeded staff. | 1. Sign in as Admin.<br>2. Open Staff > Enrollment and Staff > Staff Attendance.<br>3. Look for a control that sends an attendance summary or interview call.<br>4. Repeat on mobile. | No such control exists; the web staff pages offer only QuickSend (COM F04), mobile none. | planned |
+| TC-COM-08-E02 | P3 | Web | Admin | TC-COM-04-E06 precondition (an absent staff row). | 1. Open the browser network log.<br>2. Open Staff > Staff Attendance.<br>3. Click the Send icon on the absent row and then "Cancel". | The QuickSend dialog opens; no request to `/staff/send-attendance-summary` is made. | planned |
 
 Implemented in: backend/tests/unit/communication/test_logs_and_triggers.py.
 
@@ -714,11 +760,17 @@ Findings from reading the code. The module doc `docs/modules/communication.md` a
 **Defects**
 - D-COM-01: mobile `app/(tabs)/communication.tsx` hard-codes `HIDE_TEMPLATES = true`, so the Templates list and the Compose template dropdown are always empty and a mobile send cannot be completed.
 - D-COM-02: both clients send `extra_variables`; the backend field is `variables`. Every template with a placeholder other than `name`, `student_name`, `class_name`, `section_name` fails with 400 "Missing user-provided template variables: [...]", including all nine default templates (Compose and QuickSend). The clients also treat `parent_name` and `staff_name` as system variables, which the backend never resolves.
-- D-COM-03: `POST /communication/send` with an unknown `target_type` returns 500 (the resolver's ValueError is not converted); the preview endpoint returns 422 for the same input.
+- D-COM-03 (fixed 2026-10-05 per `docs/modules/communication.md`): `POST /communication/send` with an unknown `target_type` returned 500; it is now 422 like the preview endpoint. TC-COM-03-A13 still states the old 500.
 - D-COM-04: the holiday announcement queues a single row with no recipient phone and no DLT id and the message cannot be delivered; the endpoint reports "queued".
 - D-COM-05: `/staff/send-attendance-summary` and `/staff/send-interview-calls` build names as `"<first> <last>"`, which yields "<first> None" for staff without a last name, and their MSG91 payloads do not match the `sms_templates` registry.
 - D-COM-06: no SMS path currently succeeds (flow id from environment, no DLT id anywhere, `/communication/send` passes the template UUID as the flow id).
 - D-COM-07: WhatsApp phone normalisation does not prefix a 10-digit number that starts with `91`.
+
+**UI observations on 2026-10-07**
+- Web `/communication/compose` and `/communication/templates` have no page guard: Student and Parent can open them by URL (empty lists, no actions); only Logs shows "Access Denied".
+- Web Compose for Staff and Teacher stays on "Loading templates..." because the template list answers 403 (no error message).
+- Mobile Admin hub shows the "Announcements" card disabled ("No access - contact admin") instead of hiding it when the grant is missing.
+- Neither QA tenant grants `announcements:send_sms` or any `send_sms` action, so F07 UI cases are blocked.
 
 **Doc versus code differences (code behaviour is documented above)**
 - The module doc says SMS bodies over 480 characters are "rejected" on create; the validator raises a Pydantic error, so the API answers 422 (the code comment says 400).

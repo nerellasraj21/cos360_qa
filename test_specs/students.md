@@ -1,8 +1,8 @@
 # Students (STU)
 
-Feature documentation and test specification for the Students module: admission (student plus parent/guardian accounts), student list and details, editing, activation, bulk upload, student attendance, student documents, the student and parent self-service views, student profile, parent-child selection, student-parent links and student transport assignment. Test case IDs use the scheme `TC-STU-<FF>-<P><NN>` from `docs/testing/strategy.md`. Facts were read from the code on 2026-10-02; where `docs/modules/students.md` disagrees with the code, this page documents the code and lists the difference under "Known gaps".
+Feature documentation and test specification for the Students module: admission (student plus parent/guardian accounts), student list and details, editing, activation, bulk upload, student attendance, student documents, the student and parent self-service views, student profile, parent-child selection, student-parent links and student transport assignment. Test case IDs use the scheme `TC-STU-<FF>-<P><NN>` from `docs/testing/strategy.md`. Facts were read from the code on 2026-10-02 and the walkthroughs were re-checked against the running web and mobile apps on 2026-10-07; where `docs/modules/students.md` disagrees with the code, this page documents the code and lists the difference under "Known gaps".
 
-_Last verified against code: 2026-10-02_
+_Last verified against code: 2026-10-07_
 
 Related: `docs/modules/students.md` (rules and gotchas), `docs/permissions.md`, `docs/architecture.md`, `docs/features/certificates.md` (certificates; the merged documents list here reads `student_certificates`).
 
@@ -52,7 +52,24 @@ Important about the default catalog: several endpoints call `check_role_plan_per
 - "Tenant isolation" cases: data created in tenant A is invisible in tenant B, and a token for tenant A sent with a `cschema` header for tenant B gets 403.
 - "Unauthenticated" means no `Authorization` header: 401.
 - Errors raised through `create_validation_error` return **400**, `create_business_rule_error` returns **422**, `create_not_found_error` returns 404, `create_database_error` returns 500 (body `detail` is an object with `error_code`, `message`, `details`, `request_id`).
-- Web screens are in `web/src`, mobile screens in `mobile/app`. Menu labels come from the tenant `menus` table; the demo seed (`backend/scripts/seed_demo_catalog.py`) uses Students > Admission, Attendance, Student Documents, Student Certificates, Certificate Types, Certificate Templates, Student Transport.
+- Web screens are in `web/src`, mobile screens in `mobile/app`. Menu labels come from the tenant `menus` table; the demo seed (`backend/scripts/seed_demo_catalog.py`) uses Students > Admission, Attendance, Student Documents, Student Certificates, Certificate Types, Certificate Templates, Student Transport. The web hides "Student Transport" from the sidebar and the dashboard (`web/src/lib/menuUtils.ts`), so it is opened by URL.
+
+### Manual UI test data
+
+UI cases (IDs ending `-E`) use an 8-column layout: ID, Priority (`P1` smoke, `P2` regression, `P3` edge, negative or cosmetic), Platform, Role, Preconditions, Steps, Expected, Status. They run against the seeded manual-test tenant `qa_manual` (web http://localhost:5174 started with `VITE_DEFAULT_TENANT=qa_manual`; mobile Expo web http://localhost:8082, organisation "qa_manual"; setup and reset in `docs/testing/test-environment.md`). Rebuild it with `setup_manual_tenant.py --reset` before a test cycle so every tester starts from the same data.
+
+- Staff logins: the QA Admin, QA Staff and QA Teacher logins (QA `.env`).
+- Unlinked logins: the QA Student and QA Parent logins also exist in `qa_manual` but are not linked to any student. Cases call them "QA Student login (unlinked)" and "QA Parent login (unlinked)" and use them only for empty states.
+- Seeded logins: a seeded student signs in with the admission number ("Seeded student login 004"), a seeded parent with the email ("Seeded parent login venkat.raju@example.com"); both start with the temporary password and must change it at the first sign-in.
+- Seeded classes: Nursery, LKG, UKG and Class 1 to Class 5, each with two sections (NUR-A/B, LKG-A/B, UKG-A/B, 1-A/1-B ... 5-A/5-B). The active academic year is shown in the header.
+- Seeded students used by the cases (all admitted 2026-06-10; attendance seeded on 2026-09-25, 2026-09-28, 2026-09-29, 2026-09-30 and 2026-10-01):
+  - Harsha Raju (004, Class 1 / 1-B) and his sister Tanvi Raju (005, Class 4 / 4-B); parent login venkat.raju@example.com (father Venkat Raju). Harsha rides "Route 2 - Uppal", Tanvi "Route 1 - Kukatpally".
+  - Advik Mehta (002, Class 1 / 1-B), only child of satish.mehta@example.com; Nikhil Krishnan (007) is the third student of 1-B.
+  - Saanvi Iyer (003) and Kavya Verma (006) are the only students of Class 1 / 1-A.
+  - Karthik Reddy (001, Class 3 / 3-B, uploaded document "Aadhaar Card") and his sister Ananya Reddy (Nursery, document "Birth Certificate"); parent login prakash.reddy@example.com.
+  - Arjun Yadav and Rahul Menon (Class 2 / 2-A) have no transport assignment.
+- Data the cases create (names start with "QA "): "QA Asha Rao" (TC-STU-03-E01, Class 2 / 2-A, no date of birth, father "QA Ramesh Rao", qa.father1@example.com, 9000000001), her sibling "QA Ravi Rao" (TC-STU-04-E01, same father email), "QA Mobile Kid" (TC-STU-03-E13). "QA Student login" is the admission number of QA Asha Rao; it is used only where a case changes the student's own data. "QA Parent login" is qa.father1@example.com after TC-STU-04-E01.
+- Read seeded rows freely but do not edit, deactivate or delete them; cases that change data use the "QA " records. Delete or deactivate what you create when the run ends.
 
 ---
 
@@ -66,14 +83,14 @@ Important about the default catalog: several endpoints call `check_role_plan_per
 
 **Steps, web.**
 1. Log in. Open the sidebar entry "Students" (route `/students`).
-2. The page "Students Dashboard" (subtitle "Comprehensive management of student data, admissions, and records") shows a section "Students Sections" with one card per child menu item of "Students", each with a description line (for example "Manage student admissions and enrollment records"). The card for "Student Transport" is hidden on the dashboard (it stays in the sidebar).
-3. Click a card or a sidebar child to open: Admission (`/students/admission`), Attendance (`/students/attendance`), Student Documents (`/students/studentdocuments`), Student Certificates (`/students/studentcertificates`), Certificate Types, Certificate Templates, Student Transport (`/students/studenttransport`).
+2. The page "Students Dashboard" (subtitle "Comprehensive management of student data, admissions, and records") shows a section "Students Sections" with one card per child menu item of "Students", each with a description line (for example "Manage student admissions and enrollment records"). "Student Transport" is hidden both on the dashboard and in the sidebar (`HIDDEN_MENU_ITEMS` in `web/src/lib/menuUtils.ts`); open it by URL.
+3. Click a card or a sidebar child to open: Admission (`/students/admission`), Attendance (`/students/attendance`), Student Documents (`/students/studentdocuments`), Student Certificates (`/students/studentcertificates`), Certificate Types (`/students/certificatetypes`), Certificate Templates (`/students/certificatetemplates`). Student Transport is at `/students/studenttransport`.
 4. Routes that exist but are not in the default menu (reachable by typing the URL): `/students/documentsupload` ("Document Upload"), `/students/mydocuments` ("My Documents"), `/students/mycertificates`, `/students/certificates`, `/students/certificatesupload`, `/students/profile` ("Student Profile"), `/students/admission/<admission id>` ("Admission Details").
 5. Role views on the same route: `/students/admission` shows the admission table for every role except Parent, who gets "Admission - <child name> (#<number>)" for the selected child; `/students/attendance` shows "Student Attendance" (Admin, Staff, Teacher), "My Attendance" (Student) or "Children's Attendance" (Parent); `/students/studentdocuments` shows a student picker (staff), own list (Student) or selected child (Parent).
 
-**Steps, mobile.** The Students hub and tabs are hard-coded and filtered by permission and the backend menu. `app/students/index.tsx` is the list screen titled "Students (<total>)" (guard: `ScreenAccessGate` on resources `students`, `student_admissions`). Admission screens: `admission.tsx` ("Student Admissions"), `myadmission.tsx`, `attendance.tsx` ("Attendance"), `documents.tsx` ("Documents"), `studentdocuments.tsx` ("Student Documents"), `mydocuments.tsx`, `profile.tsx`, `transport.tsx` ("Student Transport"), `[id].tsx` ("Student Details").
+**Steps, mobile.** The Students hub and tabs are hard-coded and filtered by permission and the backend menu. `app/students/index.tsx` is the list screen titled "Students (<total>)" (guard: `ScreenAccessGate` on resources `students`, `student_admissions`): search box "Search by name or admission no...", cards with an initials avatar, the name and "<admission number> . <admitted class id>", 30 per page with a page pager. Admission screens: `admission.tsx` ("Student Admissions"), `myadmission.tsx`, `attendance.tsx` ("Attendance"), `documents.tsx` ("Documents"), `studentdocuments.tsx` ("Student Documents"), `mydocuments.tsx`, `profile.tsx`, `transport.tsx` ("Student Transport"), `[id].tsx` ("Student Details").
 
-**Expected results.** Each role sees only the entries it is granted; the dashboard lists exactly the child menu items minus "Student Transport"; pages never show another role's view.
+**Expected results.** Each role sees only the entries it is granted; the dashboard and the sidebar list exactly the child menu items minus "Student Transport"; pages never show another role's view. Admin, Staff and Teacher see six cards; Student and Parent see Admission, Attendance, Student Documents and Student Certificates.
 
 **API endpoints.** None owned by this feature. The menu comes from `POST /auth/login` (see `docs/features/auth.md`).
 
@@ -81,7 +98,7 @@ Important about the default catalog: several endpoints call `check_role_plan_per
 - The web does not guard routes by permission; typing a URL opens the page and its API calls return 403 (`docs/permissions.md` section 6).
 - Role detection on web lowercases the role name; on mobile the parent check also accepts `guardian`, `father`, `mother`.
 
-**Error and edge cases.** A Student or Parent typing `/students/certificatetypes` sees the page frame but the list call returns 403. A tenant with no "Students" menu shows an empty "Students Sections" area (the heading is hidden when there are no children).
+**Error and edge cases.** A Student typing `/students/certificatetypes` sees the type list read-only (the Student role holds `certificate_types:list`). A Parent gets 403 from the list call; the page shows "No certificate types found." with a "Create First Certificate Type" button that is not permission-gated. A tenant with no "Students" menu shows an empty "Students Sections" area (the heading is hidden when there are no children).
 
 **Unit-testable logic.** Web `lib/menuUtils.ts` role filtering; dashboard HIDDEN set filter (`student transport`). Mobile role-name parent detection.
 
@@ -92,13 +109,20 @@ Important about the default catalog: several endpoints call `check_role_plan_per
 | TC-STU-01-U01 | Dashboard section filter given menu children [Admission, Attendance, Student Transport] | Cards rendered for Admission and Attendance only; "Student Transport" excluded (case-insensitive match) | passing |
 | TC-STU-01-U02 | Mobile parent detection for role names `Parent`, `guardian`, `Father`, `MOTHER`, `Student`, `Teacher` | true for the first four, false for Student and Teacher | passing |
 | TC-STU-01-A01 | `POST /auth/login` as Student, Parent, Admin, Staff, Teacher; inspect `menu` | Student and Parent trees contain only the allowlisted Students children; Admin, Staff, Teacher contain all seven Students children | passing |
-| TC-STU-01-E01 | Web, log in as Admin, open Students | "Students Dashboard" shows 6 cards (Admission, Attendance, Student Documents, Student Certificates, Certificate Types, Certificate Templates), no Student Transport card; click Admission opens `/students/admission` | planned |
-| TC-STU-01-E02 | Web, log in as Student, open Students | Only Admission, Attendance, Student Documents, Student Certificates appear; no Certificate Types or Templates | planned |
-| TC-STU-01-E03 | Web, log in as Parent | Same four cards; header shows the child selector (see F19) | planned |
-| TC-STU-01-E04 | Web, Student opens `/students/certificatetypes` by URL | Page frame loads, type list shows an error or empty state because the API answers 403 (no crash) | planned |
-| TC-STU-01-E05 | Web, Admin opens `/students/admission/<admission id>` by URL | "Admission Details" page with "Back to List" button renders the full detail table | planned |
-| TC-STU-01-E06 | Mobile (390x844), Admin opens Students list | Header "Students (N)", search box "Search by name or admission no...", cards with name, admission number and a status dot | planned |
-| TC-STU-01-E07 | Mobile, Teacher opens the Students list | List loads (Teacher has `students:list` and `student_admissions:list`) | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-01-E01 | P1 | Web | Admin | QA Admin login | 1. Sign in as Admin.<br>2. Click "Students" in the sidebar.<br>3. Read the cards under "STUDENTS SECTIONS".<br>4. Expand "Students" in the sidebar.<br>5. Click the "Admission" card. | Page "Students Dashboard" with subtitle "Comprehensive management of student data, admissions, and records"; six cards Admission, Attendance, Student Documents, Student Certificates, Certificate Types, Certificate Templates, each with a description line; no Student Transport card and no Student Transport entry in the sidebar; step 5 opens /students/admission titled "Student Admissions" | planned |
+| TC-STU-01-E02 | P2 | Web | Student | Seeded student login 004 (Harsha Raju) | 1. Sign in with the seeded student login 004.<br>2. Click "Students" in the sidebar.<br>3. Read the cards and the sidebar children of "Students". | Exactly four cards and sidebar children: Admission, Attendance, Student Documents, Student Certificates; no Certificate Types, Certificate Templates or Student Transport | planned |
+| TC-STU-01-E03 | P2 | Web | Parent | Seeded parent login venkat.raju@example.com | 1. Sign in as venkat.raju@example.com.<br>2. Click "Students" in the sidebar.<br>3. Look at the page header. | Same four cards as TC-STU-01-E02; the header shows the child selector with the first child (Harsha Raju) selected | planned |
+| TC-STU-01-E04 | P3 | Web | Student | Seeded student login 004; seeded certificate types | 1. Sign in with the seeded student login 004.<br>2. Type /students/certificatetypes in the address bar and press Enter. | "Certificate Types" page lists the types read-only: no "Add Certificate Type" button and no Edit or Delete icons; no crash | planned |
+| TC-STU-01-E05 | P2 | Web | Admin | Admission id of seeded student Harsha Raju (004) known (from the API or the network tab) | 1. Sign in as Admin.<br>2. Type /students/admission/<admission id> in the address bar and press Enter.<br>3. Click "Back to List". | Page "Admission Details" with the full detail table of Harsha Raju; "Back to List" returns to "Student Admissions" | planned |
+| TC-STU-01-E06 | P2 | Mobile | Admin | QA Admin login; 30 seeded admissions | 1. Sign in as Admin on mobile.<br>2. Open Students. | Header "Students (N)" with N equal to the total number of admissions (30 seeded plus any QA ones); search box "Search by name or admission no..."; cards with an initials avatar, the student name and the admission number; a page pager when N is above 30 | planned |
+| TC-STU-01-E07 | P2 | Mobile | Teacher | QA Teacher login; seeded admissions | 1. Sign in as Teacher on mobile.<br>2. Open Students. | "Students (N)" list loads with cards (Teacher holds students:list and student_admissions:list); no Access Denied | planned |
+| TC-STU-01-E08 | P3 | Web | Parent | QA Parent login (unlinked) | 1. Sign in with the QA Parent login (unlinked).<br>2. Type /students/certificatetypes in the address bar and press Enter. | An access or error message is shown and no create control is offered (the list call returns 403) | blocked: Known gap 23 (403 shown as "No certificate types found." with a "Create First Certificate Type" button) |
+| TC-STU-01-E09 | P3 | Mobile | Admin | Seeded student Harsha Raju (004, Class 1 / 1-B) | 1. Sign in as Admin on mobile.<br>2. Open Students.<br>3. Type "Harsha" in "Search by name or admission no...".<br>4. Read the second line of the card. | The card shows the admission number and the class name "Class 1" | blocked: Known gap 12 (card prints the admitted class id, a UUID) |
 
 API tests implemented in: backend/tests/api/students/test_profile_links.py
 
@@ -117,10 +141,10 @@ Implemented in: mobile/__tests__/students/menuRules.test.ts (mobile menuChildren
 **Steps, web.**
 1. Students > Admission > "New Admission".
 2. On the first step ("Student & Academic Details") the field "Admission Number" is filled automatically with a verified free number; the hint "Next available: <number>" shows under it while there is no error.
-3. In "Academic Details" change "Admission Type" (options "Pre Primary Admission" and "Regular Admission") - the placeholder becomes `e.g. <year>0001` for pre primary or `e.g. 001` for regular and the suggestion is fetched again; an already typed number is never overwritten.
-4. Tab out of the field: the client checks the number against existing students and shows "Admission number already exists. Please use a different number." when it is taken.
+3. In "Academic Details" change "Admission Type" (default "Regular"; options "Pre Primary" and "Regular", relabelled from the API labels "Pre Primary Admission" and "Regular Admission") - the placeholder becomes `e.g. <year>0001` for pre primary or `e.g. 001` for regular and the suggestion is fetched again; an already typed number is never overwritten.
+4. Tab out of the field: the client checks the number against existing students (fee student search) and shows "Admission number already exists. Please use a different number." when it is taken. Clearing the field and clicking "Next" shows "Admission number is required".
 
-**Steps, mobile.** Same flow in `app/students/admission.tsx` (field "Admission Number", dropdown "Admission Type (Optional)"). The regular placeholder there reads `e.g. 2026001`, which does not match the real format (see Known gaps).
+**Steps, mobile.** Same flow in `app/students/admission.tsx` (field "Admission Number", dropdown "Admission Type (Optional)"). The regular placeholder there reads `e.g. 2026001`, which does not match the real format (see Known gaps). A duplicate number is reported on "Create Admission" as toast "Validation Error - Admission number already exists. Please use a different number.".
 
 **Expected results.** A suggested number is shown; a blank number sent to the API is generated server-side at create time; nothing is reserved by the preview.
 
@@ -167,10 +191,16 @@ Implemented in: mobile/__tests__/students/menuRules.test.ts (mobile menuChildren
 | TC-STU-02-A11 | Create with `admission_number` equal to an existing admission number; then equal to an existing user's username | 422 "Admission number '<n>' is already in use"; 422 "... is already in use as a login" | passing |
 | TC-STU-02-A12 | Create with manual number "ABC-9" | 201; response `admission_number` "ABC-9"; the student user's username is "ABC-9" | passing |
 | TC-STU-02-A13 | Create pre primary with `admission_date` 2025-06-01 and blank number | Number starts with "2025" | passing |
-| TC-STU-02-E01 | Web Admin opens New Admission | "Admission Number" is pre-filled with the verified next number and the hint "Next available: <n>" is visible | planned |
-| TC-STU-02-E02 | Web, switch "Admission Type" to "Pre Primary Admission" with the number field empty | Placeholder becomes `e.g. <current year>0001` and the field refills with the pre primary suggestion | planned |
-| TC-STU-02-E03 | Web, type an existing admission number and tab out | Inline error "Admission number already exists. Please use a different number." | planned |
-| TC-STU-02-E04 | Mobile, open New Admission | Number field prefilled; typing an existing number shows the duplicate error on Next or Create | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-02-E01 | P1 | Web | Admin | QA Admin login; active academic year in the header | 1. Sign in as Admin.<br>2. Open Students > Admission.<br>3. Click "New Admission". | Dialog "New Student Admission", "Student & Academic Details", "Step 1 of 5"; "Admission Number" is pre-filled with a free number and the hint "Next available: <n>" shows under it; placeholder "e.g. 001"; "Admission Type" shows "Regular" | planned |
+| TC-STU-02-E02 | P2 | Web | Admin | QA Admin login | 1. Sign in as Admin.<br>2. Open Students > Admission and click "New Admission".<br>3. Clear "Admission Number".<br>4. Set "Admission Type" to "Pre Primary". | Placeholder becomes "e.g. <current year>0001" and the field refills with the pre primary suggestion (<current year> followed by a 4 digit sequence) | planned |
+| TC-STU-02-E03 | P2 | Web | Admin | Seeded student Harsha Raju (004) | 1. Sign in as Admin.<br>2. Open Students > Admission and click "New Admission".<br>3. Replace "Admission Number" with "004".<br>4. Press Tab. | Inline error "Admission number already exists. Please use a different number." under the field | planned |
+| TC-STU-02-E04 | P2 | Mobile | Admin | Seeded student Harsha Raju (004) | 1. Sign in as Admin on mobile.<br>2. Open Students > Admission and tap "New Admission".<br>3. Wait until "Admission Number" is pre-filled.<br>4. Replace it with "004".<br>5. Fill the required fields of every step with "QA " data.<br>6. Tap "Create Admission". | Toast "Validation Error - Admission number already exists. Please use a different number."; the form returns to step 1 with the error under "Admission Number"; nothing is created | planned |
+| TC-STU-02-E05 | P3 | Web | Admin | QA Admin login | 1. Sign in as Admin.<br>2. Open Students > Admission and click "New Admission".<br>3. Clear "Admission Number".<br>4. Enter First Name "QA Test" and select a Joining Class.<br>5. Click "Next". | Red alert "Please fill in the required fields before continuing: Admission Number"; inline "Admission number is required"; still Step 1 of 5 | planned |
 
 API tests implemented in: backend/tests/api/students/test_admission_create.py
 
@@ -189,13 +219,14 @@ Implemented in: backend/tests/unit/student/test_admission_number.py
 **Steps, web.**
 1. Students > Admission > "New Admission" opens the dialog "New Student Admission" with a progress bar "Step n of 5".
 2. Step 1 "Student & Academic Details". Optional "Student Photo" ("Choose photo", JPG, PNG or WebP, max 2 MB, otherwise toast "Photo must be under 2 MB"). Student Details: "Admission Number", "First Name" *, "Last Name", "Date of Birth", "Gender" (Male, Female, Other; sent as M, F, O), "Student Type" (Day Scholar, Hostel), "Nationality", "Mother Tongue" (default Telugu), "Aadhar Number (Optional)", "APAAR Number (Optional)", "Caste (Optional)", "Sub Caste (Optional)", "Community (Optional)", "Identification Marks (Optional)". Academic Details: "Admission Date" (cannot be after today), "Admission Type", "Joining Class" *, "Joining Section", checkbox "Current Class/Section same as Admission Class/Section", "Current Class", "Current Section". Click "Next".
-3. Step 2 "Parent Details". Father's Information: "Name" *, "Email", "Phone" with checkbox "Primary" (checked by default, makes the phone required), "Occupation (Optional)", "Salary Range (Optional)", "Aadhar Number (Optional)", "Gender (Optional)", "Relation to Student" (read only "Father"). Mother's Information: same fields, name and phone optional. "Guardian's Information (Optional)": Name, Email (required once a name is typed), Phone, Occupation, Salary Range, Aadhar Number, Gender, Relation to Student. Click "Next".
+3. Step 2 "Parent Details" (section heading "Parent & Guardian Details"). Father's Information: "Name" *, "Email", "Phone" with checkbox "Primary" (checked by default, makes the phone required), "Occupation (Optional)", "Salary Range (Optional)", "Aadhar Number (Optional)", "Gender (Optional)", "Relation to Student" (read only "Father"). Mother's Information: same fields, name and phone optional. "Guardian's Information (Optional)": "Name (Optional)", Email (required once a name is typed: "Guardian's email is required"), Phone, Occupation, Salary Range, Aadhar Number, Gender, Relation to Student. Field messages: "Father's name is required", "Phone number is required", "Phone number must contain digits only", "Must be exactly 10 digits" (with the count entered), "Aadhar number must be 12 digits", "Invalid email address", "Mother's email must be different from father's email". Click "Next".
 4. Step 3 "Address Details": "Address Line 1" *, "Address Line 2 (Optional)", "City (Optional)", "State (Optional)", "District (Optional)", "Mandal (Optional)", "Pincode (Optional)". Click "Next".
 5. Step 4 "Previous School": select "Previous School" No/Yes; when Yes: "Previous School Name (Optional)", "Previous Class (Optional)", "Previous School Remarks (Optional)". Click "Next".
 6. Step 5 "Review & Submit": read-only summary. Click "Create Admission" (button shows "Creating..."). "Previous" goes back, "Cancel" closes the dialog.
-7. On success: toast "Student admission created successfully!", the optional photo is uploaded, the dialog closes and the table refreshes.
+7. "Next" validates the step: missing or invalid fields are listed in a red alert "Please fill in the required fields before continuing: <labels>" (labels such as "Joining Class", "Student First Name", "Student Aadhar Number", "Father's Name", "Father's Phone", "Address Line 1") and the step does not change. On "Create Admission" a missing required value gives toast "Please fill in required fields: <names>" and jumps to the earliest step; equal father and mother emails give toast "Father's and Mother's email addresses must be different"; no academic year in the header gives "Academic Year is required. Please select an academic year from the header dropdown.".
+8. On success: toast "Student admission created successfully!", the optional photo is uploaded, the dialog closes and the table refreshes. A server error shows toast "Failed to create admission: <detail>".
 
-**Steps, mobile.** Students > Admission (screen "Student Admissions") > "New Admission". Same five steps ("Student & Academic Details", "Parent Information", "Address Details", "Previous School", "Review & Submit") with collapsible sections, buttons "Previous", "Cancel", "Next", "Create Admission". Dates can be typed as DD/MM/YYYY or picked; the form state stays `YYYY-MM-DD`. Extra fields not on web: "Academic Year (Optional)" and "Admitted Year (Optional)" dropdowns; "Student Type (Optional)". Photo is picked on the first step and uploaded after create.
+**Steps, mobile.** Students > Admission (screen "Student Admissions") > "New Admission". Same five steps ("Student & Academic Details", "Parent Information", "Address Details", "Previous School", "Review & Submit") with collapsible sections, a "Step n of 5" bar, buttons "Previous", "Cancel", "Next", "Create Admission". Dates can be typed as DD/MM/YYYY or picked; the form state stays `YYYY-MM-DD`. Extra fields not on web: "Academic Year *" (required, "Required" when empty) and "Admitted Year (Optional)" dropdowns; "Student Type (Optional)". Inline errors include "First name is required", "Required" (Joining Class, Academic Year, Admission Date), "Father's name is required", "Phone number is required", "Guardian's email is required", "Address is required". Photo is picked on the first step and uploaded after create. Success toast "Success - Student admission created successfully!".
 
 **Expected results.** HTTP 201 with `StudentAdmissionResponse` (admission fields plus `student` with nested `father`, `mother`, `guardian`; `student.is_active` is null on create). Stored: `users` (student, username = admission number, password hash of the default student password, `is_first_login = TRUE`), `students`, `parents` + `users` for father and mother (and guardian), `student_parent_links`, `student_admissions`. Mandatory class fees are auto-applied; a failure there is only logged.
 
@@ -233,8 +264,8 @@ Implemented in: backend/tests/unit/student/test_admission_number.py
 | TC-STU-03-U11 | Web `makeExactDigitsValidator('Aadhar number',12)` with "", 11 digits, 12 digits, 13 digits | true, short message, true, long message | blocked: makeExactDigitsValidator is not exported from web StudentStepForm.tsx |
 | TC-STU-03-U12 | Mobile `computeStepErrors(1)` with father name "", father phone "" (required), guardian name "Raj" and no guardian email | errors for father name, father phone ("Phone number is required"), guardian email ("Guardian's email is required") | blocked: computeStepErrors is inside the component in mobile app/students/admission.tsx |
 | TC-STU-03-U13 | Mobile `isFutureDate` for tomorrow and today; `isValidDate("2026-13-40")` | true/false; false | blocked: isFutureDate and isValidDate are not exported from mobile app/students/admission.tsx |
-| TC-STU-03-A01 | Admin creates admission with only required fields (no optional fields; mother object with only `relation_to_student`) | 201; `student.last_name` "" if sent "", `date_of_birth` "1900-01-01", mother name "Mother", `admission_date` = today, regular type, number "001" | xfail: STU-BUG-1 (500 when date_of_birth omitted) |
-| TC-STU-03-A02 | Admin creates with every field populated (Aadhar, APAAR, caste, locations, previous school, guardian with email) | 201; response echoes all fields; `student.father`, `student.mother`, `student.guardian` populated | xfail: STU-BUG-2 (create response parents null) |
+| TC-STU-03-A01 | Admin creates admission with only required fields (no optional fields; mother object with only `relation_to_student`) | 201; `student.last_name` "" if sent "", `date_of_birth` "1900-01-01", mother name "Mother", `admission_date` = today, regular type, number "001" | passing |
+| TC-STU-03-A02 | Admin creates with every field populated (Aadhar, APAAR, caste, locations, previous school, guardian with email) | 201; response echoes all fields; `student.father`, `student.mother`, `student.guardian` populated | known defect: STU-BUG-2: POST /students/admission/ response has student.father, mother and guardian null |
 | TC-STU-03-A03 | `is_primary` "primary" and no `admission_type` | 201; stored `admission_type` pre_primary; number `<year>0001` | passing |
 | TC-STU-03-A04 | Explicit `admission_type` "regular" with `is_primary` "primary" | regular wins; number "00n" format | passing |
 | TC-STU-03-A05 | Missing each of `academic_year_id`, `admitted_class_id`, `address_line1`, `student.first_name`, `student.father`, `student.mother`, `father.phone` (one case per field) | 422 naming the field | passing |
@@ -246,29 +277,34 @@ Implemented in: backend/tests/unit/student/test_admission_number.py
 | TC-STU-03-A11 | Father email already used by a Staff user | 422 "Email <e> is already registered to a Staff, not a parent" | passing |
 | TC-STU-03-A12 | Invalid `salary_range` "2l_4l"; invalid parent email "abc" | 422 | passing |
 | TC-STU-03-A13 | Father name omitted | 201 and father name stored as "Father" (documented gap, see Known gaps) | passing |
-| TC-STU-03-A14 | Roles `Student` or `Parent` missing in the tenant | 422 "Required roles (Student/Parent) not found in system" | blocked: needs a tenant without Student and Parent roles |
+| TC-STU-03-A14 | Roles `Student` or `Parent` missing in the tenant | 422 "Required roles (Student/Parent) not found in system" | skipped: needs a tenant without the Student and Parent roles; |
 | TC-STU-03-A15 | Student can log in after create: `POST /auth/login` with username = admission number and the default student password | Login returns `requires_password_change` true (first login) | passing |
 | TC-STU-03-A16 | Admission is atomic: force a failure after the student row (for example invalid `admitted_class_id` UUID that violates the FK) | Error response and no `users`, `students`, `parents` or `student_admissions` rows were left behind | passing |
-| TC-STU-03-A17 | A class has a mandatory (`all_by_default`) fee mapping; create the admission | 201 and a fee student mapping exists; when the mapping step is made to fail the admission still returns 201 | blocked: needs a mandatory fee class mapping (FEE fixtures) |
+| TC-STU-03-A17 | A class has a mandatory (`all_by_default`) fee mapping; create the admission | 201 and a fee student mapping exists; when the mapping step is made to fail the admission still returns 201 | skipped: needs a mandatory fee class mapping, which belongs to the FEE module fixtures |
 | TC-STU-03-A18 | Permission matrix for `POST /students/admission/` | Admin 201, Staff 201, Teacher 403, Student 403, Parent 403 | passing |
 | TC-STU-03-A19 | No token | 401 | passing |
 | TC-STU-03-A20 | Tenant isolation: create in tenant A, list in tenant B; use token A with `cschema` B | Row absent in B; 403 for the mismatch | passing |
 | TC-STU-03-A21 | Extra fields `pincode` and `student.student_name` in the body | Accepted and ignored (201); not stored | passing |
-| TC-STU-03-E01 | Web Admin, happy path through all 5 steps with minimum data (First Name, Joining Class, Father Name, Father phone, Address Line 1) | Toast "Student admission created successfully!", dialog closes, new row at the top of the table with status Active | planned |
-| TC-STU-03-E02 | Web, click Next on step 1 with Joining Class and First Name empty | Alert "Please fill in the required fields before continuing" listing "Joining Class" and "Student First Name"; stays on step 1 | planned |
-| TC-STU-03-E03 | Web, step 1 Aadhar with 11 digits | Inline message states the number is shorter than 12 digits; Next blocked | planned |
-| TC-STU-03-E04 | Web, step 2 with father phone empty and "Primary" checked, then untick "Primary" | Error "Phone number is required" disappears after unticking; Next allowed | planned |
-| TC-STU-03-E05 | Web, father and mother same email | Inline "Mother's email must be different from father's email" | planned |
-| TC-STU-03-E06 | Web, guardian name typed, guardian email empty | Inline "Guardian's email is required"; Next blocked | planned |
-| TC-STU-03-E07 | Web, Admission Date set to a future date | Date picker max is today; error "Admission date cannot be in the future" if forced | planned |
-| TC-STU-03-E08 | Web, step 4 choose "Yes" and fill previous school fields, submit; separately leave the select untouched ("No") and submit | Yes: admission saved with previous school name, class and remark; untouched No: the three values are stored as "NA" | planned |
-| TC-STU-03-E09 | Web, enter a duplicate admission number and submit | Field error "Admission number already exists. Please use a different number." and the wizard returns to step 1 | planned |
-| TC-STU-03-E10 | Web, choose a 3 MB photo | Toast "Photo must be under 2 MB"; valid 1 MB JPG shows a round preview and is uploaded after create | planned |
-| TC-STU-03-E11 | Web, "Previous" on step 3 and "Cancel" | Previous returns with data kept; Cancel closes the dialog without creating | planned |
-| TC-STU-03-E12 | Web, Staff sees "New Admission"; Teacher, Student do not | Button visible only for Admin and Staff | planned |
-| TC-STU-03-E13 | Mobile Admin, complete the 5 steps and "Create Admission" | Success toast, list shows the new admission | planned |
-| TC-STU-03-E14 | Mobile, Next on step 1 with empty First Name and Joining Class | Inline errors "First name is required" and "Required"; accordion with the error opens | planned |
-| TC-STU-03-E15 | Mobile, create without choosing "Academic Year (Optional)" | Backend rejects (academic_year_id required): documents the Known gap; expected result after fix is a default of the active year | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-03-E01 | P1 | Web | Admin | Seeded Class 2 with section 2-A; no student "QA Asha Rao" yet | 1. Sign in as Admin.<br>2. Open Students > Admission.<br>3. Click "New Admission" and note the "Admission Number".<br>4. Enter First Name "QA Asha" and Last Name "Rao".<br>5. Select Joining Class "Class 2" and Joining Section "2-A".<br>6. Click "Next".<br>7. Enter Father Name "QA Ramesh Rao", Email "qa.father1@example.com", Phone "9000000001".<br>8. Click "Next".<br>9. Enter Address Line 1 "QA 1 Main Road".<br>10. Click "Next" twice.<br>11. Click "Create Admission". | Toast "Student admission created successfully!"; the dialog closes; the table shows the noted number, "QA Asha Rao", Class 2, 2-A and an Active badge; a student login with the admission number as username and a parent login qa.father1@example.com exist | planned |
+| TC-STU-03-E02 | P2 | Web | Admin | QA Admin login | 1. Sign in as Admin.<br>2. Open Students > Admission and click "New Admission".<br>3. Leave First Name and Joining Class empty.<br>4. Click "Next". | Red alert "Please fill in the required fields before continuing: Joining Class, Student First Name"; inline "First name is required"; still Step 1 of 5 | planned |
+| TC-STU-03-E03 | P3 | Web | Admin | QA Admin login | 1. Sign in as Admin.<br>2. Open the "New Admission" dialog.<br>3. Fill First Name "QA Test" and a Joining Class.<br>4. Enter "Aadhar Number (Optional)" "12345678901".<br>5. Click "Next". | Inline message starting "Aadhar number is less than 12 digits" with the count entered; the alert lists "Student Aadhar Number"; step does not change | planned |
+| TC-STU-03-E04 | P3 | Web | Admin | QA Admin login | 1. Open the "New Admission" dialog and complete step 1 with "QA Test" data.<br>2. Click "Next".<br>3. Enter Father Name "QA Father", leave Phone empty ("Primary" ticked).<br>4. Click "Next".<br>5. Untick "Primary".<br>6. Click "Next", fill Address Line 1 "QA Road", go to "Review & Submit" and click "Create Admission". | Step 4: "Phone number is required" and the alert lists "Father's Phone"; step 6: "Next" is allowed after unticking, but "Create Admission" shows toast "Please fill in required fields: Father's Phone" and returns to step 2; nothing is created | planned |
+| TC-STU-03-E05 | P3 | Web | Admin | QA Admin login | 1. Open the "New Admission" dialog and complete step 1.<br>2. Click "Next".<br>3. Enter Father Email "qa.same@example.com" and Mother Email "qa.same@example.com".<br>4. Click "Next". | Inline "Mother's email must be different from father's email" under the mother email | planned |
+| TC-STU-03-E06 | P2 | Web | Admin | QA Admin login | 1. Open the "New Admission" dialog and complete step 1.<br>2. Click "Next".<br>3. Fill the father fields.<br>4. Enter Guardian "Name (Optional)" "QA Guardian" and leave its Email empty.<br>5. Click "Next". | Inline "Guardian's email is required"; the alert lists the guardian email; still on "Parent Details" | planned |
+| TC-STU-03-E07 | P3 | Web | Admin | QA Admin login | 1. Open the "New Admission" dialog.<br>2. Open the "Admission Date" picker and try to pick tomorrow.<br>3. Type tomorrow's date in the field.<br>4. Click "Next". | Dates after today cannot be picked (max is today); a typed future date gives "Admission date cannot be in the future" and blocks "Next" | planned |
+| TC-STU-03-E08 | P2 | Web | Admin | Seeded Class 2 / 2-A | 1. Create an admission "QA Prev Yes" as in TC-STU-03-E01 but on "Previous School" select "Yes" and enter Name "QA Old School", Class "LKG", Remarks "QA moved".<br>2. Create an admission "QA Prev No" leaving "Previous School" on "No".<br>3. Open "View Admission" for both. | "QA Prev Yes" shows Previous School Name "QA Old School", Previous Class "LKG", Previous School Remark "QA moved"; "QA Prev No" has is_previous_school false and stores "NA" for the three fields (the view hides the previous school rows) | planned |
+| TC-STU-03-E09 | P2 | Web | Admin | Seeded student Harsha Raju (004) | 1. Open the "New Admission" dialog.<br>2. Fill all required fields with "QA Dup" data.<br>3. On step 1 replace "Admission Number" with "004" and do not tab out of it.<br>4. Go to "Review & Submit" and click "Create Admission". | The wizard returns to step 1 with the field error "Admission number already exists. Please use a different number."; nothing is created | planned |
+| TC-STU-03-E10 | P3 | Web | Admin | A 3 MB JPG and a 1 MB JPG on the test machine | 1. Open the "New Admission" dialog.<br>2. Click "Choose photo" and pick the 3 MB file.<br>3. Click "Choose photo" and pick the 1 MB file.<br>4. Complete the admission "QA Photo Kid" and click "Create Admission".<br>5. Open "View Admission" for it. | Step 2: toast "Photo must be under 2 MB" and no preview; step 3: round preview; after create the view shows the photo | planned |
+| TC-STU-03-E11 | P3 | Web | Admin | QA Admin login | 1. Open the "New Admission" dialog and fill steps 1 to 3 with "QA Back" data.<br>2. On "Address Details" click "Previous".<br>3. Check the parent fields, then click "Cancel".<br>4. Search the table for "QA Back". | "Previous" shows "Parent Details" with the typed data kept; "Cancel" closes the dialog; no "QA Back" admission exists | planned |
+| TC-STU-03-E12 | P2 | Web | Staff, Teacher, Student | QA Staff and QA Teacher logins; seeded student login 004 | 1. Sign in as Staff and open Students > Admission.<br>2. Repeat as Teacher.<br>3. Repeat with the seeded student login 004. | Staff sees "Bulk Upload" and "New Admission"; Teacher and Student see neither | planned |
+| TC-STU-03-E13 | P1 | Mobile | Admin | Seeded Class 2 / 2-A | 1. Sign in as Admin on mobile.<br>2. Open Students > Admission and tap "New Admission".<br>3. Enter First Name "QA Mobile", Last Name "Kid", choose "Academic Year *" (the active year), Joining Class "Class 2".<br>4. Tap "Next".<br>5. Enter Father Name "QA Mobile Father", Phone "9000000003".<br>6. Tap "Next", enter Address Line 1 "QA Mobile Road".<br>7. Tap "Next" twice, then "Create Admission". | Toast "Success - Student admission created successfully!"; "Student Admissions" lists "QA Mobile Kid" | planned |
+| TC-STU-03-E14 | P2 | Mobile | Admin | QA Admin login | 1. Sign in as Admin on mobile.<br>2. Open Students > Admission and tap "New Admission".<br>3. Leave First Name and Joining Class empty.<br>4. Tap "Next". | Inline "First name is required" and "Required" under the class; the sections holding the errors are expanded; still "Step 1 of 5" | planned |
+| TC-STU-03-E15 | P3 | Mobile | Admin | QA Admin login | 1. Open the mobile "New Admission" form.<br>2. Fill First Name "QA Year" and Joining Class, leave "Academic Year *" empty.<br>3. Tap "Next". | "Required" under "Academic Year *"; the step does not change (the label and validation now mark the year as required) | planned |
 
 API tests implemented in: backend/tests/api/students/test_admission_create.py
 
@@ -312,16 +348,21 @@ Implemented in: backend/tests/unit/student/test_admission_schemas.py. U07 assert
 | TC-STU-04-A02 | Create admission with blank father and mother emails | Parent usernames "<number>.father" and "<number>.mother" | passing |
 | TC-STU-04-A03 | Sibling admission reusing the father email with a changed phone | Same parent id; phone overwritten; the parent now lists 2 children; no new Parent user | passing |
 | TC-STU-04-A04 | Guardian with email | Guardian parent, user and link created; response `student.guardian` populated | passing |
-| TC-STU-04-A05 | Guardian name given but email blank | 201; no guardian parent or link created; `student.guardian` null | passing |
+| TC-STU-04-A05 | Guardian name given but email blank | 422 with `guardian.email is required` | passing |
 | TC-STU-04-A06 | Guardian email equal to an existing Parent's email | Existing guardian parent reused and linked | passing |
 | TC-STU-04-A07 | Mother email equal to an existing Student user's email | 422 email_role_conflict | passing |
 | TC-STU-04-A08 | Parent login: `POST /auth/login` with father email and the default parent password | `requires_password_change` true; after set-password the token role is Parent | passing |
 | TC-STU-04-A09 | `GET /student-parent-links/my-children` as the shared parent after two admissions | Returns both children | passing |
 | TC-STU-04-A10 | Permission matrix of the creating endpoint | Admin 201, Staff 201, Teacher 403, Student 403, Parent 403 | passing |
 | TC-STU-04-A11 | Tenant isolation: parent email already used in tenant B | Tenant A admission creates a separate parent (emails are unique per tenant) | passing |
-| TC-STU-04-E01 | Web Admin admits child 1 then child 2 with the same father email (different phone) | Both admissions succeed; Admission details of child 1 now show the new phone for the father (shared record) | planned |
-| TC-STU-04-E02 | Web, leave father and mother email empty and submit | Admission succeeds; Parent details show "N/A" email | planned |
-| TC-STU-04-E03 | Mobile, enter a guardian name without email, press Next | "Guardian's email is required" | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-04-E01 | P1 | Web | Admin | TC-STU-03-E01 done | 1. Sign in as Admin.<br>2. Create an admission "QA Ravi Rao" in Class 2 / 2-A with Father Name "QA Ramesh Rao", Email "qa.father1@example.com", Phone "9000000002".<br>3. Open "View Admission" for "QA Asha Rao". | Both admissions exist; QA Asha Rao's view shows Father Phone "9000000002" (one shared parent record); the parent login qa.father1@example.com now has two children | planned |
+| TC-STU-04-E02 | P2 | Web | Admin | Seeded Class 2 / 2-A | 1. Create an admission "QA No Email" leaving Father Email and Mother Email empty.<br>2. Open "View Admission" for it. | Admission succeeds; "Father Email" and "Mother Email" show "N/A"; parent usernames are "<admission number>.father" and "<admission number>.mother" | planned |
+| TC-STU-04-E03 | P2 | Mobile | Admin | QA Admin login | 1. Open the mobile "New Admission" form and complete step 1.<br>2. Tap "Next".<br>3. Fill the father fields and enter a guardian name "QA Guardian" without email.<br>4. Tap "Next". | Inline "Guardian's email is required" in the guardian section; the step does not change | planned |
 
 API tests implemented in: backend/tests/api/students/test_admission_create.py
 
@@ -366,16 +407,21 @@ Implemented in: backend/tests/unit/student/test_admission_service.py (drives add
 | TC-STU-05-U02 | Size check at 2,097,152 and 2,097,153 bytes | Accepted; rejected "File size must not exceed 2 MB" | passing |
 | TC-STU-05-U03 | Replacing `<id>.png` with `<id>.jpg` | Old file removed, new URL stored | passing |
 | TC-STU-05-A01 | Admin uploads a 100 KB PNG | 200; `photo_url` "/media/<tenant id>/student/photos/<student id>.png"; file exists on disk | passing |
-| TC-STU-05-A02 | Upload `.gif`; upload 2 MB + 1 byte; upload exactly 2 MB | 400; 400; 200 | passing except the 2 MB size boundary (skipped: tiny files only) |
+| TC-STU-05-A02 | Upload `.gif`; upload 2 MB + 1 byte; upload exactly 2 MB | 400; 400; 200 | skipped: size boundary needs a 2 MB file; |
 | TC-STU-05-A03 | Upload for an unknown student id | 404 "Student not found" | passing |
 | TC-STU-05-A04 | Delete an existing photo, then delete again | 200 `{"detail":...}`; then 404 "No photo to delete"; `photo_url` null afterwards | passing |
 | TC-STU-05-A05 | Missing multipart field `photo` | 422 | passing |
 | TC-STU-05-A06 | Permission matrix for upload and delete | Admin 200, Staff 200, Teacher 403, Student 403, Parent 403 | passing |
 | TC-STU-05-A07 | No token | 401 | passing |
 | TC-STU-05-A08 | Tenant isolation: tenant B Admin uploads a photo for a tenant A student id; tenant A token with B header | 404 (student not visible); 403 | passing |
-| TC-STU-05-E01 | Web Admin edits a student, "Choose photo" with a 3 MB file | Toast "Photo must be under 2 MB"; nothing uploaded | planned |
-| TC-STU-05-E02 | Web, choose a valid JPG in the Edit dialog, then click X "Remove photo" | Toast "Photo uploaded successfully", picture appears; toast "Photo removed successfully", placeholder icon returns | planned |
-| TC-STU-05-E03 | Mobile, pick a photo in the admission form and create | Photo shows in the view modal | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-05-E01 | P3 | Web | Admin | TC-STU-03-E01 done; a 3 MB JPG | 1. Sign in as Admin.<br>2. Open Students > Admission.<br>3. Click "Edit Admission" on "QA Asha Rao".<br>4. Under "Student Photo" click "Choose photo" and pick the 3 MB file. | Toast "Photo must be under 2 MB"; no upload request; the photo placeholder stays | planned |
+| TC-STU-05-E02 | P1 | Web | Admin | TC-STU-03-E01 done; a 200 KB JPG | 1. Open "Edit Admission" on "QA Asha Rao".<br>2. Click "Choose photo" and pick the JPG.<br>3. Click the X "Remove photo" on the picture. | Step 2: label "Uploading..." then toast "Photo uploaded successfully" and the picture shows; step 3: toast "Photo removed successfully" and the placeholder icon returns | planned |
+| TC-STU-05-E03 | P2 | Mobile | Admin | Seeded Class 2 / 2-A; a JPG on the device | 1. Open the mobile "New Admission" form.<br>2. Pick the photo on step 1.<br>3. Complete the admission "QA Mobile Photo" and tap "Create Admission".<br>4. Tap "View" on its card. | The view modal shows the uploaded photo | planned |
 
 API tests implemented in: backend/tests/api/students/test_photo.py
 
@@ -391,9 +437,9 @@ Implemented in: backend/tests/unit/student/test_admission_service.py (upload_stu
 
 **Preconditions.** At least one admission.
 
-**Steps, web.** Students > Admission. The table "Admission No. | Student Name | Class | Section | Academic Year | Admission Date | Status | Actions" is paged (default 10 rows) with a page-size selector. Status shows an Active/Inactive badge. Class and Section cells are inline editable (see F08). The web admission list has no search box. Row actions: "Send Welcome Message", "View Admission", "Edit Admission" (needs `student_admissions:update`), "Deactivate Student" / "Activate Student". Pickers elsewhere use the dropdown endpoints (documents, certificates, transport).
+**Steps, web.** Students > Admission. The table "Admission No. | Student Name | Class | Section | Academic Year | Admission Date | Status | Actions" has an "S.No." first column and is paged (default 10 rows; "Rows per page" 5, 10, 20, 50, 100; "Previous" and "Next"; a range label such as "1-10 of <total>"). Above it a "Filters" bar has a "Search..." box that filters the rows of the current page only (client side), and the column headers sort. Status shows an Active/Inactive badge. Class and Section cells are inline editable (see F08). Row actions: "Send Welcome Message" (only with `communications:create`, so Admin by default), "View Admission", "Edit Admission" and "Deactivate Student" / "Activate Student" (both need `student_admissions:update`). Empty table: "No data". Pickers elsewhere use the dropdown endpoints (documents, certificates, transport).
 
-**Steps, mobile.** Students > Admission: search field "Search" (server search `GET /students/admission/search`), buttons "Bulk Import" and "New Admission" (create permission), cards with admission number, name, class, status and actions "View", "Edit", "Deactivate"/"Activate"; pager. Separate screen "Students (N)" (`app/students/index.tsx`): 30 per page, client-side filter over the loaded page only, card shows the admission number and the admitted class id.
+**Steps, mobile.** Students > Admission: search field "Search" (server search `GET /students/admission/search`), buttons "Bulk Import" and "New Admission" (create permission), cards with admission number, name, class, status and actions "View", "Edit", "Deactivate"/"Activate"; pager; empty text "No admissions found". Separate screen "Students (N)" (`app/students/index.tsx`): 30 per page, client-side filter over the loaded page only ("No students found." when nothing matches), card shows the admission number and the admitted class id.
 
 **Expected results.** Newest admissions first (ordered by `admission_date` descending). Responses carry `items`, `total_count`, `has_next`.
 
@@ -410,7 +456,7 @@ Implemented in: backend/tests/unit/student/test_admission_service.py (upload_stu
 - Out-of-range `limit` (0 or 101) or negative `skip` is 422.
 - Role scoping: Student gets at most their own row; Parent gets only linked children; a role with no `list` or `_own`/`_related` grant gets 403.
 
-**Error and edge cases.** Attendance rosters that call the list without `limit` get at most 10 students (see F11). Empty class returns `items: []`, `total_count: 0`, `has_next: false`.
+**Error and edge cases.** A list call without `limit` returns 10 rows; the attendance rosters page through it 100 at a time (see F11). The web "Search..." box only searches the page on screen, so a student on another page is not found. Empty class returns `items: []`, `total_count: 0`, `has_next: false`.
 
 **Unit-testable logic.** `has_next = (skip + limit) < total_count`; dropdown display-name formatting and sort; `as_of_date` filter.
 
@@ -437,12 +483,18 @@ Implemented in: backend/tests/unit/student/test_admission_service.py (upload_stu
 | TC-STU-06-A14 | `by-admission` permission matrix | Admin, Staff, Teacher 200; Student 403; Parent 403 | passing |
 | TC-STU-06-A15 | No token on list, search, by-admission, both dropdowns | 401 | passing |
 | TC-STU-06-A16 | Tenant isolation: tenant B Admin lists; tenant A token with B header | Tenant A students absent; 403 | passing |
-| TC-STU-06-E01 | Web Admin opens Students > Admission | Table columns Admission No., Student Name, Class, Section, Academic Year, Admission Date, Status, Actions; 10 rows; pager moves to page 2 | planned |
-| TC-STU-06-E02 | Web, change page size | Row count follows the selected size; total shown matches `total_count` | planned |
-| TC-STU-06-E03 | Web Teacher opens Admission | Rows visible; no Edit or Deactivate icons; no "New Admission" or "Bulk Upload" buttons | planned |
-| TC-STU-06-E04 | Web Student opens Admission | Table with one row (own admission), no edit icons | planned |
-| TC-STU-06-E05 | Mobile Admin types a name in "Search" on Student Admissions | List narrows to server matches | planned |
-| TC-STU-06-E06 | Mobile "Students (N)" screen, type an admission number | Filters the loaded page by name or admission number; "No students found." when none | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-06-E01 | P1 | Web | Admin | 30 seeded admissions | 1. Sign in as Admin.<br>2. Open Students > Admission.<br>3. Click "Next" below the table. | Columns S.No., Admission No., Student Name, Class, Section, Academic Year, Admission Date, Status, Actions; 10 rows, newest admission date first; range "1-10 of <total>"; "Next" shows rows 11 to 20 | planned |
+| TC-STU-06-E02 | P2 | Web | Admin | 30 seeded admissions | 1. Open Students > Admission.<br>2. Change "Rows per page" to 20. | 20 rows; range "1-20 of <total>" with the same total as before | planned |
+| TC-STU-06-E03 | P2 | Web | Teacher | QA Teacher login; seeded admissions | 1. Sign in as Teacher.<br>2. Open Students > Admission. | Rows visible with only the "View Admission" action; no "Send Welcome Message", "Edit Admission" or "Deactivate Student"; no "New Admission" or "Bulk Upload" | planned |
+| TC-STU-06-E04 | P2 | Web | Student | Seeded student login 004 (Harsha Raju) | 1. Sign in with the seeded student login 004.<br>2. Open Students > Admission. | Table with one row (Harsha Raju) and only "View Admission"; no create, edit or toggle controls | planned |
+| TC-STU-06-E05 | P2 | Mobile | Admin | Seeded students Harsha Raju and Tanvi Raju | 1. Sign in as Admin on mobile.<br>2. Open Students > Admission.<br>3. Type "Raju" in "Search". | The list narrows to Harsha Raju and Tanvi Raju (server search on name); clearing the box restores the list | planned |
+| TC-STU-06-E06 | P3 | Mobile | Admin | Seeded student Harsha Raju (004) | 1. Open Students ("Students (N)") on mobile.<br>2. Type "004" in the search box.<br>3. Type "QA zzz". | Step 2: only matching cards of the loaded page; step 3: "No students found." | planned |
+| TC-STU-06-E07 | P3 | Web | Admin | 30 seeded admissions (more than one page) | 1. Open Students > Admission.<br>2. Type "Raju" in the "Search..." box.<br>3. Click the "Student Name" header twice. | Only rows of the current page that match are shown (a matching student on another page is not found); the header click sorts ascending then descending | planned |
 
 API tests implemented in: backend/tests/api/students/test_admission_read.py
 
@@ -468,7 +520,7 @@ Implemented in: backend/tests/unit/student/test_admission_service.py.
 
 **Rules and validations.** The path id is the **student id**. An admission id gives 404. Out-of-scope id for Student or Parent gives 404 "Student admission not found" (not 403).
 
-**Error and edge cases.** Mobile `[id].tsx` finds the student in the first page of admissions only (default limit 10), so students beyond the first 10 show "Student not found" (see Known gaps). The web detail page expects an admission id while the table uses student ids.
+**Error and edge cases.** Mobile `[id].tsx` is opened with the student id but looks it up by admission id (`items.find(s => s.id === id)`) in the first page of admissions only (default limit 10), so every card opened from "Students (N)" shows "Student not found" (see Known gaps). The web detail page expects an admission id while the table uses student ids. A failed detail load shows toast "Failed to load admission details".
 
 **Unit-testable logic.** Web `formatDate` (1900-01-01 and invalid values give "N/A"), `formatGender`; mobile `formatGender`.
 
@@ -486,11 +538,16 @@ Implemented in: backend/tests/unit/student/test_admission_service.py.
 | TC-STU-07-A06 | Malformed id "abc" | 422 | passing |
 | TC-STU-07-A07 | No token | 401 | passing |
 | TC-STU-07-A08 | Tenant isolation: tenant B Admin reads a tenant A student id; token A with B header | 200 `[]` for reads and 404 for the link create (RLS hides tenant A rows; unknown ids give an empty list, not 404); 403 | passing |
-| TC-STU-07-E01 | Web Admin, "View Admission" on a fully populated student | Dialog title "Admission Details - <number>", all sections populated with names (not ids), photo shown | planned |
-| TC-STU-07-E02 | Web, view a student admitted with blank DOB | "Date of Birth" shows "N/A" | planned |
-| TC-STU-07-E03 | Web, open `/students/admission/<admission id>` | Same data on a page with "Back to List" returning to the table | planned |
-| TC-STU-07-E04 | Mobile Admin, "View" on an admission card | Modal lists the same labels; close button works | planned |
-| TC-STU-07-E05 | Mobile Admin, open the 11th student from "Students (N)" | Documents the defect: "Student not found" (expected after fix: details load) | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-07-E01 | P1 | Web | Admin | Seeded student Harsha Raju (004, Class 1 / 1-B) | 1. Sign in as Admin.<br>2. Open Students > Admission.<br>3. Click "View Admission" on "Harsha Raju".<br>4. Click "Close". | Dialog "Admission Details - <number>" with the name "Harsha Raju" under the title; Admitted Class "Class 1", Current Section "1-B", Father Name "Venkat Raju", Father Email "venkat.raju@example.com", City "Hyderabad"; names are shown, not ids; empty optional fields show "N/A" | planned |
+| TC-STU-07-E02 | P3 | Web | Admin | TC-STU-03-E01 done (no date of birth entered) | 1. Open "View Admission" on "QA Asha Rao". | "Date of Birth" shows "N/A" (stored sentinel 1900-01-01) | planned |
+| TC-STU-07-E03 | P3 | Web | Admin | Admission id of Harsha Raju (004) known | 1. Open /students/admission/<admission id of Harsha Raju>.<br>2. Compare with the "View Admission" dialog.<br>3. Click "Back to List". | Same values on the page "Admission Details"; "Back to List" returns to the table | planned |
+| TC-STU-07-E04 | P2 | Mobile | Admin | Seeded student Harsha Raju (004) | 1. Sign in as Admin on mobile.<br>2. Open Students > Admission.<br>3. Tap "View" on "Harsha Raju".<br>4. Close the modal. | Modal with Admission Number, Academic Year, class, student, parent and address fields of Harsha Raju; the close button closes it | planned |
+| TC-STU-07-E05 | P2 | Mobile | Admin | Seeded student Harsha Raju (004) | 1. Open Students ("Students (N)") on mobile.<br>2. Tap the card of "Harsha Raju". | "Student Details" shows "Admission Number", status, "Basic Information", "Address", "Father", "Mother", "Recent Attendance (30d)", "Certificates", "Documents", "Transport" and "Edit Student" | blocked: Known gap 12 (lookup by admission id, always "Student not found") |
 
 API tests implemented in: backend/tests/api/students/test_admission_read.py
 
@@ -506,8 +563,8 @@ API tests implemented in: backend/tests/api/students/test_admission_read.py
 
 **Steps, web.**
 1. Students > Admission, row action "Edit Admission" opens "Edit Admission - <number>".
-2. Change fields: Student photo; First Name *, Last Name, Date of Birth, Gender, "Primary Status" (Not Primary, Primary), Aadhar Number (Optional), APAAR Number (Optional), Primary Phone, Nationality, Mother Tongue, Caste, Sub Caste, Community, Identification Marks; Admission Number, Admission Date, Admission Type, Academic Year *, Admitted Class *, Admitted Section, Current Class, Current Section; Address Line 1 *, Address Line 2, City, State, District, Mandal; "Has Previous School", Previous School Name, Previous Class, Previous School Remark; Father (Name *, Email, Phone *, Occupation, Aadhar Number, Gender, Salary Range), Mother and Guardian (same, optional).
-3. Click "Update Admission" (label "Updating..."). Errors are listed together; toast "Please fix the highlighted fields before saving". Success toast "Student admission updated successfully!".
+2. Change fields: Student photo; First Name *, Last Name, Date of Birth, Gender, "Primary Status" (Not Primary, Primary), Aadhar Number (Optional), APAAR Number (Optional), Primary Phone, Nationality, Mother Tongue, Caste, Sub Caste, Community, Identification Marks; Admission Number *, Admission Date, Admission Type, Academic Year *, Admitted Class *, Admitted Section, Current Class, Current Section; Address Line 1 *, Address Line 2, City, State, District, Mandal; "Has Previous School", Previous School Name, Previous Class, Previous School Remark; "Father's Details" (Name *, Email, Phone *, Occupation, Aadhar Number, Gender, Salary Range), "Mother's Details" and "Guardian's Details (Optional)" (same, optional).
+3. Click "Update Admission" (label "Updating...") or "Cancel". Errors are listed together; toast "Please fix the highlighted fields before saving". Success toast "Student admission updated successfully!"; a server error shows "Failed to update admission: <detail>".
 4. Quick edit: in the table, Class and Section cells are inline editable; saving sends only the current class and section.
 
 **Steps, mobile.** Admission list card > "Edit" opens the same 5-step form in edit mode ("Update Admission").
@@ -541,7 +598,7 @@ API tests implemented in: backend/tests/api/students/test_admission_read.py
 | TC-STU-08-A06 | Patch `academic_year_id` null; `admitted_class_id` null | 400 each | passing |
 | TC-STU-08-A07 | Patch `date_of_birth` null | 200; stored 1900-01-01 | passing |
 | TC-STU-08-A08 | Patch `father_email` equal to the mother's email | 400 "Father and mother cannot have the same email address" | passing |
-| TC-STU-08-A09 | Patch `aadhar_number` "abc" and `primary_phone` "1" | 200 (no format check on PATCH; documented gap) | passing |
+| TC-STU-08-A09 | Patch `aadhar_number` "abc" and `primary_phone` "1" | 422 for each | passing |
 | TC-STU-08-A10 | Patch `guardian_name` when no guardian is linked | 200; nothing created | passing |
 | TC-STU-08-A11 | Shared parent edit: patch the father phone via child 1 | Child 2's details show the new phone | passing |
 | TC-STU-08-A12 | Patch with an admission id or random id | 404 "Admission not found" | passing |
@@ -549,12 +606,17 @@ API tests implemented in: backend/tests/api/students/test_admission_read.py
 | TC-STU-08-A14 | No token | 401 | passing |
 | TC-STU-08-A15 | Tenant isolation: tenant B Admin patches a tenant A student; token A with B header | 404; 403 | passing |
 | TC-STU-08-A16 | Patch `admission_type` from regular to pre_primary | 200; number unchanged | passing |
-| TC-STU-08-E01 | Web Admin edits a student: change Last Name and Current Section, "Update Admission" | Toast "Student admission updated successfully!"; table and view reflect the change | planned |
-| TC-STU-08-E02 | Web, clear Admission Number and Father Phone then save | Toast "Please fix the highlighted fields before saving"; list shows "Admission Number" and "Father Phone (must be 10 digits)" | planned |
-| TC-STU-08-E03 | Web, change the admission number to an existing one | Inline "Admission number already exists. It must be unique." | planned |
-| TC-STU-08-E04 | Web, inline edit of Class and Section in the table | Row updates; current class and section changed | planned |
-| TC-STU-08-E05 | Web Teacher and Student | No Edit icon shown | planned |
-| TC-STU-08-E06 | Mobile Admin, Edit, change Nationality, "Update Admission" | Success toast; view shows the new value | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-08-E01 | P1 | Web | Admin | TC-STU-03-E01 done | 1. Sign in as Admin.<br>2. Open Students > Admission.<br>3. Click "Edit Admission" on "QA Asha Rao".<br>4. Change Last Name to "Rao-Edited" and Current Section to "2-B".<br>5. Click "Update Admission". | Toast "Student admission updated successfully!"; the row shows "QA Asha Rao-Edited" with Section 2-B; "View Admission" shows the new values | planned |
+| TC-STU-08-E02 | P2 | Web | Admin | TC-STU-03-E01 done | 1. Open "Edit Admission" on "QA Asha Rao".<br>2. Clear "Admission Number *" and Father "Phone *".<br>3. Click "Update Admission". | Toast "Please fix the highlighted fields before saving"; the error list names "Admission Number" and "Father Phone (must be 10 digits)"; nothing is saved | planned |
+| TC-STU-08-E03 | P2 | Web | Admin | TC-STU-04-E01 done | 1. Open "Edit Admission" on "QA Ravi Rao".<br>2. Replace "Admission Number *" with the number of QA Asha Rao.<br>3. Click "Update Admission". | Inline "Admission number already exists. It must be unique."; nothing is saved | planned |
+| TC-STU-08-E04 | P2 | Web | Admin | TC-STU-03-E01 done; seeded Class 3 / 3-A | 1. Open Students > Admission.<br>2. Click the Class cell of "QA Asha Rao" and choose "Class 3".<br>3. Click the Section cell and choose "3-A".<br>4. Save the inline edit. | Toast "Student admission updated successfully!"; the row shows Class 3 / 3-A (current class and section changed, admitted class unchanged) | planned |
+| TC-STU-08-E05 | P2 | Web | Teacher, Student | QA Teacher login; seeded student login 004 | 1. Sign in as Teacher and open Students > Admission.<br>2. Sign in with the seeded student login 004 and open Students > Admission. | No "Edit Admission" icon for either role | planned |
+| TC-STU-08-E06 | P2 | Mobile | Admin | TC-STU-03-E13 done | 1. Sign in as Admin on mobile.<br>2. Open Students > Admission and tap "Edit" on "QA Mobile Kid".<br>3. Change Nationality to "QA Nation".<br>4. Go to the last step and tap "Update Admission".<br>5. Tap "View". | Toast "Success - Student admission updated successfully!"; the view shows Nationality "QA Nation" | planned |
 
 API tests implemented in: backend/tests/api/students/test_admission_manage.py
 
@@ -572,7 +634,7 @@ Implemented in: backend/tests/unit/student/test_admission_service.py.
 
 **Steps, web.** Students > Admission, row action "Deactivate Student" (red) or "Activate Student": confirm dialog "Disable Student" / "Enable Student" with "Are you sure you want to disable <name>?" and buttons "Disable"/"Enable". Toast "Student disabled successfully!" or "Student enabled successfully!". There is no delete button.
 
-**Steps, mobile.** Admission card action "Deactivate" / "Activate": confirm modal "Deactivate Student" / "Activate Student".
+**Steps, mobile.** Admission card action "Deactivate" / "Activate": confirm modal "Deactivate Student" / "Activate Student" with button "Deactivate" / "Activate". Toast "Success - Student status updated" (failure: "Failed to update student status").
 
 **Expected results.** `users.is_active` flips; an inactive student cannot log in; dropdowns exclude the student; the list still shows them with an Inactive badge.
 
@@ -598,14 +660,19 @@ Implemented in: backend/tests/unit/student/test_admission_service.py.
 | TC-STU-09-A05 | Toggle permission matrix | Admin 200, Staff 200, Teacher 403, Student 403, Parent 403 | passing |
 | TC-STU-09-A06 | Delete permission matrix on a throwaway admission | Admin: 200 and data removed; Staff 403; Teacher 403; Student 403; Parent 403 | passing |
 | TC-STU-09-A07 | Delete a student whose father is shared with a sibling | 200; the shared father (and user) remain linked to the sibling; the mother, if not shared, is deleted | passing |
-| TC-STU-09-A08 | Delete a student with a fee payment or exam marks | 409 and nothing deleted | blocked: needs fee payment or exam marks (FEE/EXM fixtures) |
-| TC-STU-09-A08 | Delete an unknown id | 404 "Admission not found" | blocked: needs fee payment or exam marks (FEE/EXM fixtures) |
+| TC-STU-09-A08 | Delete a student with a fee payment or exam marks | 409 and nothing deleted | skipped: blocked: needs a fee payment or exam marks for the student, which belong to FEE and EXM fixtures |
+| TC-STU-09-A11 | Delete an unknown id | 404 "Admission not found" | passing |
 | TC-STU-09-A09 | No token on both endpoints | 401 | passing |
 | TC-STU-09-A10 | Tenant isolation for toggle: tenant B Admin toggles a tenant A student; token A with B header | 404; 403 | passing |
-| TC-STU-09-E01 | Web Admin, click "Deactivate Student", confirm "Disable" | Toast "Student disabled successfully!", badge turns Inactive, icon becomes "Activate Student" | planned |
-| TC-STU-09-E02 | Web, cancel the confirm dialog | No change | planned |
-| TC-STU-09-E03 | Web Staff sees the toggle; Teacher does not | Staff icon visible; Teacher not | planned |
-| TC-STU-09-E04 | Mobile Admin, "Deactivate" then "Activate" | Status dot red then green; confirm modal text matches | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-09-E01 | P1 | Web | Admin | TC-STU-03-E13 done ("QA Mobile Kid" active) | 1. Sign in as Admin.<br>2. Open Students > Admission.<br>3. Click "Deactivate Student" on "QA Mobile Kid".<br>4. Click "Disable".<br>5. Click "Activate Student" on the same row and click "Enable". | Dialog "Disable Student" "Are you sure you want to disable QA Mobile Kid?"; toast "Student disabled successfully!", badge Inactive and the icon becomes "Activate Student"; step 5: dialog "Enable Student", toast "Student enabled successfully!", badge Active | planned |
+| TC-STU-09-E02 | P3 | Web | Admin | An active "QA " student | 1. Click "Deactivate Student" on the row.<br>2. Click "Cancel". | Dialog closes; badge stays Active; no request sent | planned |
+| TC-STU-09-E03 | P2 | Web | Staff, Teacher | QA Staff and QA Teacher logins; seeded admissions | 1. Sign in as Staff and open Students > Admission.<br>2. Sign in as Teacher and open Students > Admission. | Staff sees "Deactivate Student" (or "Activate Student"); Teacher does not | planned |
+| TC-STU-09-E04 | P2 | Mobile | Admin | An active "QA " student | 1. Sign in as Admin on mobile.<br>2. Open Students > Admission.<br>3. Tap "Deactivate" on the card and confirm "Deactivate".<br>4. Tap "Activate" and confirm "Activate". | Confirm modals "Deactivate Student" and "Activate Student"; toast "Success - Student status updated" each time; the card status changes to inactive and back to active | planned |
 
 API tests implemented in: backend/tests/api/students/test_admission_manage.py
 
@@ -625,9 +692,9 @@ Implemented in: backend/tests/unit/student/test_admission_service.py.
 1. Students > Admission > "Bulk Upload" opens "Bulk Admission Upload" ("Download the template, fill in student rows, then upload the completed sheet.").
 2. "Download Template" saves `bulk_admission_template.xlsx` (blank, with Class/Section/Caste/Sub caste dropdowns).
 3. Fill the sheet "Student Admission". Click "Browse File" (accepts .xlsx, .xls), then "Upload".
-4. The result box shows "<created> of <total> admission(s) created", a list "Row n: <name> (<admission number>)" and "<k> row(s) failed" with the error lines. "Close" ends.
+4. The result box shows "<created> of <total> admission(s) created", a list "Row n: <name> (<admission number>)" and "<k> row(s) failed" with the error lines. "Close" ends. A whole-file error shows toast "Bulk upload failed: <detail>"; a template error "Failed to download template: <detail>".
 
-**Steps, mobile.** Students > Admission > "Bulk Import" opens "Bulk Import Students": step 1 "Download Template" with the option "Auto Fetch Details" and button "Download Blank Template" or "Download Pre-filled Template"; step 2 "Upload Filled File" (tap to select the Excel file) and "Upload & Create Admissions"; "Results" chips "<n> created" and "<n> total rows" plus error lines.
+**Steps, mobile.** Students > Admission > "Bulk Import" opens "Bulk Import Students": step 1 "Download Template" with the option "Auto Fetch Details" and button "Download Blank Template" or "Download Pre-filled Template"; step 2 "Upload Filled File" ("Tap to select the filled Excel file") and "Upload & Create Admissions"; "Results" chips "<n> created" and "<n> total rows" plus error lines. Toasts: "Upload Complete - <c> of <t> admissions created successfully.", "Upload Finished With Errors - <c> created, <e> failed. See details below.", "Upload Failed - <detail>", "Please select an Excel (.xlsx/.xls) file" for another file type.
 
 **Expected results.** Valid rows are created via the normal admission flow (accounts, links, fees); invalid rows are listed and skipped. Response `{created:[{row, student_id, admission_number, name}], errors:["Row n: ..."], total_rows}`.
 
@@ -661,11 +728,11 @@ Implemented in: backend/tests/unit/student/test_admission_service.py.
 | TC-STU-10-U07 | `_sub_caste_range_name("Kamma Naidu-2")` | "sub_Kamma_Naidu_2" | passing |
 | TC-STU-10-U08 | `_clean` for None, "  ", " x " | None, None, "x" | passing |
 | TC-STU-10-A01 | Upload a sheet with 3 valid rows | 200 `{created:[3 items], errors:[], total_rows:3}`; 3 admissions, numbers sequential | passing |
-| TC-STU-10-A02 | Sheet with 1 bad row (unknown class "Clas 1") among 3 | 2 created; `errors` has "Row 3: Class 'Clas 1' not found - did you mean 'Class 1'?"; `total_rows` 3 | xfail: STU-BUG-3 (bulk section resolved tenant-wide) |
+| TC-STU-10-A02 | Sheet with 1 bad row (unknown class "Clas 1") among 3 | 2 created; `errors` has "Row 3: Class 'Clas 1' not found - did you mean 'Class 1'?"; `total_rows` 3 | known defect: STU-BUG-3: bulk upload resolves 'joining section' by name across the whole tenant, so a section name used by m... |
 | TC-STU-10-A03 | Missing a required header (remove `Father phone`) | 400 "Missing required column(s): Father phone" | passing |
 | TC-STU-10-A04 | Upload a `.csv` and a corrupted `.xlsx` | 400 "File must be an Excel (.xlsx/.xls) file"; 400 "Invalid Excel file: ..." | passing |
 | TC-STU-10-A05 | Row errors: no First name; no Father phone; no Address Line 1; invalid DOB text; Aadhar of 11 digits; duplicate Admission no; duplicate father/mother email | One error line per row with the matching message | passing |
-| TC-STU-10-A06 | No active academic year | Every row fails "No active academic year configured" | blocked: needs a tenant without an active academic year (tenant-wide singleton) |
+| TC-STU-10-A06 | No active academic year | Every row fails "No active academic year configured" | skipped: blocked: needs a tenant without an active academic year, and the active year is a tenant-wide singleton |
 | TC-STU-10-A07 | "Student type" "Pre Primary" with blank Admission no | Number `<year>0001` style | passing |
 | TC-STU-10-A08 | Empty rows between data rows | Skipped; `total_rows` counts only created + errors | passing |
 | TC-STU-10-A09 | Template `include_data=false` | 200, content type `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, sheets "Student Admission" and hidden "Lists" with live class names | passing |
@@ -674,12 +741,18 @@ Implemented in: backend/tests/unit/student/test_admission_service.py.
 | TC-STU-10-A12 | No token | 401 | passing |
 | TC-STU-10-A13 | Tenant isolation: class "Class 1" exists only in tenant B; tenant A upload references it | Row error "Class ... not found" | passing |
 | TC-STU-10-A14 | Re-upload the same sheet | Every row fails on duplicate number (if numbers given) or creates new students (if blank) | passing |
-| TC-STU-10-E01 | Web Admin, "Bulk Upload", "Download Template" | File `bulk_admission_template.xlsx` downloads | planned |
-| TC-STU-10-E02 | Web, browse a valid filled sheet, "Upload" | Result "3 of 3 admission(s) created" with each "Row n: name (number)" | planned |
-| TC-STU-10-E03 | Web, sheet with one bad row | Result shows "1 row(s) failed" with the error text in red | planned |
-| TC-STU-10-E04 | Web, Staff sees "Bulk Upload"; Teacher does not | Button visible only with create permission | planned |
-| TC-STU-10-E05 | Mobile Admin, "Auto Fetch Details" on, "Download Pre-filled Template" | File downloads with existing admissions | planned |
-| TC-STU-10-E06 | Mobile, pick a filled file and "Upload & Create Admissions" | "Results" shows "<n> created" and "<n> total rows" chips and error lines | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-10-E01 | P2 | Web | Admin | QA Admin login | 1. Sign in as Admin.<br>2. Open Students > Admission.<br>3. Click "Bulk Upload".<br>4. Click "Download Template". | Dialog "Bulk Admission Upload" with "Download the template, fill in student rows, then upload the completed sheet."; file bulk_admission_template.xlsx downloads with sheet "Student Admission" | planned |
+| TC-STU-10-E02 | P1 | Web | Admin | Template from TC-STU-10-E01 filled with 3 valid rows (First name "QA Bulk 1" to "QA Bulk 3", joining class "Class 2", joining section "2-A", Father name, Father phone, Address Line 1) | 1. Open "Bulk Upload".<br>2. Click "Browse File" and choose the sheet.<br>3. Click "Upload". | Result "3 of 3 admission(s) created" with lines "Row n: QA Bulk n (<number>)"; the table lists the three students after "Close" | planned |
+| TC-STU-10-E03 | P2 | Web | Admin | Sheet with 2 valid rows ("QA Bulk 4", "QA Bulk 5") and one row without "Father phone" | 1. Open "Bulk Upload".<br>2. Choose the sheet and click "Upload". | Result "2 of 3 admission(s) created" and "1 row(s) failed" with the error line for that row in red; the two good rows are created | planned |
+| TC-STU-10-E04 | P2 | Web | Staff, Teacher | QA Staff and QA Teacher logins | 1. Sign in as Staff and open Students > Admission.<br>2. Sign in as Teacher and open Students > Admission. | Staff sees "Bulk Upload"; Teacher does not | planned |
+| TC-STU-10-E05 | P2 | Mobile | Admin | Seeded admissions | 1. Sign in as Admin on mobile.<br>2. Open Students > Admission and tap "Bulk Import".<br>3. Switch on "Auto Fetch Details".<br>4. Tap "Download Pre-filled Template". | Screen "Bulk Import Students"; the button label changes from "Download Blank Template" to "Download Pre-filled Template"; the downloaded file has one row per existing admission (30 seeded plus QA ones) | planned |
+| TC-STU-10-E06 | P2 | Mobile | Admin | Sheet with 2 valid rows ("QA Bulk M1", "QA Bulk M2") and 1 invalid row | 1. Open "Bulk Import Students".<br>2. Tap "Tap to select the filled Excel file" and pick the sheet.<br>3. Tap "Upload & Create Admissions". | Toast "Upload Finished With Errors - 2 created, 1 failed. See details below."; "Results" shows chips "2 created" and "3 total rows" and the error line | planned |
+| TC-STU-10-E07 | P3 | Mobile | Admin | A .csv file on the device | 1. Open "Bulk Import Students".<br>2. Tap "Tap to select the filled Excel file" and pick the .csv. | Toast "Please select an Excel (.xlsx/.xls) file"; nothing is uploaded | planned |
 
 API tests implemented in: backend/tests/api/students/test_bulk_upload.py
 
@@ -697,12 +770,12 @@ Implemented in: backend/tests/unit/student/test_bulk_upload_helpers.py.
 
 **Steps, web.**
 1. Students > Attendance (title "Student Attendance", card "Attendance Overview").
-2. Choose "Class", "Section", "Date" (date picker; default today).
-3. "Attendance Analysis" tiles Present, Absent, Late, Half Day, Leave and the line "<n>% Present" appear; below, "Filter Students" with the box "Search by name or roll no...".
-4. For each student pick a status in the dropdown (Present, Absent, Late, Half Day, Leave). Absent-type rows can use the "Send Absentee Message" icon. A "Unsaved Changes" badge appears.
+2. Choose "Class" ("Select Class"), "Section" ("Select Section", enabled after a class), "Date" (date picker; default today).
+3. "Attendance Analysis" tiles Present, Absent, Late, Half Day, Leave, a colour bar with "<n> students total" and the line "<n>% Present" appear; below, "Filter Students" with the box "Search by name or roll no..." (matches the name or the admission number, shown as "Roll No: <admission number>"). Empty states: "No students found for the selected class and section." and "No students match "<text>".".
+4. For each student pick a status in the dropdown (Present, Absent, Late, Half Day, Leave). Rows that are not Present can use the "Send Absentee Message" icon (shown only with `communications:create`; on a Present row it is disabled with a tooltip starting "Student is present"). A "Unsaved Changes" badge appears.
 5. Click "Save Attendance" (button disabled without changes or without create/update permission) or "Refresh" to reload saved data. Toast "Attendance saved successfully!".
 
-**Steps, mobile.** Students > Attendance: filters "Class", "Section", "Date"; header "Student Attendance" with "Refresh" and "Save Attendance"; tiles Present, Absent, Late, Leave and "<n>% Present"; search "Search by name or roll no..."; status dropdown per student (Present, Absent, Late, Leave; no half day). Toast "Saved - Attendance saved successfully".
+**Steps, mobile.** Students > Attendance: filters "Class", "Section", "Date"; header "Student Attendance" with "Refresh" and "Save Attendance"; "Select a class to view students" before a class is chosen; tiles Present, Absent, Late, Leave and "<n>% Present"; search "Search by name or roll no..."; status dropdown per student (Present, Absent, Late, Leave; no half day). Toast "Saved - Attendance saved successfully" (failure "Failed to save attendance").
 
 **Expected results.** One `student_attendance` row per student per date. Web saves only non-present marks (bulk by-date upsert) and updates existing rows; mobile writes a row for every student including present.
 
@@ -736,7 +809,7 @@ Implemented in: backend/tests/unit/student/test_bulk_upload_helpers.py.
 | TC-STU-11-A04 | Create a second row for the same student and date | 422 "Attendance already marked for this student on this date" | passing |
 | TC-STU-11-A05 | Create for tomorrow; for the day before the admission date; on the admission date (boundary) | 400; 400; 201 | passing |
 | TC-STU-11-A06 | Create for an unknown student id | 404 "Student not found" | passing |
-| TC-STU-11-A07 | By-date PATCH with 3 students (one new absent, one existing present -> late, one admitted tomorrow) | 200 returns 2 rows; third skipped silently (an empty remark on a new row is stored as an empty string) | xfail: STU-ATT-BYDATE-500 (500 when a by-date PATCH mixes existing and new rows) |
+| TC-STU-11-A07 | By-date PATCH with 3 students (one new absent, one existing present -> late, one admitted tomorrow) | 200 returns 2 rows; third skipped silently (an empty remark on a new row is stored as an empty string) | passing |
 | TC-STU-11-A08 | By-date PATCH with status "Absent" (capital), empty array, future date | 400 invalid status; 400 "No attendance updates provided"; 400 future | passing |
 | TC-STU-11-A09 | By-date PATCH items missing `student_id` or `status` | Skipped without error | passing |
 | TC-STU-11-A10 | By-date PATCH with an unknown student id | 500 database error (documented) | passing |
@@ -745,15 +818,21 @@ Implemented in: backend/tests/unit/student/test_bulk_upload_helpers.py.
 | TC-STU-11-A13 | No token on both endpoints | 401 | passing |
 | TC-STU-11-A14 | Tenant isolation: tenant B Admin marks a tenant A student; token A with B header | 404 "Student not found"; 403 | passing |
 | TC-STU-11-A15 | Teacher marks a student of a class they do not teach | 201 (no class scoping, documented) | passing |
-| TC-STU-11-E01 | Web Teacher selects Class 1, Section A, today; marks two students Absent and Late; "Save Attendance" | Toast "Attendance saved successfully!"; after "Refresh" the marks persist; analysis tiles update | planned |
-| TC-STU-11-E02 | Web, change nothing | "Save Attendance" is disabled; no "Unsaved Changes" badge | planned |
-| TC-STU-11-E03 | Web, set a student to Half Day | Summary shows Half Day 1 and the percentage counts it as 0.5 | planned |
-| TC-STU-11-E04 | Web, search "roll no" text | List filters by name or admission number; "No students match ..." when none | planned |
-| TC-STU-11-E05 | Web, class with 12 students | Only 10 are listed (documents the roster cap) | planned |
-| TC-STU-11-E06 | Web, pick a date before a student's admission | Student not listed (as_of_date filter) | planned |
-| TC-STU-11-E07 | Mobile Teacher, mark and "Save Attendance" | Toast "Saved - Attendance saved successfully"; a record exists for every student including present | planned |
-| TC-STU-11-E08 | Mobile, status dropdown options | Present, Absent, Late, Leave only | planned |
-| TC-STU-11-E09 | Web Student and Parent open Attendance | No marking UI (see F13) | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-11-E01 | P1 | Web | Teacher | Seeded Class 1 / 1-B (Advik Mehta, Harsha Raju, Nikhil Krishnan); no attendance marked today | 1. Sign in as Teacher.<br>2. Open Students > Attendance.<br>3. Select Class "Class 1", Section "1-B"; keep Date today.<br>4. Set "Harsha Raju" to Absent and "Advik Mehta" to Late.<br>5. Click "Save Attendance".<br>6. Click "Refresh". | Before saving the badge "Unsaved Changes" shows; toast "Attendance saved successfully!"; after Refresh both statuses persist; tiles show Absent 1 and Late 1 and the "<n>% Present" line updates | planned |
+| TC-STU-11-E02 | P3 | Web | Teacher | Seeded Class 1 / 1-B | 1. Open Students > Attendance and load Class 1 / 1-B.<br>2. Change nothing. | "Save Attendance" is disabled; no "Unsaved Changes" badge | planned |
+| TC-STU-11-E03 | P2 | Web | Teacher | Seeded Class 1 / 1-A (only Saanvi Iyer and Kavya Verma), no attendance marked today | 1. Load Class 1 / 1-A for today.<br>2. Set "Saanvi Iyer" to Half Day. | Tiles show Half Day 1 and Present 1; the line reads "75% Present" (half day counts 0.5) | planned |
+| TC-STU-11-E04 | P3 | Web | Teacher | Seeded Class 1 / 1-B loaded | 1. Type "Harsha" in "Search by name or roll no...".<br>2. Type "002".<br>3. Type "QA zzz". | Step 1: only Harsha Raju; step 2: only Advik Mehta (matched on "Roll No: <admission number>"); step 3: 'No students match "QA zzz".' | planned |
+| TC-STU-11-E05 | P2 | Web | Teacher | Class 2 / 2-A raised above 10 active students with QA admissions (for example TC-STU-10-E02 and TC-STU-10-E03 plus more), and one deactivated QA student in it | 1. Load that class and section for today.<br>2. Count the rows. | Every active student is listed (the roster pages 100 at a time); the inactive student is not listed; "<n> students total" equals the active count | planned |
+| TC-STU-11-E06 | P3 | Web | Teacher | TC-STU-04-E01 done ("QA Ravi Rao" admitted today in Class 2 / 2-A) | 1. Load Class 2 / 2-A.<br>2. Set Date to yesterday. | "QA Ravi Rao" is not listed (as_of_date filter); seeded Arjun Yadav and Rahul Menon (admitted 2026-06-10) are listed | planned |
+| TC-STU-11-E07 | P1 | Mobile | Teacher | Seeded Class 1 / 1-A (Saanvi Iyer, Kavya Verma); no attendance marked today | 1. Sign in as Teacher on mobile.<br>2. Open Students > Attendance.<br>3. Choose Class "Class 1", Section "1-A", today.<br>4. Set "Saanvi Iyer" to Absent.<br>5. Tap "Save Attendance". | Toast "Saved - Attendance saved successfully"; an attendance row exists for every listed student, including the ones left Present | planned |
+| TC-STU-11-E08 | P3 | Mobile | Teacher | Seeded Class 1 / 1-A loaded on mobile | 1. Open the status dropdown of any student. | Options Present, Absent, Late, Leave only (no Half Day) | planned |
+| TC-STU-11-E09 | P2 | Web | Student, Parent | Seeded student login 004; seeded parent login venkat.raju@example.com | 1. Sign in with the seeded student login 004 and open Students > Attendance.<br>2. Sign in as venkat.raju@example.com and open Students > Attendance. | Student sees "My Attendance" and Parent sees "Children's Attendance"; neither shows Class, Section, status dropdowns or "Save Attendance" | planned |
+| TC-STU-11-E10 | P3 | Web | Admin | TC-STU-11-E01 done (Harsha Raju Absent today in Class 1 / 1-B) | 1. Sign in as Admin and load Class 1 / 1-B.<br>2. Hover the "Send Absentee Message" icon on a Present row.<br>3. Click the icon on the Absent row of Harsha Raju. | Step 2: the icon is disabled with a tooltip starting "Student is present"; step 3: dialog "Send Message" to "Harsha Raju" with the "Student Absentees" template preselected when it exists | planned |
 
 API tests implemented in: backend/tests/api/students/test_attendance.py
 
@@ -802,8 +881,13 @@ Implemented in: backend/tests/unit/student/test_student_attendance.py (U01 schem
 | TC-STU-12-A09 | No token on PATCH and DELETE | 401 | passing |
 | TC-STU-12-A10 | Tenant isolation: tenant B Admin patches or deletes a tenant A row; token A with B header | 404; 403 | passing |
 | TC-STU-12-A11 | Static routes before dynamic: `GET /student/attendance/my-attendance` and `/search` | Not parsed as a UUID (no UUID 422 for these paths) | passing |
-| TC-STU-12-E01 | Web Teacher changes a saved Absent to Present and saves | Toast "Attendance saved successfully!"; Refresh shows Present | planned |
-| TC-STU-12-E02 | Mobile Teacher changes Late to Absent and saves | Record updated; tiles refresh | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-12-E01 | P1 | Web | Teacher | TC-STU-11-E01 done (Harsha Raju Absent today) | 1. Sign in as Teacher.<br>2. Load Class 1 / 1-B for today.<br>3. Set "Harsha Raju" to Present.<br>4. Click "Save Attendance".<br>5. Click "Refresh". | Toast "Attendance saved successfully!"; after Refresh Harsha Raju is Present (same row updated, not a second row) | planned |
+| TC-STU-12-E02 | P2 | Mobile | Teacher | TC-STU-11-E01 done (Advik Mehta Late today) | 1. Sign in as Teacher on mobile.<br>2. Open Students > Attendance and load Class 1 / 1-B for today.<br>3. Set "Advik Mehta" to Absent.<br>4. Tap "Save Attendance". | Toast "Saved - Attendance saved successfully"; the record changes to Absent; tiles refresh | planned |
 
 API tests implemented in: backend/tests/api/students/test_attendance.py
 
@@ -822,9 +906,9 @@ Implemented in: backend/tests/unit/student/test_student_attendance.py.
 
 **Preconditions.** Attendance rows exist.
 
-**Steps, web.** Students > Attendance. Student: page "My Attendance", card "Filter by Date" ("From", "To", default first of the month to today), summary tiles "Total Days, Present, Absent, Late, Half Day, Leave" and list "Attendance Records" (newest first, "No attendance records found for the selected period."). Parent: page "Children's Attendance" for the child selected in the header ("No child selected. Use the child switcher in the header above."), title "<child>'s Attendance". Staff: the marking view shows saved marks for the chosen date and the percentage.
+**Steps, web.** Students > Attendance. Student: page "My Attendance", card "Filter by Date" ("From", "To", meant to default to the first of the month to today), summary tiles "Total Days, Present, Absent, Late, Half Day, Leave" (shown only when records exist) and list "Attendance Records" (newest first, "No attendance records found for the selected period."). Parent: page "Children's Attendance" for the child selected in the header, card "Filter by Date" (with "No child selected. Use the child switcher in the header above." when no child is selected), list titled "<child>'s Attendance" (or "Attendance"). Staff: the marking view shows saved marks for the chosen date and the percentage.
 
-**Steps, mobile.** Student: "My Attendance" with "Filter by Date" (From, To) and tiles incl. "Total Days", "Half Day"; list "Attendance Records". Parent: month dropdown "Select Month", title "<child>'s Attendance", month summary and the line "<n>% attendance" (green at 75 or more, red below). Staff: roster view.
+**Steps, mobile.** Student: "My Attendance" with "Filter by Date" (From, To) and tiles incl. "Total Days", "Half Day"; list "Attendance Records". Parent: month dropdown "Select Month", title "<child>'s Attendance", month summary and the line "<n>% attendance" (green at 75 or more, red below); without a selected child "Please select a student from the header". Staff: roster view.
 
 **Expected results.** Records are listed newest first with date, status and remarks.
 
@@ -841,7 +925,7 @@ Implemented in: backend/tests/unit/student/test_student_attendance.py.
 - Static routes (`/search`, `/my-attendance`) are declared before `/{attendance_id}`.
 - `GET /` and `/by-date/{date}` return every student's rows to any role with `list`.
 
-**Error and edge cases.** A Parent calling `/my-attendance` gets 403 (no `read_own`). A Student calling `/my-attendance` without dates gets 422. No records: empty list.
+**Error and edge cases.** A Parent calling `/my-attendance` gets 403 (no `read_own`). A Student calling `/my-attendance` without dates gets 422. No records: empty list. The web "From" default is built with `toISOString()` from local midnight, so in a timezone ahead of UTC (IST) it shows the last day of the previous month (seen 2026-10-07: "30 Sept 2026"). A Student login without a student record gets 403 from `student/{id}/filter` (the page then shows the empty-records text).
 
 **Unit-testable logic.** The shared percentage rule (backend `attendance_percentage.py`, mobile `src/utils/attendance.ts`); summary counters; date range default (first of month to today); sort by date descending.
 
@@ -867,13 +951,20 @@ Implemented in: backend/tests/unit/student/test_student_attendance.py.
 | TC-STU-13-A11 | Permission matrix for `GET /`, `/search`, `/by-date`, `/{id}` | Admin, Staff, Teacher 200; Student 403; Parent 403 | passing |
 | TC-STU-13-A12 | No token on every endpoint of this feature | 401 | passing |
 | TC-STU-13-A13 | Tenant isolation: tenant B sees no tenant A rows; token A with B header | Empty lists; 403 | passing |
-| TC-STU-13-E01 | Web Student opens Attendance | "My Attendance" with tiles Total Days, Present, Absent, Late, Half Day, Leave and a list sorted newest first | planned |
-| TC-STU-13-E02 | Web Student sets "From" later than "To" | Error state or empty list (400 from API); no crash | planned |
-| TC-STU-13-E03 | Web Parent with two children switches the header child selector | Title and records change to the selected child | planned |
-| TC-STU-13-E04 | Web Parent with no child selected | Text "No child selected. Use the child switcher in the header above." | planned |
-| TC-STU-13-E05 | Mobile Parent opens Attendance | "Select Month" dropdown, month tiles and "<n>% attendance" | planned |
-| TC-STU-13-E06 | Mobile Student opens Attendance | "Filter by Date" with From and To, tiles and records | planned |
-| TC-STU-13-E07 | Web Admin sees the saved marks for a date after Save | Persisted statuses and analysis percentage shown | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-13-E01 | P1 | Web | Student | Seeded student login 004 (Harsha Raju, seeded attendance) | 1. Sign in with the seeded student login 004.<br>2. Open Students > Attendance.<br>3. Set "From" to 2026-09-25 and "To" to 2026-10-01. | Page "My Attendance", card "Filter by Date" with "From" and "To"; tiles Total Days, Present, Absent, Late, Half Day, Leave with Total Days 5 (the seeded days); list "Attendance Records" newest first with date and status | planned |
+| TC-STU-13-E02 | P3 | Web | Student | Seeded student login 004 | 1. Open Students > Attendance.<br>2. Set "From" to a date after "To". | No crash; the list shows "No attendance records found for the selected period." (the API answers 400) | planned |
+| TC-STU-13-E03 | P2 | Web | Parent | Seeded parent login venkat.raju@example.com (Harsha and Tanvi Raju, seeded attendance) | 1. Sign in as venkat.raju@example.com and set From 2026-09-25, To 2026-10-01.<br>2. Open Students > Attendance.<br>3. Switch the header child selector to the other child. | The list title changes from "Harsha Raju's Attendance" to "Tanvi Raju's Attendance" and the records follow the selected child | planned |
+| TC-STU-13-E04 | P3 | Web | Parent | QA Parent login (unlinked) | 1. Sign in with the QA Parent login (unlinked).<br>2. Open Students > Attendance. | "Children's Attendance" with "No child selected. Use the child switcher in the header above." and "No attendance records found for the selected period." (verified 2026-10-07) | planned |
+| TC-STU-13-E05 | P2 | Mobile | Parent | Seeded parent login venkat.raju@example.com, Harsha Raju selected | 1. Sign in as venkat.raju@example.com on mobile.<br>2. Open Students > Attendance.<br>3. Choose September 2026 in "Select Month". | Title "Harsha Raju's Attendance", month tiles and the line "<n>% attendance" (green at 75 or more, red below) | planned |
+| TC-STU-13-E06 | P2 | Mobile | Student | Seeded student login 004 (seeded attendance) | 1. Sign in with the seeded student login 004 on mobile.<br>2. Open Students > Attendance. | "Filter by Date" with From and To, tiles including "Total Days" and "Half Day", and "Attendance Records" | planned |
+| TC-STU-13-E07 | P2 | Web | Admin | TC-STU-11-E01 and TC-STU-12-E01 done | 1. Sign in as Admin.<br>2. Open Students > Attendance and load Class 1 / 1-B for today. | Saved statuses are shown (Harsha Raju Present after TC-STU-12-E01, Advik Mehta Late); the analysis tiles and "<n>% Present" match them | planned |
+| TC-STU-13-E08 | P3 | Mobile | Parent | QA Parent login (unlinked) | 1. Sign in with the QA Parent login (unlinked) on mobile.<br>2. Open Students > Attendance. | "Please select a student from the header" | planned |
+| TC-STU-13-E09 | P3 | Web | Student | Seeded student login 004; browser timezone IST (UTC+05:30) | 1. Sign in with the seeded student login 004.<br>2. Open Students > Attendance.<br>3. Read the default "From" date. | "From" shows the first day of the current month | blocked: Known gap 23 (From shows the last day of the previous month in IST) |
 
 API tests implemented in: backend/tests/api/students/test_attendance.py
 
@@ -889,11 +980,12 @@ API tests implemented in: backend/tests/api/students/test_attendance.py
 
 **Steps, web.**
 1. Open `/students/documentsupload` ("Document Upload"; not in the default menu). The section "Upload New Document" (collapsible) needs `student_documents:create`.
-2. Choose "Student *" (picker "Select student"), "Document Type *" (picker "Select document type"), "Browse File *" (Browse; accepts .pdf .jpg .jpeg .png .doc .docx).
+2. Choose "Student *" (picker "Select student"), "Document Type *" (picker "Select document type"; empty because `GET /students/document-types/` is 404), "Browse File *" (Browse; accepts .pdf .jpg .jpeg .png .doc .docx).
 3. Click "Upload Document" (label "Uploading...") or "Reset". Success toast "Document uploaded successfully!". Missing fields: toast "Please fill all required fields and select a file".
-4. Students own variant: `/students/mydocuments` "My Documents" > "Upload Document" collapsible with "Document Type", "File".
+4. Below, "Uploaded Documents" shows "Select a student above to view their documents" until a student is chosen, then the list or "No documents found for this student". A Teacher sees only this list (no upload card); a Parent gets "Access Denied" "You don't have permission to view student documents.".
+5. Students own variant: `/students/mydocuments` "My Documents" with an "Upload Document" header button that opens "Upload New Document" with "Document Type" and "File" (toast "Please select a file and document type" when either is missing). Non-student roles opening this URL see "Loading your documents..." that never ends.
 
-**Steps, mobile.** `documentupload.tsx` ("Upload Document"; guard create or update): pick a file (PDF, JPG, PNG only, 5 MB max, messages "File size must be less than 5MB" and "Only PDF, JPG, and PNG files are allowed"), enter name and type, "Upload Document". `mydocuments.tsx`: "Upload New Document" modal. `documents.tsx` (admin): the type buttons are a stub that only shows "File picker integration needed for device files".
+**Steps, mobile.** `documentupload.tsx` ("Upload Document"; guard create or update): "Tap to select document file" (PDF, JPG, PNG only, 5 MB max, messages "File size must be less than 5MB" and "Only PDF, JPG, and PNG files are allowed"), "Document Name *" ("Enter document name"), "Document Type *" chips (Certificate, Medical, Identification, Academic, Other), "Upload Document". Missing file: "Please select a document file"; missing name or type: "Please fill in all required fields". `mydocuments.tsx`: "Upload New Document" modal (type placeholder "e.g. Birth Certificate, ID Proof..."; "Please enter a document type and select a file"). `documents.tsx` (admin, "Documents" with "Filter by Student" "All Students"): calls `GET /students/documents/` without `student_id` (422) and shows "Select a student to view documents"; its type buttons are a stub that only shows "File picker integration needed for device files".
 
 **Expected results.** 201 `StudentDocumentOut {id, student_id, document_type, file_path, upload_date}`. The file is stored as `student_documents/<uuid>.<ext>` relative to the server working directory (not tenant-scoped, not served).
 
@@ -922,7 +1014,7 @@ API tests implemented in: backend/tests/api/students/test_attendance.py
 | TC-STU-14-U05 | Content type "text/plain" with a .pdf name | Rejected "Invalid file type" | passing |
 | TC-STU-14-A01 | Admin uploads a small PDF with `document_type` "Birth Certificate" | 201 with id, student_id, document_type, file_path `student_documents/<uuid>.pdf`, upload_date | passing |
 | TC-STU-14-A02 | Upload JPG, PNG and DOCX | 201 each | passing |
-| TC-STU-14-A03 | Upload `.doc`, `.txt`, a 5 MB + 1 byte file, a fake PDF, an empty file | 400 each with the matching message | passing except the 5 MB size boundary (skipped: tiny files only) |
+| TC-STU-14-A03 | Upload `.doc`, `.txt`, a 5 MB + 1 byte file, a fake PDF, an empty file | 400 each with the matching message | skipped: size boundary needs a 5 MB file; |
 | TC-STU-14-A04 | Upload the same `document_type` twice for one student; same type for another student | 422 "already exists for this student"; 201 | passing |
 | TC-STU-14-A05 | Missing `document_type` or blank "   "; missing file | 422 (required form field) or 400 "Document type is required"; 422 | passing |
 | TC-STU-14-A06 | Unknown `student_id` | 404 "Student not found" | passing |
@@ -932,12 +1024,19 @@ API tests implemented in: backend/tests/api/students/test_attendance.py
 | TC-STU-14-A10 | PATCH permission matrix | Admin 200, Staff 200, Teacher 403, Student 403, Parent 403 | passing |
 | TC-STU-14-A11 | No token on both endpoints | 401 | passing |
 | TC-STU-14-A12 | Tenant isolation: tenant B Admin uploads for a tenant A student; token A with B header | 404; 403 | passing |
-| TC-STU-14-E01 | Web Admin on `/students/documentsupload`: choose student, document type, file, "Upload Document" | Toast "Document uploaded successfully!" and the document appears in "Uploaded Documents" (blocked today because the type list is empty: record as defect until fixed) | planned |
-| TC-STU-14-E02 | Web, click "Upload Document" with nothing chosen | Toast "Please fill all required fields and select a file" | planned |
-| TC-STU-14-E03 | Web Staff sees the upload card; Teacher sees the list but not the card | Card visible only with create permission | planned |
-| TC-STU-14-E04 | Mobile Staff, "Upload Document" with a 6 MB PDF | Error "File size must be less than 5MB" | planned |
-| TC-STU-14-E05 | Mobile, pick a .docx | Error "Only PDF, JPG, and PNG files are allowed" | planned |
-| TC-STU-14-E06 | Mobile Student, "Upload New Document" in My Documents | Request fails 403 under the default catalog (Student lacks create); error toast shown | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-14-E01 | P2 | Web | Admin | TC-STU-03-E01 done; a small PDF | 1. Sign in as Admin.<br>2. Open /students/documentsupload.<br>3. Under "Upload New Document" choose Student "QA Asha Rao".<br>4. Open "Document Type *" and pick a type.<br>5. Click "Browse" and choose the PDF.<br>6. Click "Upload Document". | Toast "Document uploaded successfully!"; the document appears under "Uploaded Documents" for QA Asha Rao | blocked: Known gap 7 (document type list is empty: GET /students/document-types/ is 404) |
+| TC-STU-14-E02 | P3 | Web | Admin | QA Admin login | 1. Open /students/documentsupload.<br>2. Click "Upload Document" without choosing anything. | Toast "Please fill all required fields and select a file"; nothing is uploaded | planned |
+| TC-STU-14-E03 | P2 | Web | Staff, Teacher | QA Staff and QA Teacher logins | 1. Sign in as Staff and open /students/documentsupload.<br>2. Sign in as Teacher and open /students/documentsupload. | Staff sees the "Upload New Document" card and "Uploaded Documents"; Teacher sees only "Uploaded Documents" ("Select a student above to view their documents") | planned |
+| TC-STU-14-E04 | P3 | Mobile | Staff | A 6 MB PDF on the device | 1. Sign in as Staff on mobile.<br>2. Open /students/documentupload ("Upload Document").<br>3. Tap "Tap to select document file" and pick the 6 MB PDF. | Toast "File size must be less than 5MB"; no file is selected | planned |
+| TC-STU-14-E05 | P3 | Mobile | Staff | A .docx file on the device | 1. Open "Upload Document" on mobile.<br>2. Tap "Tap to select document file" and pick the .docx. | Toast "Only PDF, JPG, and PNG files are allowed" | planned |
+| TC-STU-14-E06 | P3 | Mobile | Student | Seeded student login 004; a small PDF on the device | 1. Sign in with the seeded student login 004 on mobile.<br>2. Open My Documents and tap "Upload New Document".<br>3. Enter type "QA Birth Certificate", pick the PDF and tap "Upload Document". | The upload is refused (403: the Student role has no student_documents:create) and an error toast is shown; nothing is stored | planned |
+| TC-STU-14-E07 | P3 | Mobile | Staff | QA Staff login; a small PDF | 1. Open "Upload Document" on mobile.<br>2. Pick the PDF.<br>3. Leave "Document Name *" empty and tap "Upload Document". | Toast "Please fill in all required fields" | planned |
+| TC-STU-14-E08 | P3 | Web | Parent | Seeded parent login venkat.raju@example.com | 1. Sign in as venkat.raju@example.com.<br>2. Open /students/documentsupload. | "Access Denied" with "You don't have permission to view student documents." (verified 2026-10-07) | planned |
 
 API tests implemented in: backend/tests/api/students/test_documents.py
 
@@ -954,12 +1053,12 @@ Implemented in: backend/tests/unit/student/test_student_documents.py.
 **Preconditions.** Documents, certificates or receipts exist.
 
 **Steps, web.** Students > Student Documents (`/students/studentdocuments`, page "Student Documents"):
-- Staff view: "Student" picker ("Select a student") and "Clear"; table "Source | Name / Type | Date" with source badges "Document", "Certificate", "Receipt". "Please select a student to view their documents."
-- Student view: card title "Documents - <name> (<admission no> . <class - section>)", table "S.No. | Source | Name / Type | Date", empty text "No documents found."
+- Staff view (Admin, Staff, Teacher): "Student" picker ("Select a student") and "Clear"; table "Source | Name / Type | Date" with source badges "Document", "Certificate", "Receipt". Before a choice: "Please select a student to view their documents."; empty: "No documents found for this student." and "Documents uploaded for the selected student will appear here.".
+- Student view: card title "Documents - <name> (<admission no> . <class - section>)" (card "My Documents" while loading), table "S.No. | Source | Name / Type | Date", empty text "No documents found." and "Documents issued to you will appear here.". Under the default catalog `/all` answers 403 and the card stays on "Loading documents..." (Known gaps). A Student login without a student record sees "No student record is linked to your account." only when the store has no student id.
 - Parent view: "Documents" for the selected child; "No children linked to your account." when none.
-- `/students/documentsupload` lists "Uploaded Documents" for a chosen student with row actions (view, verify, delete).
+- `/students/documentsupload` lists "Uploaded Documents" for a chosen student with row actions "View Document", "Verify Document", "Delete".
 
-**Steps, mobile.** Students > Student Documents (`studentdocuments.tsx`): student dropdown ("Select a student"), cards with a source badge, "Download" for uploaded documents. `parents/documents.tsx` ("Documents - <child>") lists the child's certificates. `mydocuments.tsx` lists a student's own documents.
+**Steps, mobile.** Students > Student Documents (`studentdocuments.tsx`): card "Select Student" with dropdown "Student" ("Select a student") and "Clear", "Please select a student to view their documents." before a choice, cards with a source badge and "View" for uploaded documents. A Parent without a selected child sees "Select a student from the header". `parents/documents.tsx` ("Documents") lists the child's certificates, "No child selected." with "Select a child" otherwise. `mydocuments.tsx` lists a student's own documents ("No Documents Found", "Documents issued to you will appear here.").
 
 **Expected results.** `/all` returns documents (source `document`), certificates received and issued (source `certificate`, with `type_name` and `certificate_category`) and fee receipts (source `receipt`, with `receipt_number`), newest first by `upload_date`.
 
@@ -981,17 +1080,22 @@ Implemented in: backend/tests/unit/student/test_student_documents.py.
 | TC-STU-15-U01 | Unified list build with 1 document, 1 issued certificate without type, 1 receipt, differing dates | 3 items sorted by date descending; certificate label "Issued Certificate" when type missing | passing |
 | TC-STU-15-A01 | Admin `GET /` for a student with 2 documents | 200 two items | passing |
 | TC-STU-15-A02 | `GET /` without `student_id`; unknown student; malformed id | 422; 404; 422 | passing |
-| TC-STU-15-A03 | `GET /all` for a student with a document, a received and an issued certificate and a receipt | 4 items with sources document, certificate x2, receipt; `certificate_category` set on certificates; `receipt_number` on the receipt | blocked: receipt source needs a fee payment (FEE fixtures) |
+| TC-STU-15-A03 | `GET /all` for a student with a document, a received and an issued certificate and a receipt | 4 items with sources document, certificate x2, receipt; `certificate_category` set on certificates; `receipt_number` on the receipt | skipped: blocked: the receipt source needs a fee payment, which belongs to FEE fixtures |
 | TC-STU-15-A04 | `GET /{id}` and unknown id | 200; 404 "Document not found" | passing |
 | TC-STU-15-A05 | Permission matrix for `/`, `/all`, `/{id}` | Admin, Staff, Teacher 200; Student 403; Parent 403 | passing |
 | TC-STU-15-A06 | Teacher requests another class's student | 200 (no scoping, documented) | passing |
 | TC-STU-15-A07 | No token | 401 | passing |
 | TC-STU-15-A08 | Tenant isolation: tenant B Admin lists a tenant A student; token A with B header | 404; 403 | passing |
-| TC-STU-15-E01 | Web Admin on Student Documents picks a student | Rows with badges Document, Certificate, Receipt and dates | planned |
-| TC-STU-15-E02 | Web Student opens Student Documents | Own list is shown if the grant exists; under the default catalog an error or empty state appears (403) - verify against the QA tenant grants | planned |
-| TC-STU-15-E03 | Web Parent switches child | List refreshes for the new child | planned |
-| TC-STU-15-E04 | Web Parent with no children | "No children linked to your account." | planned |
-| TC-STU-15-E05 | Mobile Admin, Student Documents with a student chosen | Cards with source badge and Download for uploaded documents | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-15-E01 | P1 | Web | Admin | Seeded student Karthik Reddy (001) with the uploaded document "Aadhaar Card" | 1. Sign in as Admin.<br>2. Open Students > Student Documents.<br>3. Choose "Karthik Reddy" in "Select a student". | Table "Source, Name / Type, Date" lists "Aadhaar Card" with the badge "Document" and its date (plus any certificate or receipt rows); "Clear" resets the picker to "Please select a student to view their documents." | planned |
+| TC-STU-15-E02 | P2 | Web | Student | Seeded student login 001 (Karthik Reddy, document Aadhaar Card) | 1. Sign in with the seeded student login 001.<br>2. Open Students > Student Documents. | Card "Documents - Karthik Reddy (001 . Class 3 - 3-B)" with the student's rows | blocked: Known gap 8 and 23 (documents/all answers 403 for the Student role and the card stays on "Loading documents...") |
+| TC-STU-15-E03 | P2 | Web | Parent | Seeded parent login prakash.reddy@example.com (Ananya Reddy with Birth Certificate, Karthik Reddy with Aadhaar Card) | 1. Sign in as prakash.reddy@example.com.<br>2. Open Students > Student Documents.<br>3. Switch the header child selector to the other child. | The "Documents" list refreshes for the selected child; no rows of the other child remain | blocked: Known gap 8 (documents/all needs the exact list grant; Parent holds list_related) |
+| TC-STU-15-E04 | P3 | Web | Parent | QA Parent login (unlinked) | 1. Sign in with the QA Parent login (unlinked).<br>2. Open Students > Student Documents. | "No children linked to your account." (verified 2026-10-07) | planned |
+| TC-STU-15-E05 | P2 | Mobile | Admin | Seeded student Karthik Reddy (001, document Aadhaar Card) | 1. Sign in as Admin on mobile.<br>2. Open Students > Student Documents.<br>3. Choose "Karthik Reddy" in "Student". | Cards with a source badge for each item; uploaded documents show "View" and a download icon | planned |
 
 API tests implemented in: backend/tests/api/students/test_documents.py
 
@@ -1007,9 +1111,9 @@ Implemented in: backend/tests/unit/student/test_student_documents.py.
 
 **Preconditions.** Document exists.
 
-**Steps, web.** `/students/documentsupload`, select the student, row icon "Delete" (dialog "Delete Document?" "Are you sure you want to delete this document? This action cannot be undone." > "Delete"). Toast "Document deleted successfully!". Row icon "View Document" opens `<API origin><file_path>`; "Verify Document" (dialog "Verify Document", field "Remarks (optional)", button "Verify") calls a missing endpoint.
+**Steps, web.** `/students/documentsupload`, select the student, row icon "Delete" (shown only with `student_documents:delete`; dialog "Delete Document?" "Are you sure you want to delete this document? This action cannot be undone." > "Cancel" or "Delete"). Toast "Document deleted successfully!". Row icon "View Document" opens `<API origin><file_path>`; "Verify Document" (dialog "Verify Document", field "Remarks (optional)", button "Verify") calls a missing endpoint (toast "Failed to verify document").
 
-**Steps, mobile.** `studentdocuments.tsx` and `mydocuments.tsx` "Download" / eye button read `/students/documents/{id}/download`, which does not exist.
+**Steps, mobile.** `studentdocuments.tsx` ("View" and the download icon) and `mydocuments.tsx` (eye and "Download" icons) read `/students/documents/{id}/download`, which does not exist; the error toast is "Failed to download document" or "Failed to process document".
 
 **Expected results.** Delete returns 204 and removes the row, then the file on disk (a failed file removal is only logged).
 
@@ -1032,10 +1136,15 @@ Implemented in: backend/tests/unit/student/test_student_documents.py.
 | TC-STU-16-A04 | `GET /students/documents/{id}/download`, `POST /{id}/verify`, `GET /students/document-types/` | 404 / 404 / 404 (documented missing endpoints) | passing |
 | TC-STU-16-A05 | No token | 401 | passing |
 | TC-STU-16-A06 | Tenant isolation: tenant B Admin deletes a tenant A document; token A with B header | 404; 403 | passing |
-| TC-STU-16-E01 | Web Admin deletes a document | Dialog "Delete Document?", toast "Document deleted successfully!", row disappears | planned |
-| TC-STU-16-E02 | Web Staff | Delete icon hidden (no delete permission) | planned |
-| TC-STU-16-E03 | Web, click "View Document" | Opens `<API origin>/student_documents/<uuid>.pdf` which does not load (defect) | planned |
-| TC-STU-16-E04 | Mobile, tap "Download" | Error toast "Failed to download document" (endpoint missing) | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-16-E01 | P2 | Web | Admin | TC-STU-03-E01 done; a document "QA Doc" uploaded for "QA Asha Rao" through the API (POST /students/documents/); never delete the seeded documents | 1. Sign in as Admin.<br>2. Open /students/documentsupload and choose Student "QA Asha Rao".<br>3. Click "Delete" on the row.<br>4. Click "Delete" in the dialog. | Dialog "Delete Document?" with "Are you sure you want to delete this document? This action cannot be undone."; toast "Document deleted successfully!"; the row disappears | planned |
+| TC-STU-16-E02 | P2 | Web | Staff | Seeded document Aadhaar Card of Karthik Reddy (001) | 1. Sign in as Staff.<br>2. Open /students/documentsupload and choose "Karthik Reddy". | The row shows "View Document" and "Verify Document" but no "Delete" icon | planned |
+| TC-STU-16-E03 | P3 | Web | Admin | Seeded document Aadhaar Card of Karthik Reddy (001) | 1. Open /students/documentsupload and choose "Karthik Reddy".<br>2. Click "View Document". | The file opens in a new tab | blocked: Known gap 7 (files under ./student_documents are not served; the link is broken) |
+| TC-STU-16-E04 | P3 | Mobile | Admin | Seeded document Aadhaar Card of Karthik Reddy (001) | 1. Sign in as Admin on mobile.<br>2. Open Students > Student Documents and choose "Karthik Reddy".<br>3. Tap "View" on the document card. | The file opens | blocked: Known gap 7 (GET /students/documents/{id}/download does not exist; toast "Failed to download document" or "Failed to process document") |
 
 API tests implemented in: backend/tests/api/students/test_documents.py
 
@@ -1051,9 +1160,9 @@ Implemented in: backend/tests/unit/student/test_student_documents.py.
 
 **Preconditions.** A student or parent with an admission or linked child.
 
-**Steps, web.** Student: Students > Admission shows the admission table with a single row and a "View Admission" action. Parent: Students > Admission shows "Admission - <child> (#<number>)" with the detail table for the child selected in the header; "No children linked to your account." or "No child selected. Use the child switcher in the header above." otherwise.
+**Steps, web.** Student: Students > Admission ("Student Admissions") shows the admission table with a single row and a "View Admission" action (no "New Admission", "Bulk Upload", edit or toggle controls); a Student login without a student record sees "No data". Parent: Students > Admission shows a card "Admission - <child> (#<number>)" with the detail table for the child selected in the header ("Loading admission details..." while loading); "No children linked to your account." or "No child selected. Use the child switcher in the header above." otherwise.
 
-**Steps, mobile.** `myadmission.tsx`: Student sees their record in collapsible sections starting with "Admission Details"; Parent sees "Child ..." title with the selected child's record (sections for admission, student, parents, address).
+**Steps, mobile.** `myadmission.tsx`: Student (title "My Admission") sees their record in collapsible sections starting with "Admission Details" ("No admission record found." without a student record); Parent (title "Admission") sees the selected child's record (sections for admission, student, parents, address), "Select a child" when none is selected and "No children linked to your account." when no child is linked. Admin, Staff and Teacher get "Access Denied" (title "Admissions").
 
 **Expected results.** Student sees only their own record; Parent only linked children.
 
@@ -1080,10 +1189,16 @@ Implemented in: backend/tests/unit/student/test_student_documents.py.
 | TC-STU-17-A06 | `limit=0` / `limit=101` on my-children-admissions | 422 | passing |
 | TC-STU-17-A07 | No token | 401 | passing |
 | TC-STU-17-A08 | Tenant isolation: tenant A student token with tenant B header | 403 | passing |
-| TC-STU-17-E01 | Web Student opens Students > Admission | One row; View shows own details; no edit or deactivate icons | planned |
-| TC-STU-17-E02 | Web Parent opens Students > Admission | Detail table for the selected child; switching the child updates it | planned |
-| TC-STU-17-E03 | Mobile Student opens My Admission | Own record, first section "Admission Details" open | planned |
-| TC-STU-17-E04 | Mobile Parent opens the admission screen with a child selected | The child's record; "Select a student from the header" style prompt when none | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-17-E01 | P1 | Web | Student | Seeded student login 004 (Harsha Raju) | 1. Sign in with the seeded student login 004.<br>2. Open Students > Admission.<br>3. Click "View Admission". | One row (Harsha Raju); the dialog "Admission Details - <number>" shows the own record; no "New Admission", "Bulk Upload", "Edit Admission" or toggle icons | planned |
+| TC-STU-17-E02 | P2 | Web | Parent | Seeded parent login venkat.raju@example.com | 1. Sign in as venkat.raju@example.com.<br>2. Open Students > Admission.<br>3. Switch the header child selector to the other child. | Card "Admission - <child> (#<number>)" with the detail table of the selected child ("Admission - Harsha Raju (#004)"); after the switch the card shows the other child | planned |
+| TC-STU-17-E03 | P2 | Mobile | Student | Seeded student login 004 | 1. Sign in with the seeded student login 004 on mobile.<br>2. Open /students/myadmission. | Screen "My Admission" with the own record in collapsible sections, the first one "Admission Details" open | planned |
+| TC-STU-17-E04 | P2 | Mobile | Parent | Seeded parent login venkat.raju@example.com; QA Parent login (unlinked) | 1. Sign in as venkat.raju@example.com on mobile, select Harsha Raju and open /students/myadmission.<br>2. Sign in with the QA Parent login (unlinked) and open /students/myadmission. | Step 1: screen "Admission" with the selected child's record; step 2: "No children linked to your account." (verified 2026-10-07) | planned |
+| TC-STU-17-E05 | P3 | Mobile | Admin | QA Admin login | 1. Sign in as Admin on mobile.<br>2. Open /students/myadmission. | "Access Denied" "You don't have permission to view this screen. Please contact your administrator." (verified 2026-10-07) | planned |
 
 API tests implemented in: backend/tests/api/students/test_admission_read.py
 
@@ -1099,9 +1214,9 @@ Implemented in: backend/tests/unit/student/test_student_misc_services.py (UserCo
 
 **Preconditions.** Logged in as a Student with a student record.
 
-**Steps, web.** Open `/students/profile` ("Student Profile"): cards "Personal Information" (First Name, Last Name, Phone, Date of Birth, Address, Emergency Contact, Blood Group, Email) and "Academic Information" (Admission Number, Roll Number, Class, Section, Academic Year). Click "Edit Email", change "Email" (required, pattern), "Update".
+**Steps, web.** Open `/students/profile` ("Student Profile"): cards "Personal Information" (First Name, Last Name, Phone, Date of Birth, Address, Emergency Contact, Blood Group, Email) and "Academic Information" (Admission Number, Roll Number, Class, Section, Academic Year). Click "Edit Email", change "Email" (required, pattern, message "Invalid email address"), "Update" ("Updating...") or "Cancel". A Student without a student record sees "Error loading profile: Student profile not found"; Admin, Staff, Teacher and Parent opening the URL see "Loading student profile..." that never ends.
 
-**Steps, mobile.** `profile.tsx`: "Personal Information", "Academic Information", "Address", button to edit with fields "Email", "Phone", "Address" (title "Edit Profile"). A Parent viewing a child requests `/students/profile/<id>`, which does not exist.
+**Steps, mobile.** `profile.tsx` ("Student Profile"): "Personal Information", "Academic Information", "Address", button to edit with fields "Email", "Phone", "Address" (title "Edit Profile"; failure toast "Failed to update profile"). Without a student: "No profile data available" "Please select a student to view profile" (Parent: title "Child Profile" and "Select a student from the header"). A Parent viewing a child requests `/students/profile/<id>`, which does not exist.
 
 **Expected results.** The backend returns `{student_id, user_id, first_name, last_name, date_of_birth, gender, email, admission_number, class_name, section_name, is_active, profile_photo_url (always null), attendance_percentage, total_certificates, total_documents}`. Only `email` is stored on update (`users.email`); the web and mobile also show fields the API does not return (phone, address, blood group, roll number, academic year) as "N/A".
 
@@ -1126,10 +1241,16 @@ Implemented in: backend/tests/unit/student/test_student_misc_services.py (UserCo
 | TC-STU-18-A05 | Admin, Staff, Teacher, Parent `GET` and `PUT` | 404 `Student profile not found` each (every role holds `profile:read_own` and `update_own`; only a user with a student record gets a profile) | passing |
 | TC-STU-18-A06 | No token | 401 | passing |
 | TC-STU-18-A07 | Tenant isolation: token A with header B | 403 | passing |
-| TC-STU-18-E01 | Web Student opens `/students/profile` | Both cards render; unavailable fields show "N/A" | planned |
-| TC-STU-18-E02 | Web, "Edit Email" with "abc" | Inline "Invalid email address" | planned |
-| TC-STU-18-E03 | Web, update the email | Dialog closes; Email row shows the new value | planned |
-| TC-STU-18-E04 | Mobile Student edits Email, Phone, Address | Request sends the three fields; only the email is stored | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-18-E01 | P1 | Web | Student | Seeded student login 004 (Harsha Raju) | 1. Sign in with the seeded student login 004.<br>2. Open /students/profile. | "Student Profile" with cards "Personal Information" (First Name, Last Name, Email and others) and "Academic Information" (Admission Number 004, Class "Class 1", Section "1-B"); fields the API does not return show "N/A" | planned |
+| TC-STU-18-E02 | P3 | Web | Student | Seeded student login 004 | 1. Open /students/profile.<br>2. Click "Edit Email".<br>3. Enter "abc" and click "Update". | Inline "Invalid email address"; the dialog stays open; nothing is saved | planned |
+| TC-STU-18-E03 | P2 | Web | Student | QA Student login (TC-STU-03-E01 done; do not change a seeded student's email) | 1. Open /students/profile and click "Edit Email".<br>2. Enter "qa.asha@example.com" and click "Update". | The dialog closes; the Email row shows "qa.asha@example.com" | planned |
+| TC-STU-18-E04 | P3 | Mobile | Student | QA Student login (TC-STU-03-E01 done) | 1. Sign in with the QA Student login on mobile.<br>2. Open /students/profile and tap "Edit Profile".<br>3. Change Email to "qa.asha2@example.com", Phone to "9000000009", Address to "QA Road 2" and save.<br>4. Reopen the profile. | The request sends the three fields; only the email changes (the API stores only users.email) | planned |
+| TC-STU-18-E05 | P3 | Web | Admin, Student | QA Admin login; QA Student login (unlinked) | 1. Sign in with the QA Student login (unlinked) and open /students/profile.<br>2. Sign in as Admin and open /students/profile. | Step 1: "Error loading profile: Student profile not found"; step 2: an error or "not a student" message instead of an endless spinner | blocked: Known gap 23 (Admin, Staff, Teacher and Parent stay on "Loading student profile...") |
 
 API tests implemented in: backend/tests/api/students/test_profile_links.py
 
@@ -1145,7 +1266,7 @@ Implemented in: backend/tests/unit/student/test_student_misc_services.py. The xf
 
 **Preconditions.** Parent linked to one or more children (F04, F20).
 
-**Steps, web.** After login the first child is selected. The header selector "Select student..." (hidden below the md breakpoint) is a searchable list (name or admission number) of children; picking one sets `selectedStudent` and `studentId`. Pages that follow it: Admission, Attendance ("Children's Attendance"), Student Documents, Student Certificates and the fee pages. The Student Transport page ("Children's Transport") does not use the header selector; it has its own "Select Child" card with a "Child" dropdown.
+**Steps, web.** After login the first child is selected. The header selector "Select student..." (hidden below the md breakpoint) is a searchable list (box "Search students...", name or admission number) of children; picking one sets `selectedStudent` and `studentId`. Pages that follow it: Admission, Attendance ("Children's Attendance"), Student Documents, Student Certificates and the fee pages. The Student Transport page ("Children's Transport") does not use the header selector; it has its own "Select Child" card with a "Child" dropdown.
 
 **Steps, mobile.** `parents/select-child.tsx` ("Select Child", hint "Select which child you want to view information for."): tap a card (name, class - section, admission number); `router.back()` follows. Empty state "No children linked to your account."
 
@@ -1166,7 +1287,7 @@ Implemented in: backend/tests/unit/student/test_student_misc_services.py. The xf
 | TC-STU-19-U01 | Web `fetchMyChildren` mapping for an item with name "Asha Rao" and no first_name | first_name "Asha", last_name "Rao" | blocked: fetchMyChildren is not exported from web src/api/auth.ts |
 | TC-STU-19-U02 | `selectStudent(child2)` store action | `selectedStudent` and `studentId` equal child2 | passing |
 | TC-STU-19-A01 | Parent with 2 children `GET my-children` | 200, 2 rows ordered by name, with class_name and section_name | passing |
-| TC-STU-19-A02 | Child with two admissions | One row per student with the latest admission | blocked: API cannot create a second admission for an existing student |
+| TC-STU-19-A02 | Child with two admissions | One row per student with the latest admission | skipped: blocked: the API cannot create a second admission for an existing student |
 | TC-STU-19-A03 | Deactivated child | Row present with `is_active` false | passing |
 | TC-STU-19-A04 | Parent with no children | 200 `[]` | passing |
 | TC-STU-19-A05 | Admin, Staff, Teacher, Student `GET my-children` | 403 "Only parents can access this endpoint" | passing |
@@ -1174,13 +1295,18 @@ Implemented in: backend/tests/unit/student/test_student_misc_services.py. The xf
 | TC-STU-19-A07 | No token | 401 | passing |
 | TC-STU-19-A08 | Isolation between parents: parent P1's children are not returned for P2; tenant B token | Only own children; 403 for tenant mismatch | passing |
 | TC-STU-19-A09 | Effects: parent with children C1 and C2 calls `GET admission/id/{C1}` (200) and `GET admission/id/{other child}` (404) | Scope follows links | passing |
-| TC-STU-19-E01 | Web Parent logs in | First child preselected in the header selector; Attendance shows the first child's title | planned |
-| TC-STU-19-E02 | Web, search "00" in the selector | List narrows by admission number; choose child 2 | planned |
-| TC-STU-19-E03 | Web, after switching, open Admission, Attendance, Student Documents, Student Certificates | Each page shows child 2's data, none from child 1 | planned |
-| TC-STU-19-E04 | Web Parent with a single child | Selector shown with that child preselected | planned |
-| TC-STU-19-E05 | Mobile Parent, open "Select Child", tap child 2 | Returns to the previous screen; Attendance now shows child 2 | planned |
-| TC-STU-19-E06 | Mobile Parent with no children | "No children linked to your account." | planned |
-| TC-STU-19-E07 | Web Parent opens Student Transport | Own "Select Child" card with a "Child" dropdown defaulting to the first child (independent of the header selector); "No children found for this account." when none | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-19-E01 | P1 | Web | Parent | Seeded parent login venkat.raju@example.com | 1. Sign in as venkat.raju@example.com.<br>2. Look at the header selector.<br>3. Open Students > Attendance. | The header selector shows Harsha Raju (first by name); the attendance list is titled "Harsha Raju's Attendance" | planned |
+| TC-STU-19-E02 | P2 | Web | Parent | Seeded parent login venkat.raju@example.com | 1. Open the header selector.<br>2. Type "005" in "Search students...".<br>3. Click "Tanvi Raju". | The list narrows by admission number; Tanvi Raju becomes the selected child | planned |
+| TC-STU-19-E03 | P2 | Web | Parent | TC-STU-19-E02 done (Tanvi Raju selected); seeded data for both children | 1. Open Students > Admission, Attendance, Student Documents and Student Certificates in turn. | Every page shows Tanvi Raju's data (Class 4 / 4-B, admission 005) and nothing of Harsha Raju | planned |
+| TC-STU-19-E04 | P3 | Web | Parent | Seeded parent login satish.mehta@example.com (only child Advik Mehta) | 1. Sign in as satish.mehta@example.com.<br>2. Look at the header. | The selector is shown with Advik Mehta preselected | planned |
+| TC-STU-19-E05 | P2 | Mobile | Parent | Seeded parent login venkat.raju@example.com | 1. Sign in as venkat.raju@example.com on mobile.<br>2. Open /parents/select-child ("Select Child").<br>3. Tap the card of Tanvi Raju.<br>4. Open Students > Attendance. | "Select which child you want to view information for." with one card per child (name, class - section, admission number); tapping returns to the previous screen; Attendance shows "Tanvi Raju's Attendance" | planned |
+| TC-STU-19-E06 | P3 | Mobile | Parent | QA Parent login (unlinked) | 1. Sign in with the QA Parent login (unlinked) on mobile.<br>2. Open /parents/select-child. | "No children linked to your account." (verified 2026-10-07) | planned |
+| TC-STU-19-E07 | P3 | Web | Parent | Seeded parent login venkat.raju@example.com; QA Parent login (unlinked) | 1. Sign in as venkat.raju@example.com and open /students/studenttransport.<br>2. Sign in with the QA Parent login (unlinked) and open the same URL. | Step 1: "Children's Transport" with its own "Select Child" card and a "Child" dropdown defaulting to Harsha Raju, independent of the header selector; step 2: "No children found for this account." | blocked: Known gap 23 (a parent without a parent record sees "Session outdated. Please log out and log back in." instead) |
 
 API tests implemented in: backend/tests/api/students/test_profile_links.py
 
@@ -1230,7 +1356,12 @@ Implemented in: web/src/__tests__/students/parentChildSelection.test.ts (U02).
 | TC-STU-20-A09 | Permission matrix: POST (Admin 201, Staff 201, Teacher 403, Student 403, Parent 403); DELETE (Admin 204, Staff 403, others 403); GET student/parents, GET / (Admin 200, Staff 200, Teacher 403, Student 403, Parent 403) | As listed | passing |
 | TC-STU-20-A10 | No token on every endpoint | 401 | passing |
 | TC-STU-20-A11 | Tenant isolation: tenant B Admin links tenant A ids; token A with B header | 404; 403 | passing |
-| TC-STU-20-E01 | Web Admin removes a link by API then the parent logs in | Parent sees "No children linked to your account." | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-20-E01 | P3 | Web | Parent | TC-STU-04-E02 done (parent login "<admission number>.father" of "QA No Email"); that link removed with DELETE /student-parent-links/student/{sid}/parent/{pid} | 1. Sign in with that parent login.<br>2. Open Students > Admission. | "No children linked to your account."; no child selector entries | planned |
 
 API tests implemented in: backend/tests/api/students/test_profile_links.py
 
@@ -1246,9 +1377,9 @@ Implemented in: backend/tests/unit/student/test_student_misc_services.py.
 
 **Preconditions.** Routes, stops, trips (and optionally pricing plans) from the Transport module (`docs/features/transport.md`).
 
-**Steps, web.** Students > Student Transport. Staff: page "Student Transport" with a search box "Search student, route, stop...", button "Assign Transport" (needs create), table with row actions "Edit" and "Delete". Dialog "Assign Transport" / "Edit Assignment": "Student" ("Select student..."), "Trip" ("Select trip..."), "Stop", "Pricing Plan (optional)", "Fee per Term (rupee sign)" (hints "Auto-filled from stop fee. You can edit it if needed." etc.). Delete dialog "Delete Transport Assignment". Student: "My Transport". Parent: "Children's Transport" with its own "Select Child" card and "Child" dropdown.
+**Steps, web.** Students > Student Transport. Staff: page "Student Transport" with a search box "Search student, route, stop...", button "Assign Transport" (needs create), table with row actions "Edit" and "Delete". Dialog "Assign Transport" / "Edit Assignment": "Student" ("Select student..."), "Trip" ("Select trip..."), "Stop", "Pricing Plan (optional)", "Fee per Term (rupee sign)" (hints "Auto-filled from stop fee. You can edit it if needed." etc.). Delete dialog "Delete Transport Assignment". Empty table: "No transport assignments found.". Student: "My Transport" with card "Transport Assignment" ("No transport assignment found." when none). Parent: "Children's Transport" with its own "Select Child" card and "Child" dropdown ("Select child"); a Parent login without a parent record sees "Session outdated. Please log out and log back in.". Teacher: "Failed to load transport assignments: <detail>" (403).
 
-**Steps, mobile.** Students > Student Transport ("Student Transport Assignments"): "Assign Transport" modal with validation toasts "Please select a trip and stop", "Please select a student", "Enter a valid fee amount"; card actions Edit and Delete ("Remove Assignment").
+**Steps, mobile.** Students > Student Transport (`app/students/transport.tsx`, list "Student Transport Assignments", "Filters" with "Search student, route, stop...", empty "No transport assignments yet"): "Assign Transport" modal ("Student", "Trip", "Stop", "Pricing Plan", fee) with validation toasts "Please select a trip and stop", "Please select a student", "Enter a valid fee amount"; success "Assigned - Transport assignment created successfully"; card actions "Edit" ("Updated - Transport assignment updated successfully") and "Delete" ("Removed - Transport assignment removed"). Student title "My Transport", Parent "Child Transport".
 
 **Expected results.** One assignment per student and trip. The fee defaults from the stop fee when not sent.
 
@@ -1272,7 +1403,7 @@ Implemented in: backend/tests/unit/student/test_student_misc_services.py.
 | TC-STU-21-U01 | Fee resolution: explicit 1500 with stop fee 1000; omitted with stop fee 1000; omitted with stop fee None | 1500; 1000.0; error "This stop has no default fee" | passing |
 | TC-STU-21-U02 | `StudentTransportUpdate` with fee 0 and -5 | Rejected (gt 0) | passing |
 | TC-STU-21-A01 | Admin assigns with all fields | 201 with nested trip, route, stop, student | passing |
-| TC-STU-21-A02 | Assign without `fee_per_term` using a stop with fee 1000 | 201 `fee_per_term` 1000.0 | passing |
+| TC-STU-21-A02 | Assign without `fee_per_term` using a stop with fee 1000 | 201 `fee_per_term` 1000; a stop with no fee and no `fee_per_term` is 400 with `no default fee` in `detail.message` | passing |
 | TC-STU-21-A03 | Assign twice for the same student and trip | 422 "Student already has transport assignment for this trip" | passing |
 | TC-STU-21-A04 | Unknown student, trip, stop, inactive pricing | 404 each | passing |
 | TC-STU-21-A05 | Fee boundary on create: 0 and -1 | 422 for 0 and -1 | passing |
@@ -1285,10 +1416,16 @@ Implemented in: backend/tests/unit/student/test_student_misc_services.py.
 | TC-STU-21-A12 | Permission matrix for POST, PATCH, GET `/`: Admin 2xx, Staff 2xx, Teacher 403, Student 403, Parent 403; DELETE: Admin 204, others 403; GET by student as Teacher 403 | As listed | passing |
 | TC-STU-21-A13 | No token on all endpoints | 401 | passing |
 | TC-STU-21-A14 | Tenant isolation: tenant B Admin assigns a tenant A student; token A with B header | 404; 403 | passing |
-| TC-STU-21-E01 | Web Admin, "Assign Transport" with student, trip, stop and fee | Row appears; edit changes the fee; delete confirms with "Delete Transport Assignment" | planned |
-| TC-STU-21-E02 | Web Student opens Student Transport | "My Transport" with own assignment | planned |
-| TC-STU-21-E03 | Web Parent opens it and changes the child | "Children's Transport" follows the selected child | planned |
-| TC-STU-21-E04 | Mobile Admin, "Assign Transport" without a student | Toast "Please select a student" | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-21-E01 | P1 | Web | Admin | TC-STU-03-E01 done (QA Asha Rao has no transport); seeded trip on "Route 1 - Kukatpally" | 1. Sign in as Admin.<br>2. Open /students/studenttransport.<br>3. Click "Assign Transport".<br>4. Choose Student "QA Asha Rao", the "Route 1 - Kukatpally" trip and a stop; keep the auto-filled fee.<br>5. Save.<br>6. Click "Edit" on the row, set the fee to 1500 and save.<br>7. Click "Delete" and confirm. | Step 5: the row appears with student, trip, route, stop and "Fee / Term" equal to the stop fee; step 6: fee 1500; step 7: dialog "Delete Transport Assignment" and the row disappears ("No transport assignments found." when it was the last) | planned |
+| TC-STU-21-E02 | P2 | Web | Student | Seeded student login 004 (Harsha Raju, on Route 2 - Uppal) | 1. Sign in with the seeded student login 004.<br>2. Open /students/studenttransport. | "My Transport" with card "Transport Assignment" showing route "Route 2 - Uppal", timings, vehicle, pickup stop, pricing plan and "Fee per Term" | planned |
+| TC-STU-21-E03 | P2 | Web | Parent | Seeded parent login venkat.raju@example.com (Harsha on Route 2 - Uppal, Tanvi on Route 1 - Kukatpally) | 1. Sign in as venkat.raju@example.com.<br>2. Open /students/studenttransport.<br>3. Change "Child" to Tanvi Raju. | "Children's Transport" shows "Harsha Raju's Transport" with Route 2 - Uppal; after the change "Tanvi Raju's Transport" with Route 1 - Kukatpally | planned |
+| TC-STU-21-E04 | P3 | Mobile | Admin | QA Admin login | 1. Sign in as Admin on mobile.<br>2. Open /students/transport and tap "Assign Transport".<br>3. Choose a trip and a stop but no student.<br>4. Save. | Toast "Validation - Please select a student"; nothing is created | planned |
+| TC-STU-21-E05 | P3 | Web | Teacher | QA Teacher login | 1. Sign in as Teacher.<br>2. Open /students/studenttransport. | "Student Transport" with "Failed to load transport assignments: ..." (403); no "Assign Transport" button (verified 2026-10-07) | planned |
 
 API tests implemented in: backend/tests/api/students/test_transport.py
 
@@ -1304,7 +1441,7 @@ Implemented in: backend/tests/unit/student/test_student_misc_services.py. U02 is
 
 **Preconditions.** Permission granted by an Admin; MSG91 settings and a Celery worker.
 
-**Steps, web and mobile.** The admission table has a "Send Welcome Message" quick-send button and the attendance page a "Send Absentee Message" quick-send button; both use the Communication module's quick send (`docs/features/communication.md`), not these endpoints. No client calls the three endpoints below.
+**Steps, web and mobile.** The web admission table has a "Send Welcome Message" quick-send button and the web attendance page a "Send Absentee Message" quick-send button; both use the Communication module's quick send (`docs/features/communication.md`), not these endpoints, and both render only with `communications:create` (Admin by default; Staff and Teacher do not see them). The dialog "Send Message" shows "To: <student> - <class> <section>", "Channel" (SMS, WhatsApp, Email), "Template" ("Select template..."), "Preview" and the buttons "Cancel" and "Send Now". Mobile has no quick-send buttons. No client calls the three endpoints below.
 
 **Expected results.** If it worked: rows in the notification queue and a Celery batch.
 
@@ -1325,15 +1462,21 @@ Implemented in: backend/tests/unit/student/test_student_misc_services.py. U02 is
 |---|---|---|---|
 | TC-STU-22-U01 | Absence message format for "Dear Mrs Rao, your ward Asha Rao was marked absent today, 02-Oct." | Matches the template with reason in parentheses when given | blocked: message is built inline in attendance_endpoints.py after a function-local import that fails (KG-15) |
 | TC-STU-22-A01 | Admin calls each of the three endpoints under the default catalog | 403 for send-confirmation and send-absence-alerts (no `send_sms` grant); 404 for homework reminders (route removed 2026-10-02) | passing |
-| TC-STU-22-A02 | Grant `student_admissions:send_sms` to Admin, call `send-confirmation` with a valid admission id | 500 (import error, documented defect) | skipped: would reach the SMS path after a grant; suite never sends messages |
-| TC-STU-22-A03 | Grant `student_attendance:send_sms`, call `send-absence-alerts` with `attendance_date` | 500 (import error) | skipped: would reach the SMS path after a grant; suite never sends messages |
+| TC-STU-22-A02 | Grant `student_admissions:send_sms` to Admin, call `send-confirmation` with a valid admission id | 500 (import error, documented defect) | skipped: skipped: after a send_sms grant this endpoint would reach the SMS path, and the suite never sends messages |
+| TC-STU-22-A03 | Grant `student_attendance:send_sms`, call `send-absence-alerts` with `attendance_date` | 500 (import error) | skipped: skipped: after a send_sms grant this endpoint would reach the SMS path, and the suite never sends messages |
 | TC-STU-22-A04 | `send-absence-alerts` without `attendance_date` | 422 | passing |
-| TC-STU-22-A05 | Grant `student_homework:send_sms`, call reminders with an unknown homework id | 200 `{status:"queued", queued_count:0, skipped_count:1}` | skipped: route removed 2026-10-02 (404); covered by TC-STU-22-A01 |
+| TC-STU-22-A05 | Grant `student_homework:send_sms`, call reminders with an unknown homework id | 200 `{status:"queued", queued_count:0, skipped_count:1}` | skipped: skipped: needs a send_sms grant on the shared Admin role and would reach the Celery queue |
 | TC-STU-22-A06 | Staff, Teacher, Student, Parent call each endpoint | 403 each (homework reminders 404: route removed) | passing |
 | TC-STU-22-A07 | No token on each endpoint | 401 (homework reminders 404: route removed) | passing |
 | TC-STU-22-A08 | Tenant isolation: token A with header B | 403 (homework reminders 404: route removed) | passing |
-| TC-STU-22-E01 | Web Admin clicks "Send Welcome Message" on an admission row | Quick-send dialog opens (Communication module); no call to `send-confirmation` | planned |
-| TC-STU-22-E02 | Web Teacher, "Send Absentee Message" on a Present row | Button disabled with tooltip "Student is present - no notification needed" | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-STU-22-E01 | P2 | Web | Admin | Seeded admissions | 1. Sign in as Admin.<br>2. Open Students > Admission.<br>3. Click "Send Welcome Message" on a row.<br>4. Click "Cancel". | Dialog "Send Message" with "To: <student> - <class> <section>", Channel SMS, WhatsApp, Email, "Template" and "Preview"; no call to /students/admission/send-confirmation; "Cancel" closes it without sending | planned |
+| TC-STU-22-E02 | P3 | Web | Admin | Seeded Class 1 / 1-A loaded on Students > Attendance for a date with every student Present | 1. Sign in as Admin.<br>2. Hover the "Send Absentee Message" icon of a Present row. | The icon is disabled with a tooltip starting "Student is present" | planned |
+| TC-STU-22-E03 | P3 | Web | Staff, Teacher | QA Staff and QA Teacher logins; seeded Class 1 / 1-A | 1. Sign in as Staff and open Students > Admission and Students > Attendance (load Class 1 / 1-A).<br>2. Repeat as Teacher. | No "Send Welcome Message" and no "Send Absentee Message" icons (both need communications:create) | planned |
 
 API tests implemented in: backend/tests/api/students/test_profile_links.py
 
@@ -1354,7 +1497,7 @@ Code behaviour that differs from `docs/modules/students.md` or from what a user 
 9. **No ownership check** on `GET /student/attendance/student/{id}/filter` for Parents, and the document endpoints do not check ownership at all. Fixed (2026-10-02): `student/{id}/filter` now returns 403 for a Parent whose children do not include the id; the document list, all and get endpoints call `ensure_student_access` (Student own record, Parent linked child; other roles unchanged).
 10. **Profile attendance percentage** was always 0.0. Fixed (2026-10-02): the shared helper compares case-insensitively and counts half days as 0.5. Still open: the web and mobile profile screens show fields the API never returns (phone, address, emergency contact, blood group, roll number, academic year, picture).
 11. **Attendance percentage** was computed four different ways. Fixed (2026-10-02): one rule, see F13.
-12. **Mobile defects.** `app/students/[id].tsx` looks the student up in the first page of admissions only; the Students list card prints the admitted class id (a UUID) instead of the class name; the admission form labelled "Academic Year (Optional)" although the API requires it (fixed 2026-10-02: the label and the step validation now mark it required); the profile screen for a Parent calls the non-existent `GET /students/profile/{id}`; the regular-number placeholder `e.g. 2026001` does not match the `001` format.
+12. **Mobile defects.** `app/students/[id].tsx` is opened with the student id but matches it against the admission id, in the first page of admissions only, so "Student Details" always shows "Student not found"; the Students list card prints the admitted class id (a UUID) instead of the class name; the admission form labelled "Academic Year (Optional)" although the API requires it (fixed 2026-10-02: the label and the step validation now mark it required); the profile screen for a Parent calls the non-existent `GET /students/profile/{id}`; the regular-number placeholder `e.g. 2026001` does not match the `001` format.
 13. **Roster cap.** Fixed (2026-10-02): the list endpoint honours `active_only`, and the web and mobile roster calls page 100 at a time, so rosters hold every active student.
 14. **DELETE `/students/admission/{admission_id}`**: fixed (2026-10-02), see F09 (shared parents kept, 409 when blocked, 200 on success). **`POST /parents/`** is broken and standalone parents cannot be created. There is no way to add a guardian to an existing admission.
 15. **Manual SMS endpoints** `send-confirmation` and `send-absence-alerts` fail on a bad import (500) and no role holds their permissions by default; the homework reminders route was removed on 2026-10-02 (404 for everyone).
@@ -1365,3 +1508,4 @@ Code behaviour that differs from `docs/modules/students.md` or from what a user 
 20. **Mobile staff attendance has no Half Day option;** web has all five statuses.
 21. **Transport page for Parents** uses its own child dropdown instead of the header selector used by every other student page.
 22. **Previous school select on web.** Fixed (2026-10-02): the select registers a boolean and the payload builder normalises it, so "Yes" then "No" sends `false` with the "NA" placeholders.
+23. **UI states seen on 2026-10-07 (web).** Pages that get a 403 or 404 do not show an error: `/students/studentdocuments` for a Student stays on "Loading documents..."; `/students/mydocuments` for Admin, Staff, Teacher and Parent and `/students/profile` for Admin, Staff, Teacher and Parent stay on their loading text; `/students/certificatetypes` for a Parent shows "No certificate types found." with a "Create First Certificate Type" button; `/students/certificatetemplates` for Staff, Teacher, Student and Parent shows "No templates created yet" with "Load Default Templates", "Create Template" and "Create Your First Template". The Student "My Attendance" "From" date shows the last day of the previous month in IST (F13).

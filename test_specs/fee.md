@@ -2,7 +2,7 @@
 
 Module code: `FEE`. Conventions and test ID scheme: `docs/testing/strategy.md`. Section layout: `docs/features/README.md`. Module rules and gotchas: `docs/modules/fee.md`. Flows and decisions: `docs/graph/views/fee.md`.
 
-_Last verified against code: 2026-10-02_ (backend `backend/app/api/v1/fee`, `backend/app/service/fee`, `backend/app/service/reports/fee_report_service.py`, web `web/src/pages/fee` and `web/src/components/fee`, mobile `mobile/app/fees`). Where `docs/modules/fee.md` and the code disagree, this page documents the code and lists the difference under "Known gaps" at the end.
+_Last verified against code: 2026-10-07_ (backend `backend/app/api/v1/fee`, `backend/app/service/fee`, `backend/app/service/reports/fee_report_service.py`, web `web/src/pages/fee` and `web/src/components/fee`, mobile `mobile/app/fees`). Where `docs/modules/fee.md` and the code disagree, this page documents the code and lists the difference under "Known gaps" at the end.
 
 ## Module overview
 
@@ -51,6 +51,7 @@ Scope rules for self-service endpoints (`check_user_resource_access`): the first
 - Money: Decimal fields serialise as strings (`"2000.00"`). Tests must compare as Decimal, never as float.
 - Rate limits: category and type create 30 per minute; transaction create 20 per minute; concession, old fee, collection endpoints and most reads 200 per minute (`rate_limit_api`); reports and refunds have none. A rate-limit test is out of scope for the functional suite.
 - Academic year: web and mobile fill `academic_year_id` from the header academic year selector. Creates throw "Academic year is required" on web when none is selected.
+- UI test cases (IDs ending `-E<NN>`) run in the seeded manual-test tenant `qa_manual` (`docs/testing/test-environment.md`). Its fee data: categories "Academic Fees" and "Facility Fees"; terms "Three Terms" (15 Jun 2026, 15 Oct 2026, 15 Jan 2027), "Annual" (30 Jun 2026) and "Half Yearly" (15 Jun 2026, 1 Dec 2026); types Tuition Fee, Admission Fee and Books and Stationery (Academic Fees) and Activity Fee (Facility Fees); class mappings for every class and type with term amounts (Tuition Fee and Admission Fee mandatory); student mappings, 24 completed payments (cash, UPI, bank transfer), one Tuition Fee concession of 2,000.00 on Ananya Reddy (20260002, NUR-A), a pending 1,000.00 refund for Aarav Gupta (20260001, NUR-B) and a processed 500.00 refund for Ananya Reddy. Students used below: Karthik Reddy (001, Class 3 / 3-B), Advik Mehta (002, 1-B), Saanvi Iyer (003, 1-A), Harsha Raju (004, 1-B), Tanvi Raju (005, 4-B), Kavya Verma (006, 1-A, nothing paid). Admin, Staff and Teacher cases use the QA logins; the QA Student and Parent logins are not linked to a student, so Student and Parent cases use a seeded student login (the admission number) or a seeded parent login. Data created by a case is named "QA ..." and is deleted afterwards where the app allows it (payments cannot be deleted). Figures quoted from the seed hold until a case changes them.
 - Identifiers used in test data below: "year Y1" is the QA academic year, "term Q4" a fee term with 4 dates 2026-06-10, 2026-09-10, 2026-12-10, 2027-03-10, "term T3" a fee term with 3 dates 2026-06-10, 2026-09-10, 2026-12-10, "Tuition" a fee type on Q4, "Lab" a fee type on T3.
 
 ## Calculation reference (single source for the unit tests)
@@ -112,15 +113,15 @@ Worked examples used by the test cases:
 **Steps, web.**
 1. Open Fee > Fee Categories (`/fee/categories`, page title "Fee Categories Management").
 2. Click "Add Category" (or "Create First Category" on an empty list). The "Create Fee Category" dialog opens.
-3. Enter "Category Name" (placeholder "Enter category name"), tick or untick "Active", click "Save".
+3. Enter "Category Name *" (placeholder "Enter category name"), tick or untick "Active", click "Save" (toast "Fee category created successfully").
 4. To edit, click the pencil "Edit Category", change the fields in "Edit Fee Category", click "Save".
 5. To delete, click the trash "Delete Category", confirm "Delete" in "Delete Fee Category".
-6. To see types, click the row chevron; the "Fee Types" column shows "N fee type(s)". Click "+" ("Manage Fee Types") to add, edit or delete types for that category (see F02).
-7. Narrow the list with "Search categories..." and the status select (All Status, Active, Inactive); use "Items per page" and the page buttons.
+6. The "Fee Types" column shows "N fee type(s)"; the row chevron expands the types. Click "+" ("Manage Fee Types") to open "Manage Fee Types - <category>" ("Add Fee Type", empty text "No fee types found for this category.") and add, edit or delete types for that category (see F02).
+7. Narrow the list with "Search categories..." and the status select (All Status, Active, Inactive). The list header reads "Showing X-Y of N categories".
 
 **Steps, mobile.**
-1. Open Fee hub > "Fee Categories" (`/fees/categories`).
-2. Use "Search categories..." and the "All Status" filter. Tap add, enter "Enter category name", choose the status, save. Success toast "Fee category created successfully".
+1. Open the Home "Fee Management" card > "Fee Categories" (`/fees/categories`).
+2. Use "Search categories..." and the "All Status" filter. Tap "Add Category" (form "Add Fee Category": "Category Name *", "Active", "Cancel", "Save"), enter "Enter category name", save. Success toast "Created" / "Fee category created successfully" (mobile toasts have a title and a message).
 3. Edit or delete from the row. Delete failure shows "Delete Failed" with the server message (for example when fee types exist).
 4. Within a category, add a fee type (fields "Enter fee type name", "Select fee term", "Select status"); required-field toasts are "Category name is required", "Fee type name is required", "Please select a fee term".
 
@@ -162,26 +163,31 @@ Worked examples used by the test cases:
 | TC-FEE-01-A07 | `GET /fee/categories/?limit=0` and `limit=501` | 422 | passing |
 | TC-FEE-01-A08 | `GET /fee/categories/dropdown?academic_year_id=Y1` | Only Y1 categories, ordered by `category_name`, fields `id` and `category_name` only | passing |
 | TC-FEE-01-A09 | Create a category, call dropdown, create another, call dropdown again | The new category appears immediately (cache invalidated) | passing |
-| TC-FEE-01-A10 | `GET /fee/categories/{id}` existing and unknown id | 200 with `academic_year_title`; unknown 404 `Fee category with id ... not found` | passing; xfail: FEE-B01 |
+| TC-FEE-01-A10 | `GET /fee/categories/{id}` existing and unknown id | 200 with `academic_year_title`; unknown 404 `Fee category with id ... not found` | known defect: FEE-B01: GET /fee/categories/{unknown id} returns 500 because get_fee_category_by_id swallows its own 404 |
 | TC-FEE-01-A11 | `PUT` rename to a name used by another category of the same year | 400 `Category name already exists for this academic year` | passing |
 | TC-FEE-01-A12 | `PUT` rename to its own current name; `PUT` status `inactive` | 200 both; status persisted | passing |
 | TC-FEE-01-A13 | `PUT` moves the category to a second year where the same name exists | 400 duplicate | passing |
-| TC-FEE-01-A14 | `DELETE` a category with no types | 200 returns the deleted category; follow-up GET is 404 | passing; xfail: FEE-B01 |
+| TC-FEE-01-A14 | `DELETE` a category with no types | 200 returns the deleted category; follow-up GET is 404 | known defect: FEE-B01: GET /fee/categories/{deleted id} returns 500 instead of 404 |
 | TC-FEE-01-A15 | `DELETE` a category that has one fee type | 400 `Cannot delete fee category '<name>' because it is being used by 1 fee type(s)...` and the row remains | passing |
 | TC-FEE-01-A16 | `GET /fee/categories/health` | 200 `{status: "healthy", module: "fee_categories"}` | passing |
 | TC-FEE-01-A17 | Role matrix: create, update, delete as Admin, Staff, Teacher, Student, Parent | Admin 2xx; Staff, Teacher, Student, Parent 403 | passing |
 | TC-FEE-01-A18 | Role matrix: list, read, dropdown | Admin and Staff 200; Teacher, Student, Parent 403 | passing |
 | TC-FEE-01-A19 | Any endpoint without a token | 401 | passing |
-| TC-FEE-01-A20 | Tenant isolation: category created in the QA tenant read by a token of another tenant; QA token with `cschema` of another tenant | Not visible (404 or empty list); header mismatch 403 | passing; xfail: FEE-B01 |
-| TC-FEE-01-E01 | Web: Admin creates a category via "Add Category", name "QA Sports", Active on | Toast success, row appears with an Active badge and "0 fee types" | planned |
-| TC-FEE-01-E02 | Web: create a duplicate name | Error toast shows the duplicate message; no new row | planned |
-| TC-FEE-01-E03 | Web: edit the category, untick Active, Save | Row badge becomes Inactive; status filter "Inactive" lists it | planned |
-| TC-FEE-01-E04 | Web: delete an empty category | Row disappears after confirming "Delete" | planned |
-| TC-FEE-01-E05 | Web: delete a category that has a type | Error toast with the "being used by" message; row stays | planned |
-| TC-FEE-01-E06 | Web: search "Spor" and clear it | List filters to matching names, then restores | planned |
-| TC-FEE-01-E07 | Web: Staff user opens `/fee/categories` | List visible; no "Add Category", edit or delete controls | planned |
-| TC-FEE-01-E08 | Mobile: Admin adds a category, then deletes it | Success toasts "Fee category created successfully" and "Fee category deleted successfully" | planned |
-| TC-FEE-01-E09 | Mobile: delete a category that has types | "Delete Failed" toast with the server message | planned |
+| TC-FEE-01-A20 | Tenant isolation: category created in the QA tenant read by a token of another tenant; QA token with `cschema` of another tenant | Not visible (404 or empty list); header mismatch 403 | known defect: FEE-B01: cross-tenant GET /fee/categories/{id} returns 500 instead of 404 |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-FEE-01-E01 | P1 | Web | Admin | Academic year 2026-2027 selected in the header. No category named "QA Sports" exists | 1. Sign in as Admin.<br>2. Open Fee > Fee Categories.<br>3. Click "Add Category".<br>4. Enter Category Name "QA Sports" and leave "Active" ticked.<br>5. Click "Save". | Toast "Fee category created successfully"; row "QA Sports" with an Active badge and "0 fee types"; stored with academic year 2026-2027 | planned |
+| TC-FEE-01-E02 | P3 | Web | Admin | TC-FEE-01-E01 done | 1. Open Fee > Fee Categories.<br>2. Click "Add Category".<br>3. Enter Category Name "QA Sports".<br>4. Click "Save". | Error toast `Category name 'QA Sports' already exists for this academic year`; no second row | planned |
+| TC-FEE-01-E03 | P2 | Web | Admin | TC-FEE-01-E01 done | 1. Open Fee > Fee Categories.<br>2. Click "Edit Category" on "QA Sports".<br>3. Untick "Active".<br>4. Click "Save".<br>5. Choose "Inactive" in the status filter. | Toast "Fee category updated successfully"; badge Inactive; the Inactive filter lists "QA Sports"; reset to Active afterwards | planned |
+| TC-FEE-01-E04 | P2 | Web | Admin | A category "QA Temp" created through "Add Category" with no fee types | 1. Open Fee > Fee Categories.<br>2. Click "Delete Category" on "QA Temp".<br>3. Click "Delete" in "Delete Fee Category". | Toast "Fee category deleted successfully"; row removed | planned |
+| TC-FEE-01-E05 | P2 | Web | Admin | TC-FEE-02-E01 done ("QA Lab" belongs to "QA Sports") | 1. Open Fee > Fee Categories.<br>2. Click "Delete Category" on "QA Sports".<br>3. Click "Delete". | Error toast `Cannot delete fee category 'QA Sports' because it is being used by 1 fee type(s)...`; row stays | planned |
+| TC-FEE-01-E06 | P3 | Web | Admin | Seeded categories "Academic Fees" and "Facility Fees" exist | 1. Open Fee > Fee Categories.<br>2. Type "Acad" in "Search categories...".<br>3. Clear the search. | Only "Academic Fees" is listed while filtered; the full list returns after clearing | planned |
+| TC-FEE-01-E07 | P2 | Web | Staff | Seeded categories exist | 1. Sign in as Staff.<br>2. Open Fee > Fee Categories. | List and filters visible; no "Add Category", "Edit Category", "Delete Category" or "Manage Fee Types" buttons | planned |
+| TC-FEE-01-E08 | P2 | Mobile | Admin | Signed in to organisation qa_manual | 1. Open the Fee Management card, then "Fee Categories".<br>2. Tap "Add Category".<br>3. Enter "QA Mobile Cat" in "Enter category name".<br>4. Tap "Save".<br>5. Delete "QA Mobile Cat" from its row and confirm. | Toasts "Fee category created successfully" then "Fee category deleted successfully"; the row appears then disappears | planned |
+| TC-FEE-01-E09 | P3 | Mobile | Admin | TC-FEE-02-E01 done | 1. Open Fee Categories.<br>2. Delete "QA Sports" and confirm. | Toast "Delete Failed" with the server "being used by 1 fee type(s)" message; row stays | planned |
 
 API tests implemented in: backend/tests/api/fee/test_fee_categories_types.py
 
@@ -244,24 +250,29 @@ Implemented in: backend/tests/unit/fee/test_fee_category_type_rules.py (phase 1 
 | TC-FEE-02-A06 | POST missing `fee_term_id` | 422 | passing |
 | TC-FEE-02-A07 | `GET /fee/types/` with `limit=2&offset=2` | Plain array of at most 2 with relationship names filled | passing |
 | TC-FEE-02-A08 | `GET /fee/types/dropdown` (no filter) | Array of `{id, type_name}` | passing |
-| TC-FEE-02-A09 | `GET /fee/types/dropdown?fee_category_id=C1` | 200 with only C1 types | passing (unit, API) |
-| TC-FEE-02-A10 | `GET /fee/types/{id}` existing and unknown | 200 and 404 | passing; xfail: FEE-B02 |
-| TC-FEE-02-A11 | `PUT` change `fee_term_id` to T3 | 200; `fee_term_dates` now 3; existing student term amounts unchanged | passing; xfail: FEE-B03 |
+| TC-FEE-02-A09 | `GET /fee/types/dropdown?fee_category_id=C1` | 200 with only C1 types | passing |
+| TC-FEE-02-A10 | `GET /fee/types/{id}` existing and unknown | 200 and 404 | known defect: FEE-B02: GET /fee/types/{unknown id} returns 500 because get_fee_type_by_id swallows its own 404 |
+| TC-FEE-02-A11 | `PUT` change `fee_term_id` to T3 | 200; `fee_term_dates` now 3; existing student term amounts unchanged | known defect: FEE-B03: PUT /fee/types/{id} response carries the old term name and dates after fee_term_id changes (a followi... |
 | TC-FEE-02-A12 | `PUT` rename to a sibling name in the same category | 400 duplicate | passing |
-| TC-FEE-02-A13 | `DELETE` a type with no mappings | 200; GET afterwards 404 | passing; xfail: FEE-B02 |
+| TC-FEE-02-A13 | `DELETE` a type with no mappings | 200; GET afterwards 404 | known defect: FEE-B02: GET /fee/types/{deleted id} returns 500 instead of 404 |
 | TC-FEE-02-A14 | `DELETE` a type used by one class mapping and one student mapping | 400 with the dependency message; row remains | passing |
 | TC-FEE-02-A15 | `GET /fee/types/health` | 200 `module: "fee_types"` | passing |
 | TC-FEE-02-A16 | Role matrix create, update, delete | Admin 2xx; Staff, Teacher, Student, Parent 403 | passing |
 | TC-FEE-02-A17 | Role matrix list, read, dropdown | Admin, Staff 200; Teacher, Student, Parent 403 | passing |
 | TC-FEE-02-A18 | No token; token of tenant A with `cschema` of tenant B | 401; 403 | passing |
-| TC-FEE-02-A19 | Type created in tenant A is absent from tenant B list and `GET /{id}` returns 404 in tenant B | Isolation holds | passing; xfail: FEE-B02 |
-| TC-FEE-02-E01 | Web: Admin creates "QA Lab" in category C1, term Q4 | Row shows category and term names; toast success | planned |
-| TC-FEE-02-E02 | Web: create the same name again in C1 | Error toast with the duplicate message | planned |
-| TC-FEE-02-E03 | Web: edit status to inactive via the Active switch | Status badge Inactive | planned |
-| TC-FEE-02-E04 | Web: delete a type with a student mapping | Error toast listing the dependent records; row stays | planned |
-| TC-FEE-02-E05 | Web: add a type from the category tree "Manage Fee Types" dialog | Type appears under the expanded category | planned |
-| TC-FEE-02-E06 | Mobile: add a type without choosing a term | Toast "Fee term is required"; nothing created | planned |
-| TC-FEE-02-E07 | Mobile: create then delete a type | Toasts "Fee type created successfully" and "Fee type deleted successfully" | planned |
+| TC-FEE-02-A19 | Type created in tenant A is absent from tenant B list and `GET /{id}` returns 404 in tenant B | Isolation holds | known defect: FEE-B02: cross-tenant GET /fee/types/{id} returns 500 instead of 404 |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-FEE-02-E01 | P1 | Web | Admin | TC-FEE-01-E01 and TC-FEE-03-E01 done | 1. Open Fee > Fee Types.<br>2. Click "Add New Type".<br>3. Enter Type Name "QA Lab".<br>4. Choose Fee Category "QA Sports" and Fee Term "QA Quarterly".<br>5. Click "Create Type". | Toast "Fee type created successfully"; row "QA Lab" shows "QA Sports", "QA Quarterly" and Active | planned |
+| TC-FEE-02-E02 | P3 | Web | Admin | TC-FEE-02-E01 done | 1. Click "Add New Type".<br>2. Enter "QA Lab", category "QA Sports", term "QA Quarterly".<br>3. Click "Create Type". | Error toast `Fee type name 'QA Lab' already exists for this fee category`; no new row | planned |
+| TC-FEE-02-E03 | P2 | Web | Admin | TC-FEE-02-E01 done | 1. Click "Edit Fee Type" on "QA Lab".<br>2. Turn the "Active" switch off.<br>3. Click "Update Type". | Toast "Fee type updated successfully"; status Inactive; switch back on afterwards | planned |
+| TC-FEE-02-E04 | P2 | Web | Admin | TC-FEE-06-E01 done ("QA Lab" mapped to Kavya Verma) | 1. Click "Delete Fee Type" on "QA Lab".<br>2. Click "Delete". | Error toast `Cannot delete fee type 'QA Lab' because it is being used by ... record(s)...`; row stays | planned |
+| TC-FEE-02-E05 | P2 | Web | Admin | TC-FEE-01-E01 done; seeded term "Annual" | 1. Open Fee > Fee Categories.<br>2. Click "Manage Fee Types" (+) on "QA Sports".<br>3. Click "Add Fee Type".<br>4. Enter "QA Kit", choose term "Annual", save.<br>5. Close the dialog. | "QA Kit" is listed in "Manage Fee Types - QA Sports"; the row shows "2 fee types" | planned |
+| TC-FEE-02-E06 | P3 | Mobile | Admin | TC-FEE-01-E01 done | 1. Open Fee Types.<br>2. Tap "Add New Type".<br>3. Enter "QA Mobile Type", choose category "QA Sports", no term.<br>4. Tap save. | Toast "Fee term is required"; nothing created | planned |
+| TC-FEE-02-E07 | P2 | Mobile | Admin | TC-FEE-01-E01 and TC-FEE-03-E01 done | 1. Open Fee Types.<br>2. Tap "Add New Type", enter "QA Mobile Type", category "QA Sports", term "QA Quarterly", save.<br>3. Delete "QA Mobile Type" and confirm. | Toasts "Fee type created successfully" then "Fee type deleted successfully" | planned |
 
 API tests implemented in: backend/tests/api/fee/test_fee_categories_types.py
 
@@ -278,14 +289,14 @@ Implemented in: backend/tests/unit/fee/test_fee_category_type_rules.py (phase 1 
 **Preconditions.** An academic year exists and is selected.
 
 **Steps, web.**
-1. Open Fee > Fee Terms (title "Fee Terms Management"; a card shows "Academic Year: <title>" with an "Active Year" badge).
+1. Open Fee > Fee Terms (title "Fee Terms Management", subtitle "Configure fee terms and payment schedules for different fee structures"; a card shows "Academic Year: <title>", the year's date range and an "Active Year" badge; the list card is "Fee Terms & Payment Schedules" with "Search by term name...").
 2. Click "Add New Term" (or "Create First Term"). Dialog "Create New Fee Term".
 3. Enter "Term Name" (placeholder "e.g., Quarterly, Monthly, Annual"), "Number of Terms" (1 to 12 in the form), the "Active" switch.
-4. Under "Payment Dates" pick a date in the date input and click "Add Date"; the table lists "Installment" and "Due Date" rows with edit and delete buttons. The form refuses to submit unless exactly "Number of Terms" dates exist: `You must add exactly N payment date(s) (currently M added)`.
-5. Save. The list shows "Number of Terms" and "Payment Schedule" (for example "N/N dates configured" or a date range).
-6. Edit through the pencil "Edit Fee Term" (dialog "Edit Fee Term"); delete through "Delete Fee Term". The calendar button "Manage Payment Dates" opens a read-only "Manage Payment Dates - <term>" view ("Installment 1..n", "Due Date", status Configured); dates are changed through Edit.
+4. Under "Payment Dates" pick a date in the date input ("Select date") and click "Add Date" (empty text "No payment dates added yet. Add dates above."); the table lists "Installment" and "Due Date" rows with edit and delete buttons. The form refuses to submit unless exactly "Number of Terms" dates exist: `You must add exactly N payment date(s) (currently M added)`.
+5. Click "Create Term" ("Update Term" when editing). Toast "Fee term created successfully". The list shows "Number of Terms" (for example "4 terms") and "Payment Schedule" (for example "Jun 10 - Mar 10 (4 dates)").
+6. Edit through "Edit Fee Term" (dialog "Edit Fee Term"); delete through "Delete Fee Term". The "Payment Dates" button opens a read-only "Manage Payment Dates - <term>" view ("Payment Schedule Configuration", "N/N configured", rows "Installment 1..n", "Due Date", status Configured, a note to use "Edit"; "Close"); dates are changed through Edit.
 
-**Steps, mobile.** Fee hub > "Fee Terms" (`/fees/terms`): form fields "e.g., Quarterly, Monthly, Annual", "Enter number of terms", one due date input per term with placeholder "DD/MM/YYYY". Validation toasts: "Term name is required", "Academic year is required", "Number of terms must be at least 1", "Due date for Term N is required", "Number of term dates must equal number of terms". Delete failure toast "Cannot delete this term - it may be linked to active fee types".
+**Steps, mobile.** Fee hub > "Fee Terms" (`/fees/terms`): the list shows each term with "Payment Dates", "Edit" and "Delete"; "Add Fee Term" opens the form "Add Fee Term" with "e.g., Quarterly, Monthly, Annual", "Enter number of terms", "Active", "Payment Dates" with a date picker and "Add Date", and "Create Term". Toasts (title / message): "Term Created" / "Fee term created successfully"; errors "Term name is required", "Academic year is required", "Number of terms must be at least 1", "Due date for Term N is required", "Number of term dates must equal number of terms". Delete failure toast "Delete Failed" with the server message (fallback "Cannot delete this term - it may be linked to active fee types").
 
 **Expected results.** One `fee_terms` row and `number_of_terms` rows in `fee_term_dates`. Dates are returned in the term payload (`fee_term_dates`: `id`, `term_id`, `fee_term_date`).
 
@@ -340,14 +351,19 @@ Implemented in: backend/tests/unit/fee/test_fee_category_type_rules.py (phase 1 
 | TC-FEE-03-A17 | Role matrix create, update, delete (term and date) | Admin 2xx; Staff, Teacher, Student, Parent 403 | passing |
 | TC-FEE-03-A18 | Role matrix list, read, dates, dropdown | Admin, Staff 200; others 403 | passing |
 | TC-FEE-03-A19 | No token; cross-tenant header mismatch; tenant B cannot read tenant A term | 401; 403; 404 | passing |
-| TC-FEE-03-E01 | Web: create "QA Quarterly" with 4 dates through Add New Term | Row shows "4/4 dates configured" or the date range, status Active | planned |
-| TC-FEE-03-E02 | Web: set Number of Terms 3 but add 2 dates, Save | Error `You must add exactly 3 payment dates (currently 2 added)`; nothing saved | planned |
-| TC-FEE-03-E03 | Web: edit a term and change one date | Saved; "Manage Payment Dates" shows the new date as an Installment | planned |
-| TC-FEE-03-E04 | Web: delete a term used by a fee type | Error toast with the "being used by" message | planned |
-| TC-FEE-03-E05 | Web: open "Manage Payment Dates" | Read-only table; Close button works; info text points to Edit | planned |
-| TC-FEE-03-E06 | Web: Staff opens `/fee/terms` | List only, no add, edit or delete buttons | planned |
-| TC-FEE-03-E07 | Mobile: create a term with 4 dates in DD/MM/YYYY | Toast "Fee term created successfully"; term listed | planned |
-| TC-FEE-03-E08 | Mobile: leave one due date empty | Toast "Due date for Term 2 is required" (position of the empty date) | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-FEE-03-E01 | P1 | Web | Admin | Academic year 2026-2027 selected | 1. Open Fee > Fee Terms.<br>2. Click "Add New Term".<br>3. Enter Term Name "QA Quarterly", Number of Terms 4.<br>4. Pick 2026-06-10 in "Select date" and click "Add Date"; repeat for 2026-09-10, 2026-12-10, 2027-03-10.<br>5. Click "Create Term". | Toast "Fee term created successfully"; row "QA Quarterly", "4 terms", Payment Schedule "Jun 10 - Mar 10 (4 dates)", Active | planned |
+| TC-FEE-03-E02 | P3 | Web | Admin | None | 1. Click "Add New Term".<br>2. Enter "QA Short", Number of Terms 3.<br>3. Add two dates.<br>4. Click "Create Term". | Error `You must add exactly 3 payment dates (currently 2 added)`; nothing saved | planned |
+| TC-FEE-03-E03 | P2 | Web | Admin | TC-FEE-03-E01 done | 1. Click "Edit Fee Term" on "QA Quarterly".<br>2. Change installment 4 to 2027-03-15.<br>3. Click "Update Term".<br>4. Click "Payment Dates" on the row. | Toast "Fee term updated successfully"; "Manage Payment Dates - QA Quarterly" lists Installment 4 "Mar 15, 2027" | planned |
+| TC-FEE-03-E04 | P2 | Web | Admin | TC-FEE-02-E01 done ("QA Lab" uses "QA Quarterly") | 1. Click "Delete Fee Term" on "QA Quarterly".<br>2. Confirm. | Error toast `Cannot delete fee term 'QA Quarterly' because it is being used by 1 fee type(s)...`; row stays | planned |
+| TC-FEE-03-E05 | P3 | Web | Admin | Seeded term "Three Terms" | 1. Click "Payment Dates" on "Three Terms".<br>2. Read the dialog.<br>3. Click "Close". | "Manage Payment Dates - Three Terms", "3/3 configured", Installment 1 to 3 (Jun 15, 2026; Oct 15, 2026; Jan 15, 2027) with status Configured and the note to use "Edit"; dialog closes | planned |
+| TC-FEE-03-E06 | P2 | Web | Staff | Seeded terms | 1. Sign in as Staff.<br>2. Open Fee > Fee Terms. | List visible; no "Add New Term", no Actions column (no edit or delete) | planned |
+| TC-FEE-03-E07 | P2 | Mobile | Admin | None | 1. Open Fee Terms.<br>2. Tap "Add Fee Term".<br>3. Enter "QA Mobile Term", "Enter number of terms" 2.<br>4. Add dates 2026-07-01 and 2026-11-01 with "Add Date".<br>5. Tap "Create Term". | Toast "Fee term created successfully"; card "QA Mobile Term" with "2 terms" | planned |
+| TC-FEE-03-E08 | P3 | Mobile | Admin | None | 1. Tap "Add Fee Term".<br>2. Enter "QA Mobile Bad", 3 terms, add only one date.<br>3. Tap "Create Term". | Toast "Number of term dates must equal number of terms"; nothing saved | planned |
 
 API tests implemented in: backend/tests/api/fee/test_fee_terms.py
 
@@ -367,11 +383,11 @@ Implemented in: backend/tests/unit/fee/test_fee_term_mapping_rules.py (phase 1 u
 1. Open Fee > Fee Mappings and choose the "Class Mappings" tab.
 2. Click "Add Mapping" (or "Create First Mapping"). Dialog "Create Fee Mapping".
 3. Choose "Fee Type *" ("Select fee type"), "Class *" ("Select class"), type "Total Fee *" ("Enter total fee"), optionally tick "Mandatory fee (apply to all students in this class)". Click "Save".
-4. With Mandatory ticked, after the save the page also bulk-creates student mappings for every enrolled student section by section and toasts `Fee applied to X of Y students in this class.`
+4. Toast "Fee class mapping created successfully". With Mandatory ticked, after the save the page also bulk-creates student mappings for every enrolled student section by section and toasts `Fee applied to X of Y students in this class.`
 5. In the table (columns Class, Fee Type, Total Fee, Term Distribution, Mandatory, Actions) click the Mandatory badge ("Mandatory" or "Optional") to toggle; turning it on repeats the bulk apply. Edit sends only `total_fee` and `all_by_default` (dialog "Edit Fee Mapping"); delete confirms in "Delete Fee Mapping". The calculator button "Manage Term Amounts" opens F05. Search "Search by class, fee type, or amount...".
 6. Validation toasts: `Please select both fee type and class`, `Total fee must be greater than 0`, `Please select an academic year`.
 
-**Steps, mobile.** Fee hub > "Fee Mappings" > tab "Class Mappings", or the "Fee Term Amounts" tile (same tab). Fields "Select class", "Select fee type", "Enter total fee"; mandatory toggle shows `Marked Mandatory` / `Applying this fee to all students in the class...` and `Fee applied to X of Y students in this class.`; edit sends both UUID fields and fails (Known gaps K05); delete toast "Fee class mapping deleted successfully".
+**Steps, mobile.** Fee hub > "Fee Mappings" > tab "Class Mappings", or the "Fee Term Amounts" tile (same tab). "Add Mapping" (empty state "No fee class mappings found"); fields "Select class", "Select fee type", "Enter total fee"; toasts "Mapping Created", "Mapping Updated" (edit works since K05 was fixed), mandatory toggle `Marked Mandatory` / `Applying this fee to all students in the class...` followed by "Fee Applied", delete "Mapping Deleted" / "Fee class mapping deleted successfully".
 
 **Expected results.** One `fee_class_mappings` row per (class, fee type, year). When mandatory is on, one `fee_student_mappings` row (with equal-split `fee_student_map_term_amounts`) per admitted student who lacks one for that fee type and year.
 
@@ -421,24 +437,29 @@ Implemented in: backend/tests/unit/fee/test_fee_term_mapping_rules.py (phase 1 u
 | TC-FEE-04-A13 | Bulk with an unknown class id among valid ones | That class reported `CLASS_NOT_FOUND`; others created | passing |
 | TC-FEE-04-A14 | Bulk with an unknown `fee_type_id` | 404 `Fee type with id ... not found`; nothing created | passing |
 | TC-FEE-04-A15 | `GET /fee/class-mappings/` filters `class_id`, `all_by_default=true`, `limit`, `offset` | Filtered arrays; items carry term amounts | passing |
-| TC-FEE-04-A16 | `GET /fee/class-mappings/?fee_type_id=<uuid>` | 200 filtered | passing (unit, API) |
-| TC-FEE-04-A17 | `GET /fee/class-mappings/{id}` existing and unknown | 200; 404 `Fee class mapping with id ... not found` | passing; xfail: FEE-B04 |
+| TC-FEE-04-A16 | `GET /fee/class-mappings/?fee_type_id=<uuid>` | 200 filtered | passing |
+| TC-FEE-04-A17 | `GET /fee/class-mappings/{id}` existing and unknown | 200; 404 `Fee class mapping with id ... not found` | known defect: FEE-B04: GET /fee/class-mappings/{unknown id} returns 500 because the service swallows its own 404 |
 | TC-FEE-04-A18 | `DELETE` a mapping; its student mappings | 200; student mappings still exist | passing |
 | TC-FEE-04-A19 | `GET /fee/class-mappings/health` | 200 `module: "fee_class_mappings"` | passing |
 | TC-FEE-04-A20 | Role matrix create, update, toggle, delete, bulk | Admin 2xx; Staff, Teacher, Student, Parent 403 | passing |
 | TC-FEE-04-A21 | Role matrix list and read | Admin, Staff 200; Teacher, Student, Parent 403 | passing |
-| TC-FEE-04-A22 | No token; cross-tenant header; tenant B list excludes tenant A mappings | 401; 403; empty | passing; xfail: FEE-B04 |
+| TC-FEE-04-A22 | No token; cross-tenant header; tenant B list excludes tenant A mappings | 401; 403; empty | known defect: FEE-B04: cross-tenant GET /fee/class-mappings/{id} returns 500 instead of 404 |
 | TC-FEE-04-A23 | Admission created after a mandatory mapping exists (via the admission endpoint) | New student gets the student mapping and term amounts automatically | passing |
-| TC-FEE-04-E01 | Web: add an optional mapping for class C1, Tuition, 12000 | Row shows "Optional", Term Distribution "Not Set" | planned |
-| TC-FEE-04-E02 | Web: add a mandatory mapping | Toast `Fee applied to X of Y students in this class.`; a student's Fee Summary now lists the fee | planned |
-| TC-FEE-04-E03 | Web: click the Optional badge to switch to Mandatory | Badge becomes Mandatory; bulk toast appears | planned |
-| TC-FEE-04-E04 | Web: leave Total Fee 0 and Save | Toast `Total fee must be greater than 0` | planned |
-| TC-FEE-04-E05 | Web: create a duplicate mapping | Error toast with the "already exists" message | planned |
-| TC-FEE-04-E06 | Web: edit total fee to 13000 | Row updates; existing student mapping still 12000 in Student Mappings tab | planned |
-| TC-FEE-04-E07 | Web: delete a mapping | Row removed after confirming in "Delete Fee Mapping" | planned |
-| TC-FEE-04-E08 | Web: Staff opens the Class Mappings tab | Read-only: no Add Mapping, no actions | planned |
-| TC-FEE-04-E09 | Mobile: create a mapping and toggle mandatory | Toasts "Mapping Created" then "Marked Mandatory" | planned |
-| TC-FEE-04-E10 | Mobile: edit a mapping (sends UUID class and year) | 200 (K05 fixed) | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-FEE-04-E01 | P1 | Web | Admin | TC-FEE-02-E01 done; seeded class Class 5 | 1. Open Fee > Fee Mappings.<br>2. Choose the "Class Mappings" tab.<br>3. Click "Add Mapping".<br>4. Choose Fee Type "QA Lab", Class "Class 5", Total Fee 12000; leave "Mandatory fee" unticked.<br>5. Click "Save". | Toast "Fee class mapping created successfully"; row Class 5, QA Lab, 12,000, Term Distribution "Not Set", badge "Optional" | planned |
+| TC-FEE-04-E02 | P1 | Web | Admin | TC-FEE-02-E05 done ("QA Kit") | 1. Class Mappings tab, "Add Mapping".<br>2. Fee Type "QA Kit", Class "Class 4", Total Fee 500, tick "Mandatory fee (apply to all students in this class)".<br>3. Click "Save".<br>4. Open Fee Collection for seeded student Tanvi Raju (005, 4-B). | Toast `Fee applied to X of Y students in this class.`; Tanvi Raju's Fee Summary lists "QA Kit" 500.00. Clean up: delete the created student mappings and the class mapping | planned |
+| TC-FEE-04-E03 | P2 | Web | Admin | TC-FEE-04-E01 done | 1. Class Mappings tab.<br>2. Click the "Optional" badge on Class 5 / QA Lab. | Badge becomes "Mandatory"; toast `Fee applied to X of Y students in this class.`; Class 5 students now have "QA Lab" | planned |
+| TC-FEE-04-E04 | P3 | Web | Admin | TC-FEE-02-E01 done | 1. Click "Add Mapping".<br>2. Choose QA Lab and Class 3, Total Fee 0.<br>3. Click "Save". | Toast `Total fee must be greater than 0`; nothing saved | planned |
+| TC-FEE-04-E05 | P3 | Web | Admin | Seeded mapping Class 1 / Tuition Fee | 1. Click "Add Mapping".<br>2. Choose Tuition Fee, Class 1, Total Fee 1000.<br>3. Click "Save". | Error toast `Fee class mapping already exists for this combination of class, fee type, and academic year` | planned |
+| TC-FEE-04-E06 | P2 | Web | Admin | TC-FEE-04-E03 done | 1. Edit Class 5 / QA Lab, Total Fee 13000, save.<br>2. Open the "Student Mappings" tab and filter Fee Type "QA Lab". | Toast "Fee class mapping updated successfully"; class row 13,000; student mappings still 12,000 | planned |
+| TC-FEE-04-E07 | P2 | Web | Admin | TC-FEE-04-E01 done | 1. Click delete on Class 5 / QA Lab.<br>2. Confirm in "Delete Fee Mapping". | Toast "Fee class mapping deleted successfully"; row removed; student mappings made from it remain | planned |
+| TC-FEE-04-E08 | P2 | Web | Staff | Seeded class mappings | 1. Sign in as Staff.<br>2. Open Fee > Fee Mappings > "Class Mappings". | Read-only: no "Add Mapping", no edit, delete or toggle controls; class and fee type names shown | planned |
+| TC-FEE-04-E09 | P2 | Mobile | Admin | TC-FEE-02-E01 done | 1. Open Fee Mappings > "Class Mappings" (or the Class Mappings screen).<br>2. Tap "Add Mapping", choose Class 3, QA Lab, 900, save.<br>3. Toggle mandatory on that card. | Toasts "Mapping Created" then "Marked Mandatory" (Applying this fee to all students in the class...) and a "Fee Applied" toast | planned |
+| TC-FEE-04-E10 | P3 | Mobile | Admin | TC-FEE-04-E09 done | 1. Edit the Class 3 / QA Lab mapping.<br>2. Change the total to 950 and save. | Toast "Mapping Updated" (Fee class mapping updated successfully); card shows 950 | planned |
 
 API tests implemented in: backend/tests/api/fee/test_fee_class_mappings.py
 
@@ -506,19 +527,24 @@ Implemented in: backend/tests/unit/fee/test_fee_term_mapping_rules.py (phase 1 u
 | TC-FEE-05-A10 | `PUT /` with an unknown amount id | 404 `Term amount with id ... not found` | passing |
 | TC-FEE-05-A11 | `PUT /` item without `id` | A new row is created and the request is validated as a whole | passing |
 | TC-FEE-05-A12 | `PUT /` item with `term_id` only | 422 (`term_date_id` required) | passing |
-| TC-FEE-05-A13 | `GET /by-mapping/{id}`, `GET /` with `class_mapping_id` and `fee_term_id`, `GET /{id}` | Ordered and filtered arrays; unknown id 404 `Term amount with id ... not found` | passing; xfail: FEE-B06 |
+| TC-FEE-05-A13 | `GET /by-mapping/{id}`, `GET /` with `class_mapping_id` and `fee_term_id`, `GET /{id}` | Ordered and filtered arrays; unknown id 404 `Term amount with id ... not found` | known defect: FEE-B06: GET by-mapping, list and single term-amount reads return term_date null (only create/update fill it) |
 | TC-FEE-05-A14 | `DELETE /` with two ids | 200 message `Successfully deleted 2 term amount(s)` | passing |
 | TC-FEE-05-A15 | `GET /fee/class-mapping-term-amounts/health` | 200 | passing |
 | TC-FEE-05-A16 | Role matrix create, update, delete | Admin 2xx; Staff, Teacher, Student, Parent 403 | passing |
 | TC-FEE-05-A17 | Role matrix read, list, by-mapping | Admin, Staff 200; others 403 | passing |
 | TC-FEE-05-A18 | No token; cross-tenant header; tenant isolation | 401; 403; hidden | passing |
 | TC-FEE-05-A19 | Student mapping created after saving class term amounts | Student term amounts still an equal split, not copied from these rows | passing |
-| TC-FEE-05-E01 | Web: open Manage Term Amounts, click Equal Distribution on 12000 over 4 terms, Save | Rows 3000 each, status "Complete (4 terms)" | planned |
-| TC-FEE-05-E02 | Web: manual amounts 5000, 3000, 2000, 1000 | Save works; Difference shows 0 and Valid | planned |
-| TC-FEE-05-E03 | Web: amounts that do not sum to the total | Save blocked with `Term amounts must sum to the total fee amount`; Invalid marker | planned |
-| TC-FEE-05-E04 | Web: open `/fee/term-amounts` | Redirects to `/fee/mappings`, Class Mappings tab open, first row highlighted | planned |
-| TC-FEE-05-E05 | Web: Staff user opens the modal | Inputs read-only, no distribution buttons or save | planned |
-| TC-FEE-05-E06 | Mobile: save term amounts for a mapping | Toast "Term amounts saved successfully" | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-FEE-05-E01 | P1 | Web | Admin | TC-FEE-04-E01 done (12000 on 4-date "QA Quarterly") | 1. Class Mappings tab.<br>2. Click "Manage Term Amounts" on Class 5 / QA Lab.<br>3. Click "Equal Distribution".<br>4. Click "Save Term Amounts". | Toast "Term amounts created successfully"; four 3,000.00 rows; Term Distribution "Complete (4 terms)" | planned |
+| TC-FEE-05-E02 | P2 | Web | Admin | TC-FEE-05-E01 done | 1. Open "Manage Term Amounts" again.<br>2. Choose "Manual Entry" and enter 5000, 3000, 2000, 2000.<br>3. Click "Save Term Amounts". | Difference 0 and Valid before saving; toast "Term amounts updated successfully" | planned |
+| TC-FEE-05-E03 | P3 | Web | Admin | TC-FEE-05-E01 done | 1. Open "Manage Term Amounts".<br>2. Manual Entry 5000, 3000, 2000, 1000.<br>3. Click "Save Term Amounts". | Invalid marker; toast `Term amounts must sum to the total fee amount`; nothing saved | planned |
+| TC-FEE-05-E04 | P3 | Web | Admin | Seeded class mappings | 1. Open `/fee/term-amounts` (or the "Term Amounts" sidebar entry). | Lands on `/fee/mappings#class-mappings-term-amounts` with the Class Mappings tab open and the first row highlighted | planned |
+| TC-FEE-05-E05 | P3 | Web | Staff | Seeded mapping Class 1 / Tuition Fee with term amounts | 1. Sign in as Staff.<br>2. Class Mappings tab, open "Manage Term Amounts" on Class 1 / Tuition Fee. | Amounts read-only; no distribution buttons and no "Save Term Amounts" | planned |
+| TC-FEE-05-E06 | P2 | Mobile | Admin | TC-FEE-04-E09 done (900 on 4 dates) | 1. Class Mappings screen.<br>2. Open term amounts for Class 3 / QA Lab.<br>3. Enter 225 for each term and save. | Toast "Saved" (Term amounts saved successfully) | planned |
 
 API tests implemented in: backend/tests/api/fee/test_fee_term_amounts.py
 
@@ -535,11 +561,11 @@ Implemented in: backend/tests/unit/fee/test_fee_term_mapping_rules.py (phase 1 u
 **Preconditions.** Student with an admission (admission number, class, section), fee type with a term that has dates, and the academic year. Automatic path: a mandatory class mapping (F04) exists before or after the admission.
 
 **Steps, web.**
-1. Fee > Fee Mappings > "Student Mappings" (heading "Fee Student Mappings"). Filters: "Search by student name, admission number, or fee type...", "Filter by class", "Filter by section", "Filter by fee type" (All Classes, All Sections, All Fee Types). Columns Student, Class & Section, Fee Type, Total Fee, Actions.
+1. Fee > Fee Mappings opens on the "Student Mappings" tab (tabs in order: "Student Mappings", "Assign Student Fees", "Class Mappings"; heading "Fee Student Mappings"). Filters: "Search by student name, admission number, or fee type...", "Filter by class", "Filter by section", "Filter by fee type" (All Classes, All Sections, All Fee Types). Columns Student, Class & Section, Fee Type, Total Fee, Actions.
 2. "Create Mapping": dialog "Create Fee Student Mapping" with Student, Admission Number (auto-filled), Class, Section, Address (auto-filled), Fee Type, "Total Fee" with the rupee symbol in brackets; for a Transport fee type the amount fills from Bus, Trip and Stop selections ("Stop Fee"). Button "Create Mapping" ("Update Mapping" when editing).
 3. "Bulk Create": dialog "Bulk Create Fee Student Mappings": Class, Section, Fee Type, "Total Fee", Students multi-select; button "Create Mappings (N students)"; a "Bulk Creation Result" card lists successes and "Errors".
 4. Edit with "Edit Mapping" (dialog "Edit Fee Student Mapping"); delete with "Delete Mapping" and the dialog "Delete Fee Student Mapping".
-5. "Assign Student Fees" tab: choose Class, Section and Student; the page lists "Mandatory Fees", "Non-Mandatory Fees" and "Transport Fee" from the class mappings with a per-row "Assign" button or Assigned badge; unassigning deletes the student mapping.
+5. "Assign Student Fees" tab: choose Class, Section and Student ("Search by name or admission no..."; until then "Select a student above to manage their fee assignments."); the page lists "Mandatory Fees", "Non-Mandatory Fees" and "Transport Fee" from the class mappings with a per-row "Assign" button or Assigned badge; unassigning deletes the student mapping.
 
 **Steps, mobile.** "Student Mappings" screen (search "Search by student, class or fee type...", add form, bulk form "Select students", delete); "Assign Student Fees" screen (class, section, "Search by name or admission no...", assign or remove per fee). Toasts: "Mapping Created", "Bulk Mappings Created", "Mapping Updated", "Mapping Deleted", "Fee Assigned", "Fee Removed"; required-field toasts "Student is required", "Total fee must be greater than 0", "At least one student must be selected".
 
@@ -577,7 +603,7 @@ Implemented in: backend/tests/unit/fee/test_fee_term_mapping_rules.py (phase 1 u
 | TC-FEE-06-U07 | `FeeStudentMappingBulkCreate` with duplicate student ids | ValidationError `duplicate student_ids are not allowed` | passing |
 | TC-FEE-06-U08 | `FeeStudentMapTermAmountCreate` with `term_amount=-1` | ValidationError (non-negative) | passing |
 | TC-FEE-06-U09 | `check_mapping_unique` with `exclude_id` equal to the existing mapping | No error | passing |
-| TC-FEE-06-A01 | Admin `POST /fee/student-mappings/` student S1, Tuition, 12000 | 201; `student_fee_mapping_terms` has 4 items of "3000.00" for the Q4 dates | passing; xfail: FEE-B07 |
+| TC-FEE-06-A01 | Admin `POST /fee/student-mappings/` student S1, Tuition, 12000 | 201; `student_fee_mapping_terms` has 4 items of "3000.00" for the Q4 dates | known defect: FEE-B07: student fee mapping term amounts always carry term_date null (POST and GET), although the schema fiel... |
 | TC-FEE-06-A02 | POST a Lab mapping of 1000 on T3 | 3 term amounts of "333.33" | passing |
 | TC-FEE-06-A03 | POST the same (student, type, year) twice | 400 `Fee student mapping already exists...` | passing |
 | TC-FEE-06-A04 | POST with an unknown admission number | 404 `Admission with number ... not found` | passing |
@@ -592,7 +618,7 @@ Implemented in: backend/tests/unit/fee/test_fee_term_mapping_rules.py (phase 1 u
 | TC-FEE-06-A13 | `GET /{id}` | Full payload with `student_details` (name, class, section) and term amounts | passing |
 | TC-FEE-06-A14 | `PUT /{id}` `total_fee=6000` | Old term amounts replaced by four "1500.00"; mapping total 6000.00 | passing |
 | TC-FEE-06-A15 | `PUT /{id}` change `fee_type_id` to a type the student already has | 400 duplicate | passing |
-| TC-FEE-06-A16 | `DELETE /{id}` without a concession | 200; GET afterwards 404; summary no longer lists the fee | passing; xfail: FEE-B05 |
+| TC-FEE-06-A16 | `DELETE /{id}` without a concession | 200; GET afterwards 404; summary no longer lists the fee | known defect: FEE-B05: GET /fee/student-mappings/{deleted or unknown id} returns 500 instead of 404 |
 | TC-FEE-06-A17 | `DELETE /{id}` for a mapping that has a concession | 500 (foreign key); mapping remains | passing |
 | TC-FEE-06-A18 | After a payment, `DELETE` the mapping | 200; the payment still exists in transactions but the summary excludes that fee type | passing |
 | TC-FEE-06-A19 | `GET /fee/student-mappings/health` | 200 | passing |
@@ -600,17 +626,22 @@ Implemented in: backend/tests/unit/fee/test_fee_term_mapping_rules.py (phase 1 u
 | TC-FEE-06-A21 | Role matrix delete | Admin 2xx; Staff, Teacher, Student, Parent 403 | passing |
 | TC-FEE-06-A22 | Role matrix list and read | Admin, Staff 200; Teacher, Student, Parent 403 | passing |
 | TC-FEE-06-A23 | No token; cross-tenant header; tenant B sees none of tenant A's mappings | 401; 403; empty | passing |
-| TC-FEE-06-E01 | Web: Admin creates a mapping through "Create Mapping" | Row in the table; Fee Summary for the student shows the fee with Actual Amount 12,000.00 | planned |
-| TC-FEE-06-E02 | Web: "Bulk Create" for 3 students in a class | "Bulk Creation Result" shows 3 created; table lists 3 rows | planned |
-| TC-FEE-06-E03 | Web: bulk create when one already has the fee | Result card lists the error row; toast "Successfully created 2 out of 3 mappings" | planned |
-| TC-FEE-06-E04 | Web: edit a mapping total to 6000 | Row total updates; Fee Summary shows 6,000.00 | planned |
-| TC-FEE-06-E05 | Web: delete a mapping through "Delete Fee Student Mapping" | Row removed | planned |
-| TC-FEE-06-E06 | Web: "Assign Student Fees" tab, class, section, student, click "Assign" for a non-mandatory fee | Row shows Assigned; clicking again unassigns | planned |
-| TC-FEE-06-E07 | Web: Staff user opens Assign Student Fees and tries to unassign | Toast "You don't have permission to remove fee assignments" | planned |
-| TC-FEE-06-E08 | Web: filter Student Mappings by class, section and fee type | Only matching rows | planned |
-| TC-FEE-06-E09 | Mobile: Student Mappings screen create and delete | Toasts "Mapping Created" and "Mapping Deleted" | planned |
-| TC-FEE-06-E10 | Mobile: Assign Student Fees assign then remove | Toasts "Fee Assigned" and "Fee Removed" | planned |
-| TC-FEE-06-E11 | Admit a new student (UI or API) into a class with a mandatory mapping, then open Fee Collection for the student | Fee Summary already lists the mandatory fee | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-FEE-06-E01 | P1 | Web | Admin | TC-FEE-02-E01 done; seeded student Kavya Verma (006, Class 1 / 1-A) | 1. Open Fee > Fee Mappings (Student Mappings tab).<br>2. Click "Create Mapping".<br>3. Choose Student Kavya Verma (Admission Number and Address fill), Class "Class 1", Section "1-A", Fee Type "QA Lab".<br>4. Enter Total Fee 1200.<br>5. Click "Create Mapping". | Toast "Fee student mapping created successfully"; row appears; Kavya Verma's Fee Summary lists QA Lab, Actual Amount 1,200.00 | planned |
+| TC-FEE-06-E02 | P2 | Web | Admin | TC-FEE-02-E05 done | 1. Click "Bulk Create".<br>2. Choose Class "Class 2", Section "2-A", Fee Type "QA Kit", Total Fee 300.<br>3. Select 3 students.<br>4. Click "Create Mappings (3 students)". | Toast "Successfully created 3 out of 3 mappings"; "Bulk Creation Result" lists 3 successes | planned |
+| TC-FEE-06-E03 | P3 | Web | Admin | TC-FEE-06-E02 done | 1. "Bulk Create" again for Class 2 / 2-A, QA Kit, 300.<br>2. Select the same 3 students plus one more.<br>3. Click "Create Mappings (4 students)". | Toast "Successfully created 1 out of 4 mappings"; the result card lists 3 errors (DUPLICATE_MAPPING) | planned |
+| TC-FEE-06-E04 | P2 | Web | Admin | TC-FEE-06-E01 done | 1. Click "Edit Mapping" on Kavya Verma / QA Lab.<br>2. Change Total Fee to 600.<br>3. Click "Update Mapping". | Toast "Fee student mapping updated successfully"; row 600; Fee Summary shows 600.00 | planned |
+| TC-FEE-06-E05 | P2 | Web | Admin | TC-FEE-06-E02 done | 1. Click "Delete Mapping" on one QA Kit row.<br>2. Confirm in "Delete Fee Student Mapping". | Toast "Fee student mapping deleted successfully"; row removed | planned |
+| TC-FEE-06-E06 | P2 | Web | Admin | Seeded student Advik Mehta (002, 1-B); TC-FEE-02-E05 done and a class mapping Class 1 / QA Kit (optional) exists | 1. Choose the "Assign Student Fees" tab.<br>2. Choose Class "Class 1", Section "1-B", Student "Advik Mehta".<br>3. Click "Assign" on QA Kit under "Non-Mandatory Fees".<br>4. Click it again to unassign. | Row shows Assigned, then returns to Assign; the student mapping is created and then deleted | planned |
+| TC-FEE-06-E07 | P3 | Web | Staff | Seeded student Advik Mehta with the seeded Activity Fee assigned | 1. Sign in as Staff.<br>2. "Assign Student Fees" tab, Class 1, 1-B, Advik Mehta.<br>3. Try to unassign Activity Fee. | Toast "You don't have permission to remove fee assignments"; mapping stays | planned |
+| TC-FEE-06-E08 | P3 | Web | Admin | Seeded student mappings | 1. Student Mappings tab.<br>2. Choose Class "Class 1", Section "1-A", Fee Type "Tuition Fee". | Only Class 1 / 1-A Tuition Fee rows (for example Saanvi Iyer, Kavya Verma) | planned |
+| TC-FEE-06-E09 | P2 | Mobile | Admin | TC-FEE-02-E01 done | 1. Open the Student Mappings screen.<br>2. Tap "Create Mapping": Kavya Verma, Class 1, 1-A, QA Lab, 500, save.<br>3. Delete that mapping. | Toasts "Mapping Created" then "Mapping Deleted" | planned |
+| TC-FEE-06-E10 | P2 | Mobile | Admin | As TC-FEE-06-E06 | 1. Open Assign Student Fees.<br>2. Choose Class 1, 1-B, Advik Mehta.<br>3. Assign QA Kit, then remove it. | Toasts "Fee Assigned" then "Fee Removed" | planned |
+| TC-FEE-06-E11 | P2 | Web | Admin | A mandatory class mapping exists for the class (seeded Tuition Fee and Admission Fee are mandatory for every class) | 1. Admit a new student "QA Admit Student" into Class 2 / 2-B with an admission number and section (Students > Admission).<br>2. Open Fee > Fee Collection and open that student. | Fee Summary already lists Tuition Fee and Admission Fee | planned |
 
 API tests implemented in: backend/tests/api/fee/test_fee_student_mappings.py
 
@@ -629,10 +660,10 @@ Implemented in: backend/tests/unit/fee/test_fee_term_mapping_rules.py (phase 1 u
 **Steps, web.**
 1. Fee > Fee Collection, search and open a student, choose the "Concessions" tab.
 2. In "Apply Concessions" the table lists every assigned fee type: S.No., Fee Type, Assigned, Due Amount, Due Date, Settled, "Concession Amt", "Reason (min 5 chars)", "Approved By" (Owner, Principal, Management, Correspondent). A row with an existing concession shows the placeholder "Add more..." because a new amount is added on top.
-3. Type an amount (the input is capped at the row's Due Amount; a larger number toasts `Concession for <type> cannot exceed the due amount of <amount>.` and is reset), a reason of at least 5 characters, choose the approver, then click "Save All Concessions". Only complete rows are sent; incomplete rows are reported by toast (`Skipped N incomplete row(s): ...`); with no valid row the toast is `Enter a concession amount, a reason (min 5 characters), and select an approver before saving.`
-4. Open the collapsible "Concession History" (Date, Fee Type, Amount, Reason, Approver, Recorded By, Actions). Edit opens "Edit Concession" (Concession Amount, "Reason (min 5 characters)", "Approved By", "Save"); the delete icon opens "Revoke Concession" with "Revoke".
+3. Type an amount (the input is capped at the row's Due Amount; a larger number toasts `Concession for <type> cannot exceed the due amount of <amount>.` and is reset), a reason of at least 5 characters, choose the approver, then click "Save All Concessions". Only complete rows are sent; incomplete rows are reported by toast (`Skipped N incomplete row(s): ...`); with no valid row the toast is `Enter a concession amount, a reason (min 5 characters), and select an approver before saving.` A successful save toasts "Concessions saved successfully". The footer shows "Grand Total", the concession total and "After Concession: <amount>".
+4. Open the collapsible "Concession History" (Date, Fee Type, Amount, Reason, Approver, Recorded By, Actions with "Edit" and "Delete"). Edit opens "Edit Concession" (Concession Amount, "Reason (min 5 characters)", "Approved By", "Save"); the delete icon opens "Revoke Concession" with "Revoke". Toasts "Concession updated successfully" and "Concession revoked successfully".
 
-**Steps, mobile.** Collection > student > "Concessions": per fee type "Concession Amt" ("Add more..." or "0.00"), "Approved By", "Reason..." and a save button; history list with "Edit Concession" and "Revoke Concession" modals; "No concession history found." when empty.
+**Steps, mobile.** Collection > student > "Concessions" ("Apply Concessions", "Save All Concessions"): per fee type card with Assigned, Due and due date, "Concession Amt" ("Add more..." with "+<amount> applied" when one exists, or "0.00"), "Approved By", "Reason (min 5 chars)"; a "Grand Total" block (Assigned, Concession, After Concession); history list with "Edit Concession" and "Revoke Concession" modals; "No concession history found." when empty.
 
 **Expected results.** A `fee_concessions` row per (student, fee type, year) (unique, including revoked rows). Summary and payment totals use the active amount. The Fee Summary "Payable Amount" and "Due" change immediately.
 
@@ -688,7 +719,7 @@ Implemented in: backend/tests/unit/fee/test_fee_term_mapping_rules.py (phase 1 u
 | TC-FEE-07-A15 | `GET /{id}` existing and unknown | 200 with `fee_type_name`; unknown 404 `Concession not found` | passing |
 | TC-FEE-07-A16 | `PUT /{id}` amount 1500 (replace) | 200; amount "1500.00" (not added to the previous value) | passing |
 | TC-FEE-07-A17 | `PUT /{id}` amount above the stored `assigned_fee` | 400 `Concession amount cannot exceed assigned fee 12000.00` | passing |
-| TC-FEE-07-A18 | `PUT /{id}` reason and approver only | 200; amount unchanged; approver updated | passing |
+| TC-FEE-07-A18 | `PUT /{id}` reason and approver only | 200; `concession_amount` unchanged at 2000.00; `reason` and `approved_by` updated; a `PUT` with `approved_by` alone is 400 | passing |
 | TC-FEE-07-A19 | `DELETE /{id}` | 200 `{detail: "Concession revoked", concession_id}`; `is_active` false; summary concession 0; due restored | passing |
 | TC-FEE-07-A20 | `DELETE` twice | Both 200 | passing |
 | TC-FEE-07-A21 | After revoke, bulk +500 | Reactivated row; amount "500.00" (not previous plus 500) | passing |
@@ -697,14 +728,19 @@ Implemented in: backend/tests/unit/fee/test_fee_term_mapping_rules.py (phase 1 u
 | TC-FEE-07-A24 | Role matrix: summary, history, single (read) | Admin 200; others 403 | passing |
 | TC-FEE-07-A25 | Parent token on a linked child's summary | 403 (no `fee_concessions` grant; only `fee_collection:read_related` exists) | passing |
 | TC-FEE-07-A26 | No token; cross-tenant header; tenant B cannot read tenant A concession by id | 401; 403; 404 | passing |
-| TC-FEE-07-E01 | Web: apply 2000 with reason and approver "Principal" on Tuition, Save All Concessions | Toast success; summary tab shows Payable Amount reduced by 2,000.00 | planned |
-| TC-FEE-07-E02 | Web: type an amount above the row's Due Amount | Toast `Concession for Tuition cannot exceed the due amount of ...`; input reset to the due | planned |
-| TC-FEE-07-E03 | Web: fill amount but leave reason empty and save | Toast about incomplete rows or the required-field message; nothing saved | planned |
-| TC-FEE-07-E04 | Web: row with an existing concession shows "Add more..."; add 500 | History shows a second entry; applied total grows | planned |
-| TC-FEE-07-E05 | Web: open Concession History, Edit an entry and Save | Amount replaced; summary updates | planned |
-| TC-FEE-07-E06 | Web: Revoke a concession | Entry removed from the active total; Fee Summary due restored | planned |
-| TC-FEE-07-E07 | Web: user without `fee_concessions:create` opens the tab | Inputs read-only; no "Save All Concessions" | planned |
-| TC-FEE-07-E08 | Mobile: apply a concession and revoke it | Summary updates both times | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-FEE-07-E01 | P1 | Web | Admin | Seeded student Kavya Verma (006): Tuition Fee 27,000.00, no concession | 1. Open Fee > Fee Collection, search "006", open Kavya Verma.<br>2. Choose "Concessions".<br>3. On Tuition Fee enter Concession Amt 2000, Reason "QA sibling discount", Approved By "Principal".<br>4. Click "Save All Concessions". | Toast "Concessions saved successfully"; Fee Summary Payable Amount 25,000.00 for Tuition Fee | planned |
+| TC-FEE-07-E02 | P3 | Web | Admin | Kavya Verma open on Concessions | 1. Enter Concession Amt 99999 on Activity Fee (due 2,000.00). | Toast `Concession for Activity Fee cannot exceed the due amount of ...2,000.00.`; input reset to the due | planned |
+| TC-FEE-07-E03 | P3 | Web | Admin | Kavya Verma open on Concessions | 1. Enter 100 on Books and Stationery, leave Reason empty.<br>2. Click "Save All Concessions". | Toast `Enter a concession amount, a reason (min 5 characters), and select an approver before saving.`; nothing saved | planned |
+| TC-FEE-07-E04 | P2 | Web | Admin | Seeded student Ananya Reddy (20260002, NUR-A) with the seeded 2,000.00 Tuition Fee concession | 1. Open Ananya Reddy, "Concessions".<br>2. On Tuition Fee (placeholder "Add more...") enter 500, reason "QA extra discount", approver "Management".<br>3. Click "Save All Concessions". | Concession History gains an entry; Tuition Fee payable drops by a further 500.00 (total concession 2,500.00) | planned |
+| TC-FEE-07-E05 | P2 | Web | Admin | TC-FEE-07-E01 done | 1. Open "Concession History".<br>2. Click "Edit" on the QA entry.<br>3. Change the amount to 1500 and click "Save". | Toast "Concession updated successfully"; Tuition Fee payable 25,500.00 | planned |
+| TC-FEE-07-E06 | P2 | Web | Admin | TC-FEE-07-E01 done | 1. In "Concession History" click "Delete" on the QA entry.<br>2. Click "Revoke" in "Revoke Concession". | Toast "Concession revoked successfully"; Tuition Fee payable back to 27,000.00 | planned |
+| TC-FEE-07-E07 | P2 | Web | Staff | Seeded student Kavya Verma | 1. Sign in as Staff.<br>2. Open Kavya Verma, "Concessions". | No editable inputs and no "Save All Concessions" (Staff has no `fee_concessions` grant) | planned |
+| TC-FEE-07-E08 | P2 | Mobile | Admin | Seeded student Kavya Verma | 1. Fee Collection, search "006", open Kavya Verma.<br>2. "Concessions": Tuition Fee 1000, approver, reason "QA mobile discount", save.<br>3. Revoke it from the history. | Fee Summary Payable drops by 1,000.00 then returns; Grand Total row shows the concession | planned |
 
 API tests implemented in: backend/tests/api/fee/test_fee_concessions.py
 
@@ -721,9 +757,9 @@ Implemented in: backend/tests/unit/fee/test_fee_concession_rules.py (phase 1 uni
 **Preconditions.** A student with an admission. Carry forward needs fee mappings in the source year.
 
 **Steps, web.**
-1. Open the student's "Old Fees" tab. The "Old Fee Records" table has S.No., Academic Year, Fee Type, Source (Manual or Carry Forward), Original, Paid, Outstanding, Settled, Receipt, Actions.
+1. Open the student's "Old Fees" tab (empty text "No old fee records found."). The "Old Fee Records" table has S.No., Academic Year, Fee Type, Source (Manual or Carry Forward), Original, Paid, Outstanding, Settled, Receipt, Actions.
 2. "Add Manual Entry" opens "Add Old Fee Entry": "Academic Year Label *" (for example 2024-25), "Fee Type Name *", "Original Amount *", "Paid Amount", "Receipt Number", "Remarks"; button "Add Entry".
-3. "Carry Forward" opens "Carry Forward Old Fees": choose "Source Academic Year" ("Select previous year"); the "Target Academic Year" shows the selected year; button "Carry Forward".
+3. "Carry Forward" opens "Carry Forward Old Fees": choose "Source Academic Year" ("Select previous year"); the "Target Academic Year" (read-only) shows the selected year; the note reads "This will copy all unpaid fee items from the source year as old fee records in the current year."; button "Carry Forward".
 4. Edit (pencil) opens "Edit Old Fee": "Paid Amount", "Paid Date", "Receipt Number", "Remarks", "Save". The "S" button ("Mark as Settled") opens the dialog "Mark as Settled" with "Settle". The trash button (shown only for non-settled manual entries) opens "Delete Old Fee Entry".
 5. The Fee Summary tab shows a badge "Old Fee Pending: <amount> - View" that jumps to this tab.
 
@@ -786,14 +822,19 @@ Implemented in: backend/tests/unit/fee/test_fee_concession_rules.py (phase 1 uni
 | TC-FEE-08-A19 | Role matrix create, carry-forward, put, settle, delete | Admin 2xx; Staff, Teacher, Student, Parent 403 | passing |
 | TC-FEE-08-A20 | Role matrix list and read | Admin 200; others 403 | passing |
 | TC-FEE-08-A21 | No token; cross-tenant header; tenant B cannot read tenant A old fee | 401; 403; 404 | passing |
-| TC-FEE-08-E01 | Web: Add Manual Entry (2024-25, Tuition Fee, 1500, paid 600) | Success; row appears (see K08 if filtered out) and the Fee Summary badge shows "Old Fee Pending" 900.00 | planned |
-| TC-FEE-08-E02 | Web: Carry Forward from the previous year | Rows labelled Carry Forward; summary badge increases | planned |
-| TC-FEE-08-E03 | Web: Edit Old Fee, set Paid Amount to the original | Settled badge on; outstanding 0.00 | planned |
-| TC-FEE-08-E04 | Web: "Mark as Settled" then confirm "Settle" | Settled badge on; the pending badge on the summary decreases | planned |
-| TC-FEE-08-E05 | Web: delete a manual entry | Row removed after "Delete Old Fee Entry" | planned |
-| TC-FEE-08-E06 | Web: add a duplicate manual entry | Error toast with the duplicate message | planned |
-| TC-FEE-08-E07 | Web: user without `fee_old:create` | No "Add Manual Entry" or "Carry Forward" buttons | planned |
-| TC-FEE-08-E08 | Mobile: Add Manual Entry | Fails (404 on `/fee/old/`); defect K07 recorded | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-FEE-08-E01 | P1 | Web | Admin | Seeded student Kavya Verma has no old fee records | 1. Open Kavya Verma, "Old Fees".<br>2. Click "Add Manual Entry".<br>3. Enter Academic Year Label "2024-25", Fee Type Name "QA Old Tuition", Original Amount 1500, Paid Amount 600.<br>4. Click "Add Entry". | Toast "Old fee entry added successfully"; Fee Summary badge "Old Fee Pending: 900.00 - View"; the row is missing from the tab (K08) | blocked: K08 (manual entries are filtered out of the web Old Fees tab) |
+| TC-FEE-08-E02 | P3 | Web | Admin | A student with fee mappings in an earlier academic year (none in the seed) | 1. Open the student, "Old Fees".<br>2. Click "Carry Forward".<br>3. Choose the "Source Academic Year".<br>4. Click "Carry Forward". | Rows with Source "Carry Forward"; the Old Fee Pending badge increases | blocked: no seeded data in an earlier academic year |
+| TC-FEE-08-E03 | P2 | Web | Admin | TC-FEE-08-E01 done and the row visible | 1. Click Edit on the row.<br>2. Set Paid Amount 1500.<br>3. Click "Save". | Toast "Old fee updated successfully"; Settled on; Outstanding 0.00 | blocked: K08 |
+| TC-FEE-08-E04 | P2 | Web | Admin | TC-FEE-08-E01 done and the row visible | 1. Click "Mark as Settled".<br>2. Click "Settle". | Toast "Old fee marked as settled"; Settled on; the Old Fee Pending badge drops | blocked: K08 |
+| TC-FEE-08-E05 | P2 | Web | Admin | TC-FEE-08-E01 done and the row visible | 1. Click the delete icon.<br>2. Confirm in "Delete Old Fee Entry". | Toast "Old fee entry deleted"; row removed | blocked: K08 |
+| TC-FEE-08-E06 | P3 | Web | Admin | TC-FEE-08-E01 done | 1. "Add Manual Entry" again with "2024-25" and "QA Old Tuition".<br>2. Click "Add Entry". | Error toast `Old fee record for 2024-25 / QA Old Tuition already exists for this student` | planned |
+| TC-FEE-08-E07 | P3 | Web | Staff | Seeded student Kavya Verma | 1. Sign in as Staff.<br>2. Open Kavya Verma, "Old Fees". | No "Add Manual Entry" or "Carry Forward" buttons | planned |
+| TC-FEE-08-E08 | P3 | Mobile | Admin | Seeded student Kavya Verma | 1. Open Kavya Verma, "Old Fees".<br>2. Tap "Add Manual Entry", enter an amount, save. | Entry saved and listed | blocked: K07 (mobile calls /fee/old/... and wrong field names) |
 
 API tests implemented in: backend/tests/api/fee/test_fee_old_fees.py
 
@@ -811,12 +852,12 @@ Implemented in: backend/tests/unit/fee/test_fee_old_rules.py (phase 1 unit cases
 
 **Steps, web.**
 1. Open Fee > Fee Collection (title "Fee Collection", subtitle "Search students and manage fee payments").
-2. Type in "Search by name, admission no, mobile, city..." and optionally pick "Class" and "Section"; click "Search" (disabled until a filter is set) or press Enter; "Clear" resets. Results: S.No., Student, Admission No., Class-Section, Parent; 5 rows per page with Previous and Next and "Rows per page".
+2. Type in "Search by name, admission no, mobile, city..." and optionally pick "Class" and "Section"; click "Search" (disabled until a filter is set) or press Enter; "Clear" resets. Results: S.No., Student, Admission No., Class-Section ("<class>-<section>"), Parent (all linked parents, comma separated); 5 rows per page with Previous and Next and "Rows per page".
 3. Click a row. The page shows "Manage fee for <name>", the admission badge, a close button "Go back" and the tabs "Fee Summary", "Fee Payment", "Concessions", "Old Fees", "Fee History" (bottom navigation on narrow screens).
-4. "Fee Summary" shows the card "Fee Summary" with "As of <date>" and "AY: <year>", the table (S.No., Fee Type, Actual Amount, Payable Amount, Paid, Due, Last Paid, Receipt #, Remarks) with a "Grand Total" row, mandatory fees sorted first, the badge "Old Fee Pending: <amount> - View" and the collapsible "Term-wise Installment Schedule" (Inst No., Fee Type, Pay Term, Inst Amount, Paid Amount, Due Date, Due Amount, Status Paid or Pending; per-type totals). The schedule applies a concession first-in-first-out to the earliest installments for display only. The summary request carries no as-of date, so the server uses today.
-5. "Fee History" lists S.No., Date, Receipt No, Amount Paid, Payment Method, Fee Types Paid and a download icon "Download Receipt PDF"; total row "Total Paid". Empty text "No payment records found for this academic year."
+4. "Fee Summary" shows the card "Fee Summary" with "As of <YYYY-MM-DD> - AY: <year>" and a "Send SMS" button (F14), the table (S.No., Fee Type, Actual Amount, Payable Amount, Paid, Due, Last Paid, Receipt #, Remarks) with a "Grand Total" row, mandatory fees sorted first, the badge "Old Fee Pending: <amount> - View" and the collapsible "Term-wise Installment Schedule", open by default (Inst No., Fee Type, Pay Term, Inst Amount, Paid Amount, Due Date, Due Amount, Status Paid or Pending; per-type totals). The schedule applies a concession first-in-first-out to the earliest installments for display only. The summary request carries no as-of date, so the server uses today.
+5. "Fee History" ("Fee Payment History") lists S.No., Date, Receipt No, Amount Paid, Payment Method, Fee Types Paid and a download icon "Download Receipt PDF"; total row "Total Paid". Empty text "No payment records found for this academic year."
 
-**Steps, mobile.** Fee Collection screen: "Search by name, admission no, mobile...", "All Classes", "All Sections", "Search", "Clear"; empty hint "Search and select a student"; a result row opens the detail screen with the same five tabs (Fee Summary shows Fee Type, Payable, Paid, due and "Term-wise Installment Schedule").
+**Steps, mobile.** Fee Collection screen ("Search students and manage fee payments"): "Search by name, admission no, mobile...", "All Classes", "All Sections", "Search", "Clear"; empty hint "Search and select a student to view their fee details"; a result row opens the detail screen (student name, admission number, class and section) with the same five tabs. Fee Summary shows "As of <date> - AY: <year>", per fee type Actual, Payable, Paid and Due, a "Grand Total" row and "Term-wise Installment Schedule"; Fee History's empty text is "No payment records found for this academic year."
 
 **Expected results.** Read-only views. No data changes.
 
@@ -878,15 +919,20 @@ Implemented in: backend/tests/unit/fee/test_fee_old_rules.py (phase 1 unit cases
 | TC-FEE-09-A18 | Parent token calls `GET /summary/{child}` | 403 (needs `fee_collection:read`, which Parent only holds as `read_related`) | passing |
 | TC-FEE-09-A19 | Tenant isolation: tenant A student id queried with tenant B token | 404 `Student not found` | passing |
 | TC-FEE-09-A20 | No token | 401 | passing |
-| TC-FEE-09-E01 | Web: search by admission number, open the student | Detail page with five tabs and the student name | planned |
-| TC-FEE-09-E02 | Web: Search button disabled while all filters empty | Disabled until text or a class is chosen | planned |
-| TC-FEE-09-E03 | Web: search with no match | Text "No students found. Try adjusting your search criteria." | planned |
-| TC-FEE-09-E04 | Web: Fee Summary for the W2 student | Table shows Actual Amount 12,000.00, Payable Amount 10,000.00, Paid 4,000.00, Due 6,000.00; Grand Total row matches | planned |
-| TC-FEE-09-E05 | Web: Term-wise Installment Schedule with a 2000 concession | Concession absorbed by the earliest installments (display only); statuses Paid or Pending | planned |
-| TC-FEE-09-E06 | Web: student with old fees | Badge "Old Fee Pending: ..." opens the Old Fees tab when clicked | planned |
-| TC-FEE-09-E07 | Web: Fee History tab after a payment | Row with receipt number, amount, method, fee types; PDF download icon works | planned |
-| TC-FEE-09-E08 | Web: Fee History on a student with no payments | "No payment records found for this academic year." | planned |
-| TC-FEE-09-E09 | Mobile: search, open a student, read Fee Summary | Same figures as the web case E04 | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-FEE-09-E01 | P1 | Web | Admin | Seeded student Karthik Reddy (001, Class 3 / 3-B) | 1. Open Fee > Fee Collection.<br>2. Type "001" in "Search by name, admission no, mobile, city..." and press Enter.<br>3. Click the Karthik Reddy row. | "Manage fee for Karthik Reddy", admission badge 001, tabs "Fee Summary", "Fee Payment", "Concessions", "Old Fees", "Fee History" | planned |
+| TC-FEE-09-E02 | P3 | Web | Admin | None | 1. Open Fee > Fee Collection with all filters empty.<br>2. Choose a Class. | "Search" disabled while all filters are empty; enabled after a class is chosen | planned |
+| TC-FEE-09-E03 | P3 | Web | Admin | None | 1. Search "zzzqqq". | Text "No students found. Try adjusting your search criteria." | planned |
+| TC-FEE-09-E04 | P1 | Web | Admin | Seeded student Ananya Reddy (20260002): Tuition Fee 18,000 with 2,000 concession and 6,000 paid | 1. Open Ananya Reddy from Fee Collection.<br>2. Read the "Fee Summary" table. | Tuition Fee: Actual Amount 18,000.00, Payable Amount 16,000.00, Paid 6,000.00, Due 10,000.00; "As of <today> - AY: 2026-2027"; Grand Total row equals the sum of rows | planned |
+| TC-FEE-09-E05 | P2 | Web | Admin | As TC-FEE-09-E04 | 1. Read "Term-wise Installment Schedule" (open by default). | Tuition Fee rows for 15 Jun 2026, 15 Oct 2026, 15 Jan 2027; the 2,000.00 concession is taken from the earliest instalments' Due Amount; Status Paid or Pending | planned |
+| TC-FEE-09-E06 | P3 | Web | Admin | TC-FEE-08-E01 done for Kavya Verma | 1. Open Kavya Verma, "Fee Summary".<br>2. Click "View" on the "Old Fee Pending" badge. | Badge shows 900.00; click opens the "Old Fees" tab | planned |
+| TC-FEE-09-E07 | P2 | Web | Admin | Seeded student Karthik Reddy with seeded completed payments | 1. Open Karthik Reddy, "Fee History".<br>2. Click "Download Receipt PDF" on a row. | Rows with Date, Receipt No (REC-2610-...), Amount Paid, Payment Method, Fee Types Paid; "Total Paid"; toast "Receipt downloaded" and a PDF file | planned |
+| TC-FEE-09-E08 | P3 | Web | Admin | Seeded student Kavya Verma (no payments) | 1. Open Kavya Verma, "Fee History". | "No payment records found for this academic year." | planned |
+| TC-FEE-09-E09 | P2 | Mobile | Admin | As TC-FEE-09-E04 | 1. Open the Fee Management card, then "Fee Collection".<br>2. Search "20260002", tap Search, open Ananya Reddy.<br>3. Read "Fee Summary". | Same figures as TC-FEE-09-E04 (Actual 18,000.00, Payable 16,000.00, Paid 6,000.00, Due 10,000.00) | planned |
 
 API tests implemented in: backend/tests/api/fee/test_fee_collection_summary.py
 
@@ -898,13 +944,13 @@ Implemented in: backend/tests/unit/fee/test_fee_summary_rules.py (phase 1 unit c
 
 **Purpose.** Record a payment against a student's fees. One call creates the transaction and its term-level items, issues a receipt (when the payment is completed) and optionally sends a parent SMS.
 
-**Roles and permissions.** API: `fee_collection:create` (`POST /fee/collection/pay`). Web UI gate: `fee_transactions:create` (the Payment tab disables inputs without it); the two grants differ, so a user can pass the UI gate and still get a 403 from the API. Default seed: Admin only for the API call. Menu: Fee > Fee Collection > student > "Fee Payment" tab (web) and the same tab on mobile.
+**Roles and permissions.** API: `fee_collection:create` (`POST /fee/collection/pay`). Web UI gate: `fee_transactions:create` (the Payment tab disables inputs without it); the two grants differ, so a user can pass the UI gate and still get a 403 from the API. Default seed: Admin only for the API call. Menu: Fee > Fee Collection > student > "Fee Payment" tab (web) and the same tab on mobile. A default Staff user can open the student page but the Fee Summary shows `Permission not found in database: Staff cannot read fee_collection. Contact administrator to configure permissions.` and the Payment tab stays at "Loading installments..." (K23).
 
 **Preconditions.** The student has fee mappings with term amounts (F06) and an outstanding balance; for SMS, a parent with a phone number.
 
 **Steps, web.**
 1. Open the student's "Fee Payment" tab. The card "Total Due Amount" shows the summary's `grand_total_due`.
-2. Choose "Payment Up To" ("Select installment...", options like "Quarterly (10 Sep 2026)"). The table "Fees Due Up To <date>" lists each fee type with pending installments up to that date, reduced by the fee type's concession (S.No., Particulars, Actual Amount, Received Amount).
+2. Choose "Payment Up To" ("Select installment...", one option per due date, labelled "<term name> (<d Mon yyyy>)", for example "Three Terms (15 Oct 2026)"); until then "Fee Heads" reads `Select a "Payment Up To" date above to see fee heads.` The table "Fees Due Up To <date>" lists each fee type with pending installments up to that date, reduced by the fee type's concession (S.No., Particulars, Actual Amount, Received Amount).
 3. Type the "Received Amount" per fee type (blank by default; the input is limited to the row amount and a larger value toasts `Amount should not exceed <amount> for <fee type>` and is clamped). "Collect Payment" stays disabled until the total received is above 0.
 4. In the card "Collect Payment": "Receipt Number *" (provisional, for example `RCP-260616-0930`, sent but ignored by the server), "Payment Method *" (Cash, UPI, Cheque, Bank Transfer, Demand Draft), then the method fields: UPI shows "UPI Reference *" (max 30); Cheque shows "Cheque Number *", "Bank Name *", "Cheque Date *"; Demand Draft shows "DD Number *", "Bank Name *", "DD Date *" (date input limited to today plus 90 days); Bank Transfer shows "Bank Reference *" (max 30). Optional "Remarks"; switches "Send SMS" (on by default) and "Print Duplicate" (off).
 5. Click "Collect Payment", confirm "Confirm Payment" ("Collect <amount> from <student> via <method>?") with "Confirm".
@@ -981,10 +1027,10 @@ Implemented in: backend/tests/unit/fee/test_fee_summary_rules.py (phase 1 unit c
 | TC-FEE-10-A20 | Cheque dated today plus 91 days; today plus 90 days | 422; 200 | passing |
 | TC-FEE-10-A21 | `print_duplicate=true` on a completed payment | Receipt `is_reprinted` true, `reprint_count` 1 | passing |
 | TC-FEE-10-A22 | `send_sms=false` | `sms_status` skipped | passing |
-| TC-FEE-10-A23 | `send_sms=true` for a student whose parent has no phone | `sms_status` skipped; payment still 200 | skipped: admission requires a parent phone, so a parent without a phone cannot be created and send_sms=true would reach the SMS provider |
+| TC-FEE-10-A23 | `send_sms=true` for a student whose parent has no phone | `sms_status` skipped; payment still 200 | skipped: admission requires a parent phone, so a parent without a phone cannot be created and send_sms=true would reach... |
 | TC-FEE-10-A24 | Student with no fee mappings | 404 `No fee mappings found for this student and academic year` | passing |
 | TC-FEE-10-A25 | Student without admission | 404 `Student admission not found` | passing |
-| TC-FEE-10-A26 | Duplicate payment: send the identical request twice for a student with due 12000, amount 3000 | Both 200 (no idempotency); two transactions, two receipts, due 6000 | passing |
+| TC-FEE-10-A26 | Duplicate payment: send the identical request twice for a student with due 12000, amount 3000 | Without `idempotency_key`: both 200, two transactions and two receipts, due 6000. With the same `idempotency_key`: the second 200 returns the original transaction and receipt, due 9000, one history item. A key over 64 characters is 422 | passing |
 | TC-FEE-10-A27 | Duplicate payment exceeding what remains: send the identical full-due request twice | First 200; second 400 `No outstanding dues for this student` | passing |
 | TC-FEE-10-A28 | Pending cheque for the full due, then a cash payment for the full due | Both accepted (pending cheque is not counted); documents the exposure | passing |
 | TC-FEE-10-A29 | Two concurrent identical full-due requests (parallel) | One 200 and one 400 (advisory lock; K12 fixed) | passing |
@@ -994,20 +1040,26 @@ Implemented in: backend/tests/unit/fee/test_fee_summary_rules.py (phase 1 unit c
 | TC-FEE-10-A33 | Refund (F13) processed afterwards | Summary Paid unchanged (refunds never subtracted) | passing |
 | TC-FEE-10-A34 | Role matrix `POST /pay` | Admin 200; Staff, Teacher, Student, Parent 403 with the default seed | passing |
 | TC-FEE-10-A35 | No token; cross-tenant header; tenant B token paying a tenant A student id | 401; 403; 404 `No fee mappings found...` | passing |
-| TC-FEE-10-E01 | Web: select "Payment Up To" the second installment | Table lists Tuition pending up to that date; Received inputs empty | planned |
-| TC-FEE-10-E02 | Web: enter 3000 for Tuition, Cash, Collect Payment, Confirm | Dialog "Payment Recorded" with Transaction # and Receipt #; Items Paid row Tuition 3000.00; closing opens Fee Summary with Paid 3,000.00 | planned |
-| TC-FEE-10-E03 | Web: enter an amount above the row's Actual Amount | Toast `Amount should not exceed ...`; value clamped | planned |
-| TC-FEE-10-E04 | Web: choose UPI and leave the reference empty, submit | Inline error "UPI reference is required"; no request | planned |
-| TC-FEE-10-E05 | Web: choose Cheque, fill number, bank, date | Confirm shows the dialog; success dialog shows the pending clearance message and no receipt buttons | planned |
-| TC-FEE-10-E06 | Web: cheque date beyond today plus 90 | Inline error `Cheque/DD date cannot be more than 90 days in the future` | planned |
-| TC-FEE-10-E07 | Web: Bank Transfer without reference | Inline error "Bank reference is required" | planned |
-| TC-FEE-10-E08 | Web: "Download Receipt" in the success dialog | PDF downloads, toast "Receipt downloaded" | planned |
-| TC-FEE-10-E09 | Web: user without `fee_transactions:create` | Inputs disabled and the notice "You don't have permission to collect fee payments. Contact an administrator for access." | planned |
-| TC-FEE-10-E10 | Web: Collect Payment disabled while total received is 0 | Button disabled | planned |
-| TC-FEE-10-E11 | Web: Admin payment with a concession on the fee type | Row amount shows pending net of concession; payment accepted for that amount | planned |
-| TC-FEE-10-E12 | Web: server error (due already paid by another session) | Red banner with the backend message; no dialog | planned |
-| TC-FEE-10-E13 | Mobile: Payment Up To, enter amounts, cash, submit | Modal "Payment Recorded"; "Download Receipt" works; "Done" closes | planned |
-| TC-FEE-10-E14 | Mobile: cheque payment with a missing bank name | Submit disabled or required-field error; no request | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-FEE-10-E01 | P2 | Web | Admin | Seeded student Kavya Verma (006), nothing paid | 1. Open Kavya Verma, "Fee Payment".<br>2. Open "Payment Up To" and choose the "Three Terms (15 Oct 2026)" entry. | "Fees Due Up To 15 Oct 2026" lists each fee type with its pending amount up to that date; Received Amount inputs empty; "Collect Payment" disabled | planned |
+| TC-FEE-10-E02 | P1 | Web | Admin | As TC-FEE-10-E01 | 1. Choose "Payment Up To" "Three Terms (15 Oct 2026)".<br>2. Enter Received Amount 3000 for Tuition Fee.<br>3. Keep Payment Method "Cash".<br>4. Click "Collect Payment" and then "Confirm". | Dialog "Payment Recorded" with Transaction #, Receipt # (REC-YYMM-NNNN), Items Paid Tuition Fee 3,000.00; after "Close" the Fee Summary shows Tuition Fee Paid 3,000.00 | planned |
+| TC-FEE-10-E03 | P3 | Web | Admin | As TC-FEE-10-E01 | 1. Choose a "Payment Up To" date.<br>2. Enter a Received Amount above the row amount. | Toast `Amount should not exceed ... for Tuition Fee`; value clamped to the row amount | planned |
+| TC-FEE-10-E04 | P3 | Web | Admin | As TC-FEE-10-E01 | 1. Enter 100 for Tuition Fee.<br>2. Choose Payment Method "UPI", leave "UPI Reference *" empty.<br>3. Click "Collect Payment". | Inline error "UPI reference is required"; no request sent | planned |
+| TC-FEE-10-E05 | P1 | Web | Admin | As TC-FEE-10-E01 | 1. Enter 500 for Activity Fee.<br>2. Choose "Cheque", fill Cheque Number "QA480001", Bank Name "QA Bank", Cheque Date today.<br>3. Click "Collect Payment", then "Confirm". | Success dialog shows `Cheque/DD pending clearance - receipt will be generated once the instrument clears.` and no receipt buttons; Fee Summary Paid unchanged | planned |
+| TC-FEE-10-E06 | P3 | Web | Admin | As TC-FEE-10-E01 | 1. Choose "Cheque", set Cheque Date 91 days ahead.<br>2. Click "Collect Payment". | Inline error `Cheque/DD date cannot be more than 90 days in the future` | planned |
+| TC-FEE-10-E07 | P3 | Web | Admin | As TC-FEE-10-E01 | 1. Enter 100, choose "Bank Transfer", leave "Bank Reference *" empty.<br>2. Click "Collect Payment". | Inline error "Bank reference is required" | planned |
+| TC-FEE-10-E08 | P2 | Web | Admin | TC-FEE-10-E02 dialog open | 1. Click "Download Receipt". | Toast "Receipt downloaded"; a PDF named after the receipt number | planned |
+| TC-FEE-10-E09 | P3 | Web | Teacher | None | 1. Sign in as Teacher.<br>2. Open `/fee/collection` by URL. | Redirected to the Dashboard (Teacher has no fee access, so the Payment tab notice "You don't have permission to collect fee payments. Contact an administrator for access." cannot be reached with the default roles) | planned |
+| TC-FEE-10-E10 | P3 | Web | Admin | As TC-FEE-10-E01 | 1. Choose a "Payment Up To" date and leave all Received Amounts empty. | "Collect Payment" stays disabled | planned |
+| TC-FEE-10-E11 | P2 | Web | Admin | Seeded student Ananya Reddy (Tuition concession 2,000.00) | 1. Open "Fee Payment".<br>2. Choose "Payment Up To" "Three Terms (15 Jan 2027)".<br>3. Read the Tuition Fee row. | Actual Amount is the pending amount net of the concession (10,000.00 when nothing else was paid since the seed) | planned |
+| TC-FEE-10-E12 | P3 | Web | Admin | Two browser sessions on Kavya Verma's Payment tab | 1. In session 1 pay the full Activity Fee.<br>2. In session 2 try to pay Activity Fee again without reloading. | Red banner with the backend message (for example `'Activity Fee' has no outstanding due; nothing to pay for this fee type`); no success dialog | planned |
+| TC-FEE-10-E13 | P2 | Mobile | Admin | Seeded student Kavya Verma | 1. Open Kavya Verma, "Fee Payment".<br>2. Choose "Payment Up To", enter 200 for Activity Fee, Cash.<br>3. Tap "Collect Payment" and confirm.<br>4. Tap "Download Receipt", then "Done". | Modal "Payment Recorded"; the receipt opens or shares; Done closes the modal | planned |
+| TC-FEE-10-E14 | P3 | Mobile | Admin | Seeded student Kavya Verma | 1. "Fee Payment", enter 100, method "Cheque", fill the number and date but no "Bank Name *".<br>2. Tap "Collect Payment". | Required-field error; no request sent | planned |
+| TC-FEE-10-E15 | P3 | Web | Staff | Seeded student Kavya Verma | 1. Sign in as Staff.<br>2. Open Kavya Verma from Fee Collection. | Fee Summary shows "Permission not found in database: Staff cannot read fee_collection. Contact administrator to configure permissions."; the Payment tab stays at "Loading installments..." (Staff has no `fee_collection` grant, K23) | planned |
 
 API tests implemented in: backend/tests/api/fee/test_fee_payment.py
 
@@ -1092,7 +1144,7 @@ Implemented in: backend/tests/unit/fee/test_fee_payment_rules.py (phase 1 unit c
 | TC-FEE-11-A14 | `GET /{id}/verify` for an untouched receipt | `is_valid` true; stored and current hashes equal | passing |
 | TC-FEE-11-A15 | Rename the student, then verify | `is_valid` false; hashes differ | passing |
 | TC-FEE-11-A16 | Renumber the receipt, then verify | `is_valid` false | passing |
-| TC-FEE-11-A17 | Verify an unknown id | 404 | passing (unit, API) |
+| TC-FEE-11-A17 | Verify an unknown id | 404 | passing |
 | TC-FEE-11-A18 | `PATCH /{id}/number` to a free number | 200 with the new number | passing |
 | TC-FEE-11-A19 | `PATCH /{id}/number` to a number used by another receipt | 400 `Receipt number '<n>' is already in use` | passing |
 | TC-FEE-11-A20 | `PATCH /{id}/number` to its own number | 200 unchanged | passing |
@@ -1109,17 +1161,22 @@ Implemented in: backend/tests/unit/fee/test_fee_payment_rules.py (phase 1 unit c
 | TC-FEE-11-A31 | Role matrix reprint and renumber (update) | Admin 200; Staff, Teacher, Student, Parent 403 | passing |
 | TC-FEE-11-A32 | Role matrix get, number, content, verify (read) and search (list) | Admin, Staff 200; Teacher, Student, Parent 403 (Student and Parent only through the scoped endpoints, F16) | passing |
 | TC-FEE-11-A33 | No token; cross-tenant header; tenant B cannot read tenant A receipt by id or number | 401; 403; 404 | passing |
-| TC-FEE-11-E01 | Web: after a cash payment, open Fee Receipts and select the new receipt | Details show Original status, student, year, class and section | planned |
-| TC-FEE-11-E02 | Web: "Generate Receipt" for a cleared cheque transaction | Receipt appears in Recent Receipts | planned |
-| TC-FEE-11-E03 | Web: "View Content" | Fee Breakdown matches the payment items; Payment Reference shown | planned |
-| TC-FEE-11-E04 | Web: "Verify Integrity" on an untouched receipt | Alert "Receipt is valid and untampered" | planned |
-| TC-FEE-11-E05 | Web: verify after the student is renamed | Alert "Receipt integrity compromised" with both hashes | planned |
-| TC-FEE-11-E06 | Web: "Reprint Receipt" then "Download PDF" in the dialog | Prints count increases (Status Reprinted, "Prints: 1"); PDF downloads | planned |
-| TC-FEE-11-E07 | Web: "Download PDF" | File `<receipt number>.pdf` downloads; toast "Receipt PDF downloaded" | planned |
-| TC-FEE-11-E08 | Web: search by receipt number fragment and by date range | Recent Receipts filters accordingly | planned |
-| TC-FEE-11-E09 | Web: Staff user opens Fee Receipts | "Reprint Receipt" button absent; other buttons present | planned |
-| TC-FEE-11-E10 | Mobile: admin selects a receipt, taps Download PDF | PDF opens or shares; no error toast | planned |
-| TC-FEE-11-E11 | Mobile: admin "Generate" for an eligible transaction | Toast "Receipt generated successfully" | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-FEE-11-E01 | P1 | Web | Admin | TC-FEE-10-E02 done (or any seeded receipt, for example Karthik Reddy's) | 1. Open Fee > Fee Receipts.<br>2. Pick the receipt in "Select Receipt". | "Receipt Details" shows Status Original, "Prints: 0", Student, Academic Year 2026-2027, Class & Section, Generated At | planned |
+| TC-FEE-11-E02 | P2 | Web | Admin | TC-FEE-12-E05 done (cheque marked completed, no receipt) | 1. Click "Generate Receipt".<br>2. Choose the transaction in "Select Transaction".<br>3. Click "Generate Receipt". | Toast "Receipt generated successfully"; the receipt appears in "Recent Receipts" | planned |
+| TC-FEE-11-E03 | P2 | Web | Admin | A seeded UPI receipt selected | 1. Click "View Content". | "Receipt Content" shows Transaction Number, Payment Method, Total Amount, Payment Reference (the UPI26... reference), Collected By and "Fee Breakdown" matching the payment items | planned |
+| TC-FEE-11-E04 | P2 | Web | Admin | A seeded receipt selected | 1. Click "Verify Integrity". | Alert "Receipt is valid and untampered" with equal stored and current hashes | planned |
+| TC-FEE-11-E05 | P3 | Web | Admin | A QA-admitted student with a paid receipt whose first name is then changed (do not rename seeded students) | 1. Select that receipt.<br>2. Click "Verify Integrity". | Alert "Receipt integrity compromised" with different hashes | planned |
+| TC-FEE-11-E06 | P2 | Web | Admin | A seeded receipt selected | 1. Click "Reprint Receipt".<br>2. Click "Download PDF" in "Reprint Receipt". | Status Reprinted, "Prints: 1"; PDF downloads | planned |
+| TC-FEE-11-E07 | P1 | Web | Admin | A seeded receipt selected | 1. Click "Download PDF". | File `<receipt number>.pdf` downloads; toast "Receipt PDF downloaded" | planned |
+| TC-FEE-11-E08 | P3 | Web | Admin | Seeded receipts REC-2610-0001 to REC-2610-0024 | 1. Type "0002" in "Search by receipt number".<br>2. Clear it and set Date From and Date To to today. | Recent Receipts filters to numbers containing 0002, then to today's receipts | planned |
+| TC-FEE-11-E09 | P3 | Web | Staff | Seeded receipts | 1. Sign in as Staff.<br>2. Open Fee Receipts and select a receipt. | "Reprint Receipt" absent; "View Content", "Verify Integrity", "Download PDF" present | planned |
+| TC-FEE-11-E10 | P2 | Mobile | Admin | Seeded receipts | 1. Open "Fee Receipts".<br>2. Pick a receipt in "Select Receipt".<br>3. Tap "Download PDF". | The PDF opens or shares; no "Unable to download receipt" toast | planned |
+| TC-FEE-11-E11 | P3 | Mobile | Admin | A completed transaction without a receipt (TC-FEE-12-E05 done) | 1. Tap "Generate".<br>2. Pick the transaction and confirm. | Toast "Receipt Generated" (Receipt generated successfully) | planned |
 
 API tests implemented in: backend/tests/api/fee/test_fee_receipts.py, backend/tests/api/fee/test_fee_self_service.py
 
@@ -1131,17 +1188,17 @@ Implemented in: backend/tests/unit/fee/test_fee_receipt_sms_rules.py (phase 1 un
 
 **Purpose.** List and inspect every payment, move a payment through its statuses (clearing or bouncing a cheque, cancelling a pending payment), and record a payment by explicit term items through the older "New Transaction" form.
 
-**Roles and permissions.** `fee_transactions:create`, `read`, `update`, `list`. Default seed: Admin and Staff all four. Web: page `/fee/transactions` (needs `fee_transactions:list`); there is no sidebar link, so it is opened by URL or by a backend menu entry. Mobile: screen `/fees/transactions` (no hub tile).
+**Roles and permissions.** `fee_transactions:create`, `read`, `update`, `list`. Default seed: Admin and Staff all four. Web: page `/fee/transactions` (needs `fee_transactions:list`), reached from the sidebar entry Fee > Fee Transactions (from the backend menu); the Fee dashboard has no card for it. Mobile: screen `/fees/transactions` (no hub tile).
 
 **Preconditions.** Payments exist (F10). For "New Transaction", the student has mappings with term amounts.
 
 **Steps, web.**
-1. Open `/fee/transactions` (card "Fee Transactions"). Filters: "Student" ("Select student..."), "Payment Method" (All methods, Cash, UPI, Cheque, Bank Transfer), "Status" (All statuses, Completed, Pending, Cancelled, Bounced), "From Date", "To Date" with a date-range apply button and a clear button. Selecting a student also shows "Outstanding Fees" with "Total Outstanding", "N fee items" and "View History", which opens "Transaction History" ("Complete payment history for the selected student", "Payment Timeline").
-2. The table shows S.No., Transaction, Student, Amount, Payment Method, Status, Date and an eye button "View".
+1. Open Fee > Fee Transactions (`/fee/transactions`, card "Fee Transactions"). Filters: "Student" ("Select student..."), "Payment Method" (All methods, Cash, UPI, Cheque, Bank Transfer), "Status" (All statuses, Completed, Pending, Cancelled, Bounced), "From Date", "To Date", "Apply Date Filter" and "Clear All Filters". Selecting a student also shows "Outstanding Fees" with "Total Outstanding", "N fee items" and "View History", which opens "Transaction History" ("Complete payment history for the selected student", "Payment Timeline").
+2. The table shows S.No., Transaction #, Student, Total Amount, Payment Method, Status, Date and Actions (eye button "View").
 3. "View" opens "Transaction Details" (status badge, number and date, Total Amount, "Student Information", "Transaction Information", "Payment Details") with actions: "Generate Receipt" (completed without a receipt, needs `update`), "Mark Completed" and "Cancel Transaction" (pending, needs `update`). There is no control for bouncing or for the cheque status.
-4. "New Transaction" (needs `create`) opens "Create New Transaction" ("Record a new fee payment transaction"): "Student *", "Admission Number", "Payment Method *" (Cash, UPI, Cheque, Bank Transfer), the method field ("UPI Reference *", "Cheque Number *" or "Bank Reference *"), "Total Amount" (calculated), "Transaction Items" with "Add Item" (per item "Fee Type *", "Fee Term *", "Payment Date *", "Amount Due *", "Amount Paid *", "Description"), "Remarks", "Create Transaction". The web payload omits `cheque_date`, `cheque_bank` and `bank_name`, which the API requires for cheque and bank transfer (K13).
+4. "New Transaction" (needs `create`) opens "Create New Transaction" ("Record a new fee payment transaction"): "Student *", "Admission Number", "Payment Method *" (Cash, UPI, Cheque, Bank Transfer), the method field ("UPI Reference *", "Cheque Number *" or "Bank Reference *"), "Total Amount" (calculated, "Total is automatically calculated from transaction items"), "Transaction Items" with "Add Item" (empty text `No transaction items added. Click "Add Item" to get started.`) (per item "Fee Type *", "Fee Term *", "Payment Date *", "Amount Due *", "Amount Paid *", "Description"), "Remarks", "Create Transaction". The web payload omits `cheque_date`, `cheque_bank` and `bank_name`, which the API requires for cheque and bank transfer (K13).
 
-**Steps, mobile.** `/fees/transactions`: filters "Filter by Student", "Filter by Status" (All Statuses, Paid, Pending, Partial, Cancelled: derived labels, not the backend statuses), "From Date" and "To Date" (YYYY-MM-DD); "Add Transaction" opens a multi-step form (Student, Admission Number, Payment Method with UPI Reference, Cheque Number, Cheque Date, Bank Name, Bank Reference, Transaction Date, Collected By, items with Fee Type, Fee Term Date, Amount Due, Amount Paid, Description, Remarks; buttons Previous, Next); an outstanding-fees modal shows "No outstanding fees found" when empty; update and "Generate" receipt actions use `update`.
+**Steps, mobile.** `/fees/transactions` ("Fee Transactions"): filters "All Students", "All Statuses" (All Statuses, Paid, Pending, Partial, Cancelled: derived labels shown on the cards, not the backend statuses), "From Date" and "To Date" (YYYY-MM-DD); "Add Transaction" opens a multi-step form (Student, Admission Number, Payment Method with UPI Reference, Cheque Number, Cheque Date, Bank Name, Bank Reference, Transaction Date, Collected By, items with Fee Type, Fee Term Date, Amount Due, Amount Paid, Description, Remarks; buttons Previous, Next); an outstanding-fees modal shows "No outstanding fees found" when empty; update and "Generate" receipt actions use `update`.
 
 **Expected results.** Transactions listed newest first. A status change updates the row and is visible in the summary (only `completed` counts).
 
@@ -1188,15 +1245,15 @@ Implemented in: backend/tests/unit/fee/test_fee_receipt_sms_rules.py (phase 1 un
 | TC-FEE-12-U14 | `FeeTransactionBase` `payment_method="dd"` and `"card"` | ValidationError (Literal of four) | passing |
 | TC-FEE-12-U15 | Outstanding calculation: term 3000, paid 1000 | outstanding 2000, item listed; term fully paid not listed; `total_outstanding` sums | passing |
 | TC-FEE-12-U16 | Transaction number generator format | `TXN` + date + 8 hex, unique per call | passing |
-| TC-FEE-12-A01 | Admin `POST /` cash, one item (term 1 of Tuition, due 3000, paid 3000) | 201; `completed`; `receipt_number` set; `receipt_generated` true | passing; xfail: FEE-B09 |
-| TC-FEE-12-A02 | POST by cheque with number, date, bank | 201; `pending`; `cheque_status` pending; no receipt number | passing; xfail: FEE-SUMMARY-ZERO-FORMAT |
-| TC-FEE-12-A03 | POST UPI without reference; bank transfer without `bank_name`; cheque without bank | 422 each | passing; xfail: FEE-B09 |
+| TC-FEE-12-A01 | Admin `POST /` cash, one item (term 1 of Tuition, due 3000, paid 3000) | 201; `completed`; `receipt_number` set; `receipt_generated` true | known defect: FEE-B09: POST /fee/transactions/ for a completed method (cash, upi, bank_transfer) returns 500 MissingGreenlet... |
+| TC-FEE-12-A02 | POST by cheque with number, date, bank | 201; `pending`; `cheque_status` pending; no receipt number | passing |
+| TC-FEE-12-A03 | POST UPI without reference; bank transfer without `bank_name`; cheque without bank | 422 each | known defect: FEE-B09: POST /fee/transactions/ for upi and bank_transfer returns 500 MissingGreenlet after commit |
 | TC-FEE-12-A04 | POST items whose sum differs from `total_amount` by 0.02 | 422 | passing |
-| TC-FEE-12-A05 | POST `amount_paid` above the term outstanding (3000 paid already, pay 100) | 400 with the outstanding amount | passing (unit, API) |
+| TC-FEE-12-A05 | POST `amount_paid` above the term outstanding (3000 paid already, pay 100) | 400 with the outstanding amount | passing |
 | TC-FEE-12-A06 | POST for a student with no mappings in the year | 404 with message `Student has no fee structure configured for academic year <id>` | passing |
 | TC-FEE-12-A07 | POST with an admission number that does not belong to the student | 404 `Student with ID ... and admission number ... not found` | passing |
 | TC-FEE-12-A08 | POST with an unknown `term_date_id` | 404 `Term amount not found for term date <id>` | passing |
-| TC-FEE-12-A09 | POST two items for the same term date, each within the outstanding but together above it | 400 (cumulative check; K14 fixed) | passing (unit, API) |
+| TC-FEE-12-A09 | POST two items for the same term date, each within the outstanding but together above it | 400 (cumulative check; K14 fixed) | passing |
 | TC-FEE-12-A10 | POST `payment_method="dd"` | 422 | passing |
 | TC-FEE-12-A11 | `GET /` filters `student_id`, `academic_year_id`, `payment_method=cash`, `status=completed`, `has_receipt=true` | Only matching rows, newest first, each with items and `receipt_number` | passing |
 | TC-FEE-12-A12 | `GET /?status=paid` | 422 (not a status) | passing |
@@ -1215,24 +1272,29 @@ Implemented in: backend/tests/unit/fee/test_fee_receipt_sms_rules.py (phase 1 un
 | TC-FEE-12-A25 | Mark a cheque completed then check receipts | No receipt yet (`receipt_generated` false) until F11 generate | passing |
 | TC-FEE-12-A26 | `GET /student/{id}/outstanding?academic_year_id=Y1` for W2 fixture | Per term items with `amount_due`, `amount_paid`, `outstanding_amount`; no concession effect | passing |
 | TC-FEE-12-A27 | `GET /student/{id}/history?academic_year_id=Y1&limit=1` | One item with `fee_types_paid` names and `receipt_generated` | passing |
-| TC-FEE-12-A28 | `GET /transaction-number/{n}` for the newest transaction; for an older one | 200 for both | passing (unit, API) |
+| TC-FEE-12-A28 | `GET /transaction-number/{n}` for the newest transaction; for an older one | 200 for both | passing |
 | TC-FEE-12-A29 | `GET /fee/transactions/health` | 200 `module: "fee_transactions"` | passing |
 | TC-FEE-12-A30 | Role matrix create (POST) | Admin, Staff 201; Teacher, Student, Parent 403 | passing |
 | TC-FEE-12-A31 | Role matrix update (PUT) | Admin, Staff 200; others 403 | passing |
 | TC-FEE-12-A32 | Role matrix list, read, outstanding, history, by number | Admin, Staff 200; Teacher, Student, Parent 403 | passing |
 | TC-FEE-12-A33 | No token; cross-tenant header; tenant B list and `GET /{id}` of tenant A data | 401; 403; empty and 404 | passing |
-| TC-FEE-12-E01 | Web: open `/fee/transactions` | Table lists payments newest first; no sidebar link needed | planned |
-| TC-FEE-12-E02 | Web: filter by Status "Pending" and Payment Method "Cheque" | Only pending cheque rows | planned |
-| TC-FEE-12-E03 | Web: set From Date and To Date and apply | Rows within the range | planned |
-| TC-FEE-12-E04 | Web: choose a student | "Outstanding Fees" card with Total Outstanding; "View History" opens the "Transaction History" dialog | planned |
-| TC-FEE-12-E05 | Web: View a pending cheque, click "Mark Completed" | Toast "Transaction status updated successfully"; status badge Completed; "Generate Receipt" now offered | planned |
-| TC-FEE-12-E06 | Web: click "Generate Receipt" on that transaction | Receipt created (confirm in Fee Receipts) | planned |
-| TC-FEE-12-E07 | Web: View a pending transaction, "Cancel Transaction" | Status Cancelled; no further actions | planned |
-| TC-FEE-12-E08 | Web: "New Transaction" with cash and one item | Toast "Transaction created successfully"; row appears | planned |
-| TC-FEE-12-E09 | Web: "New Transaction" with Cheque and Cheque Number only | Error toast from the API (cheque date and bank missing; K13) | planned |
-| TC-FEE-12-E10 | Web: "New Transaction" with no items | Toast "Please add at least one transaction item" | planned |
-| TC-FEE-12-E11 | Web: Staff opens the page | Can create and update (default Staff grant) | planned |
-| TC-FEE-12-E12 | Mobile: Add Transaction with cash and one item through the multi-step form | Toast "Fee transaction created successfully" | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-FEE-12-E01 | P1 | Web | Admin | 24 seeded completed payments | 1. Open Fee > Fee Transactions. | Card "Fee Transactions" lists transactions newest first with Transaction #, Student, Total Amount, Payment Method, Status, Date | planned |
+| TC-FEE-12-E02 | P3 | Web | Admin | TC-FEE-10-E05 done (pending cheque) | 1. Set Status "Pending" and Payment Method "Cheque". | Only the pending cheque row(s) | planned |
+| TC-FEE-12-E03 | P3 | Web | Admin | Seeded payments | 1. Set From Date and To Date to today.<br>2. Click "Apply Date Filter".<br>3. Click "Clear All Filters". | Rows from the range only; all rows return | planned |
+| TC-FEE-12-E04 | P2 | Web | Admin | Seeded student Karthik Reddy | 1. Choose Karthik Reddy in "Student".<br>2. Click "View History". | "Outstanding Fees" card with Total Outstanding and "N fee items"; "Transaction History" dialog with "Payment Timeline" | planned |
+| TC-FEE-12-E05 | P1 | Web | Admin | TC-FEE-10-E05 done | 1. Click "View" on the pending cheque.<br>2. Click "Mark Completed". | Toast "Transaction status updated successfully"; badge Completed; "Generate Receipt" offered | planned |
+| TC-FEE-12-E06 | P2 | Web | Admin | TC-FEE-12-E05 done | 1. In "Transaction Details" click "Generate Receipt". | Toast "Receipt generated successfully"; receipt visible in Fee Receipts | planned |
+| TC-FEE-12-E07 | P3 | Web | Admin | A second pending cheque made as in TC-FEE-10-E05 | 1. "View" it.<br>2. Click "Cancel Transaction". | Toast "Transaction status updated successfully"; status Cancelled; no further actions | planned |
+| TC-FEE-12-E08 | P2 | Web | Admin | Kavya Verma has an unpaid Activity Fee term | 1. Click "New Transaction".<br>2. Choose Kavya Verma, Payment Method "Cash".<br>3. "Add Item": Fee Type Activity Fee, its term, Payment Date today, Amount Due and Amount Paid 100.<br>4. Click "Create Transaction". | Toast "Transaction created successfully"; row appears | blocked: module known gap (POST /fee/transactions/ for cash returns 500 MissingGreenlet after saving) |
+| TC-FEE-12-E09 | P3 | Web | Admin | As TC-FEE-12-E08 | 1. "New Transaction" with Payment Method "Cheque" and only "Cheque Number *".<br>2. Add one item and click "Create Transaction". | Error toast from the API (cheque date and bank missing, K13); nothing saved | planned |
+| TC-FEE-12-E10 | P3 | Web | Admin | None | 1. Click "New Transaction", choose a student, add no items.<br>2. Click "Create Transaction". | Toast "Please add at least one transaction item" | planned |
+| TC-FEE-12-E11 | P3 | Web | Staff | Seeded payments | 1. Sign in as Staff.<br>2. Open Fee > Fee Transactions. | List visible with "New Transaction" and "View" (Staff has create and update) | planned |
+| TC-FEE-12-E12 | P3 | Mobile | Admin | As TC-FEE-12-E08 | 1. Open `/fees/transactions`.<br>2. Tap "Add Transaction", complete the steps with Cash and one item.<br>3. Submit. | Toast "Fee transaction created successfully" | blocked: module known gap (cash create returns 500 after saving) |
 
 API tests implemented in: backend/tests/api/fee/test_fee_transactions.py
 
@@ -1249,13 +1311,13 @@ Implemented in: backend/tests/unit/fee/test_fee_transaction_refund_rules.py (pha
 **Preconditions.** A completed transaction (F10 or F12).
 
 **Steps, web.**
-1. Open Fee > Fee Refunds (title "Fee Refunds", subtitle "Manage fee refund requests and track their status"). Cards show counts such as "Pending Refunds", "Processed Refunds", "Rejected Refunds" from `GET /statistics`.
-2. Click "Create Refund Request" (needs `create`). In "Create New Refund Request" choose "Student *", then "Fee Transaction *" (completed transactions of the student, shown as number, amount, method, fee types, date), enter "Refund Amount *", choose "Refund Reason *" (Fee Adjustment, Student Withdrawal, Excess Payment, Other), optionally "Detailed Reason", and submit. Toast "Refund created successfully".
-3. Filters ("Filters"): student, status (All statuses, Pending, Approved, Rejected, Processed), reason (All reasons, Fee Adjustment, Student Withdrawal, Excess Payment, Other), "Requested Date From", "Requested Date To", Clear, Refresh. The table shows S.No., refund number, student, amount, reason, status, "Requested Date" and the actions View, "Approve/Reject" (pending), "Process" (approved).
-4. "Approve/Reject" opens "Approve or Reject Refund": "Action" (Approve, Reject); rejection needs "Rejection Reason *" (toast "Please provide a rejection reason" when empty); "Submit". Approval sends the remark "Approved", rejection sends the typed reason.
-5. "Process" opens "Process Refund": "Reference Number (Optional)", button "Process Refund". The page sends `refund_method` bank_transfer when a reference is typed, otherwise cash with the reference "Cash refund processed".
+1. Open Fee > Fee Refunds (title "Fee Refunds", subtitle "Manage fee refund requests and track their status"). Cards "Total Refund Amount", "Pending Refunds", "Processed Refunds", "Rejected Refunds" from `GET /statistics`.
+2. Click "Create Refund Request" (needs `create`). In "Create New Refund Request" ("Create a new fee refund request for a student") choose "Student *" ("Select a student"), then "Fee Transaction *" ("Please select a student first" until then; completed transactions of the student, shown as number, amount, method, fee types, date), enter "Refund Amount *", choose "Refund Reason *" (Fee Adjustment, Student Withdrawal, Excess Payment, Other), optionally "Detailed Reason" ("Provide detailed reason..."), and click "Create Refund". Toast "Refund created successfully"; a server error toasts `Failed to create refund: <message>`.
+3. Filters ("Filters"): "Student", "Status" (All statuses, Pending, Approved, Rejected, Processed), "Refund Reason" (All reasons, Fee Adjustment, Student Withdrawal, Excess Payment, Other), "Requested Date From", "Requested Date To", "Apply Filters", "Clear All Filters", "Refresh". The table shows S.No., Refund Number, Student Admission, Refund Amount, Reason, Status, Requested Date and Actions: View, "Approve/Reject" (pending), "Process" (approved).
+4. "Approve/Reject" opens "Approve or Reject Refund" ("Review and decide on the refund request for <number>"): "Action" (Approve, Reject); rejection needs "Rejection Reason *" (toast "Please provide a rejection reason" when empty); "Submit". Approval sends the remark "Approved", rejection sends the typed reason.
+5. "Process" opens "Process Refund" ("Process the approved refund for <number>"): "Reference Number (Optional)" ("Enter bank reference number..."), button "Process Refund"; toast "Refund processed successfully". The page sends `refund_method` bank_transfer when a reference is typed, otherwise cash with the reference "Cash refund processed".
 
-**Steps, mobile.** "Request Refund" opens "Create Refund" (Student, Fee Transaction, Refund Amount, Refund Reason with Fee Adjustment, Student Withdrawal, Excess Payment, Other; "Detailed Reason *" is required for Other; checks `Refund amount cannot exceed transaction amount`). Row actions: approve (check icon, modal "Process Refund Action" with Action and "Remarks *"), process (modal "Process Refund" with "Reference Number (optional)"), cancel (modal "Cancel Refund" with "Cancellation Reason *"). Approve sends action and remarks, process sends `refund_method` (selector in the modal) and the reference, and cancel is sent as a rejection with the reason as remarks (K03 fixed).
+**Steps, mobile.** The Fee Refunds screen shows tiles Total, Amount, Pending, Approved, Processed, Rejected, filters "All Statuses", "All Students", "Filter by reason...", From and To (YYYY-MM-DD), and cards per refund (number, student, transaction, amount, reason, date, status). "Request Refund" opens "Create Refund" (Student, Fee Transaction "Select Student First", Refund Amount "Enter refund amount", Refund Reason with Fee Adjustment, Student Withdrawal, Excess Payment, Other; "Detailed Reason *" is required for Other; checks `Refund amount cannot exceed transaction amount`; toast "Fee refund created successfully"). Row actions: approve (check icon, modal "Process Refund Action" with Action and "Remarks *"), process (modal "Process Refund" with "Reference Number (optional)"), cancel (modal "Cancel Refund" with "Cancellation Reason *"). Approve sends action and remarks, process sends `refund_method` (selector in the modal) and the reference, and cancel is sent as a rejection with the reason as remarks (K03 fixed). Toasts "Refund approved successfully", "Refund processed successfully", "Refund cancelled successfully"; an empty remark toasts "Required" / "Please enter remarks before continuing." and an empty cancellation reason "Please enter a cancellation reason.".
 
 **Expected results.** A `fee_refunds` row with a number `RFD` + date + 6 hex characters and status `pending`; then `approved` or `rejected`; then `processed`. Statistics and the per-transaction summary reflect the counts.
 
@@ -1302,7 +1364,7 @@ Implemented in: backend/tests/unit/fee/test_fee_transaction_refund_rules.py (pha
 | TC-FEE-13-A05 | POST on an unknown transaction | 404 `Transaction with ID ... not found` | passing |
 | TC-FEE-13-A06 | POST with `refund_reason="other"` and no `detailed_reason` | 201 (optional on the API) | passing |
 | TC-FEE-13-A07 | POST with `refund_reason="withdrawal"`; amount 0; amount -1 | 422 each | passing |
-| TC-FEE-13-A08 | POST with a `student_id` different from the transaction's student | 400 (K18 fixed) | passing (unit, API) |
+| TC-FEE-13-A08 | POST with a `student_id` different from the transaction's student | 400 (K18 fixed) | passing |
 | TC-FEE-13-A09 | `POST /approve` action approve with remarks | 200; `approved`; `approved_by_user_id` equals the token user; `approved_date` set | passing |
 | TC-FEE-13-A10 | `POST /approve` action reject | 200; `rejected`; final | passing |
 | TC-FEE-13-A11 | Approve a refund already approved or rejected | 400 `Refund is already <status>, cannot change approval status` | passing |
@@ -1326,17 +1388,22 @@ Implemented in: backend/tests/unit/fee/test_fee_transaction_refund_rules.py (pha
 | TC-FEE-13-A29 | Role matrix process | Admin 200; Staff, Teacher, Student, Parent 403 | passing |
 | TC-FEE-13-A30 | Role matrix list, statistics (list) and read, pending, approved, summary (read) | Admin, Staff 200; others 403 | passing |
 | TC-FEE-13-A31 | No token; cross-tenant header; tenant B sees none of tenant A refunds and cannot approve one | 401; 403; empty and 404 | passing |
-| TC-FEE-13-E01 | Web: create a refund of 2000 for a cash transaction | Toast "Refund created successfully"; row Pending | planned |
-| TC-FEE-13-E02 | Web: create a refund above the available amount | Error toast "Failed to create refund: Refund amount ... exceeds available amount ..." | planned |
-| TC-FEE-13-E03 | Web: Approve/Reject, action Approve, Submit | Row becomes Approved; "Process" appears | planned |
-| TC-FEE-13-E04 | Web: Approve/Reject, action Reject with no reason | Toast "Please provide a rejection reason" | planned |
-| TC-FEE-13-E05 | Web: reject with a reason | Row Rejected with no further actions | planned |
-| TC-FEE-13-E06 | Web: Process with a reference, then without | Row Processed both times (method bank_transfer then cash) | planned |
-| TC-FEE-13-E07 | Web: filter by status Approved and by student | Only matching rows | planned |
-| TC-FEE-13-E08 | Web: Staff user opens the page | "Create Refund Request" visible; no "Approve/Reject" | planned |
-| TC-FEE-13-E09 | Web: statistic cards after the flow | Pending, Processed and Rejected counts match the table | planned |
-| TC-FEE-13-E10 | Mobile: Request Refund then approve | Approve succeeds (K03 fixed) | planned |
-| TC-FEE-13-E11 | Mobile: Cancel Refund on a pending refund | Refund becomes rejected with the reason as remarks (K03 fixed) | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-FEE-13-E01 | P1 | Web | Admin | Seeded student Aarav Gupta (20260001) fully paid; seeded pending refund 1,000.00 on his transaction | 1. Open Fee > Fee Refunds.<br>2. Click "Create Refund Request".<br>3. Choose Student Aarav Gupta and one of his completed transactions.<br>4. Enter Refund Amount 200, Refund Reason "Excess Payment", Detailed Reason "QA refund".<br>5. Click "Create Refund". | Toast "Refund created successfully"; new row Pending for 200 | planned |
+| TC-FEE-13-E02 | P3 | Web | Admin | As TC-FEE-13-E01 | 1. Create a refund for the same transaction with an amount above the transaction total. | Error toast `Failed to create refund: Refund amount ... exceeds available amount ...` | planned |
+| TC-FEE-13-E03 | P1 | Web | Admin | TC-FEE-13-E01 done | 1. Click "Approve/Reject" on the QA refund.<br>2. Keep Action "Approve".<br>3. Click "Submit". | Row Approved; "Process" appears | planned |
+| TC-FEE-13-E04 | P3 | Web | Admin | A pending QA refund | 1. Click "Approve/Reject".<br>2. Choose Action "Reject", leave "Rejection Reason *" empty.<br>3. Click "Submit". | Toast "Please provide a rejection reason" | planned |
+| TC-FEE-13-E05 | P2 | Web | Admin | A pending QA refund | 1. "Approve/Reject", Action "Reject", reason "QA not eligible".<br>2. Click "Submit". | Row Rejected with no further actions | planned |
+| TC-FEE-13-E06 | P1 | Web | Admin | TC-FEE-13-E03 done, plus a second approved QA refund | 1. "Process" the first, enter "QA-REF-1" in "Reference Number (Optional)", click "Process Refund".<br>2. "Process" the second with no reference. | Toast "Refund processed successfully" both times; both Processed (method bank_transfer, then cash) | planned |
+| TC-FEE-13-E07 | P3 | Web | Admin | Seeded refunds and QA refunds | 1. Set Status "Approved", click "Apply Filters".<br>2. Choose Student Aarav Gupta. | Only matching rows | planned |
+| TC-FEE-13-E08 | P2 | Web | Staff | Seeded refunds | 1. Sign in as Staff.<br>2. Open Fee > Fee Refunds. | "Create Refund Request" visible; no "Approve/Reject"; "Process" still shown on approved rows (the API returns 403) | planned |
+| TC-FEE-13-E09 | P3 | Web | Admin | After TC-FEE-13-E01 to E06 | 1. Read the cards and click "Refresh". | "Pending Refunds", "Processed Refunds", "Rejected Refunds" counts and "Total Refund Amount" (processed only) match the table | planned |
+| TC-FEE-13-E10 | P2 | Mobile | Admin | As TC-FEE-13-E01 | 1. Open "Fee Refunds", tap "Request Refund".<br>2. Choose Aarav Gupta, a transaction, amount 100, reason Fee Adjustment, tap "Create Refund".<br>3. Tap the approve action, enter "Remarks *", confirm. | Toasts "Fee refund created successfully" and "Refund approved successfully" | planned |
+| TC-FEE-13-E11 | P3 | Mobile | Admin | A pending QA refund | 1. Tap cancel on it.<br>2. Enter "Cancellation Reason *" and confirm. | Toast "Refund cancelled successfully"; status Rejected with the reason as remarks | planned |
 
 API tests implemented in: backend/tests/api/fee/test_fee_refunds.py
 
@@ -1355,7 +1422,7 @@ Implemented in: backend/tests/unit/fee/test_fee_transaction_refund_rules.py (pha
 **Steps, web.**
 1. Open Fee Collection > student > "Fee Summary" and click "Send SMS".
 2. The dialog "Confirm SMS" shows the parent phone and name, the message text and, when no phone exists, `No phone number on record - SMS cannot be delivered.`
-3. Click "Confirm & Send" (disabled when the parent has no phone). "Cancel" closes the dialog.
+3. Click "Confirm & Send" (disabled when the parent has no phone); a `sent` result toasts "SMS sent successfully". "Cancel" closes the dialog.
 4. After a payment, the "Payment Recorded" dialog also offers "Send Receipt SMS", which uses the communication module quick-send (template "Fee Collection"), not these endpoints.
 
 **Steps, mobile.** Not available in the UI.
@@ -1391,7 +1458,7 @@ Implemented in: backend/tests/unit/fee/test_fee_transaction_refund_rules.py (pha
 | TC-FEE-14-A02 | Preview for a student whose parent has no phone | `can_send` false | skipped: admission requires a parent phone, so a student whose parent has no phone cannot be created through the API |
 | TC-FEE-14-A03 | Preview for an unknown student | 404 `Student not found` | passing |
 | TC-FEE-14-A04 | Preview without `academic_year_id` | 422 | passing |
-| TC-FEE-14-A05 | `POST /summary/{id}/send-sms` with the provider mocked to succeed | 200 `{status: "sent", detail: "SMS sent to <name> (<phone>)"}`; one `NotificationLog` row with status sent | skipped: a successful or failed send would call the SMS provider; sends are not exercised |
+| TC-FEE-14-A05 | `POST /summary/{id}/send-sms` with the provider mocked to succeed | 200 `{status: "sent", detail: "SMS sent to <name> (<phone>)"}`; one `NotificationLog` row with status sent | skipped: a successful or failed send would call the SMS provider; |
 | TC-FEE-14-A06 | Send with the provider mocked to fail | 200 `{status: "failed"}`; log row status failed | skipped: the provider failure path needs a mocked provider, which is not possible against the running API |
 | TC-FEE-14-A07 | Send for a student without a parent phone | 200 `{status: "skipped"}` | skipped: a parent without a phone cannot be created through admission |
 | TC-FEE-14-A08 | Send for an unknown student | 404 `Student not found` | passing |
@@ -1401,9 +1468,14 @@ Implemented in: backend/tests/unit/fee/test_fee_transaction_refund_rules.py (pha
 | TC-FEE-14-A12 | Role matrix preview and send (read) | Admin 200; Staff, Teacher, Student, Parent 403 with the default seed | passing |
 | TC-FEE-14-A13 | Role matrix receipt resend (`send_sms`) | Roles with the grant 200; Admin without the default grant 403 (verify the QA seed) | passing |
 | TC-FEE-14-A14 | No token; cross-tenant header; tenant B cannot preview a tenant A student | 401; 403; 404 | passing |
-| TC-FEE-14-E01 | Web: Fee Summary > "Send SMS" for a student with a parent phone | Dialog "Confirm SMS" shows phone, name and message; "Confirm & Send" sends and closes | planned |
-| TC-FEE-14-E02 | Web: same for a student with no parent phone | Dialog shows the "No phone number on record" text; "Confirm & Send" disabled | planned |
-| TC-FEE-14-E03 | Web: "Cancel" in the dialog | No request to `send-sms` | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-FEE-14-E01 | P2 | Web | Admin | Seeded student Kavya Verma with a seeded parent phone; SMS provider mocked or disabled in the QA API | 1. Open Kavya Verma, "Fee Summary".<br>2. Click "Send SMS".<br>3. Click "Confirm & Send". | Dialog "Confirm SMS" shows the parent phone and name and `Dear <parent>, fee due for Kavya Verma (Adm: 006) is Rs.<due> for 2026-2027. Please pay at the earliest.`; on send, toast "SMS sent successfully" (or the failed status) and the dialog closes | planned |
+| TC-FEE-14-E02 | P3 | Web | Admin | A student whose parent has no phone | 1. Click "Send SMS". | Text `No phone number on record - SMS cannot be delivered.`; "Confirm & Send" disabled | blocked: admission requires a parent phone, so no such student exists |
+| TC-FEE-14-E03 | P3 | Web | Admin | Seeded student Kavya Verma | 1. Click "Send SMS".<br>2. Click "Cancel". | Dialog closes; no `send-sms` request | planned |
 
 API tests implemented in: backend/tests/api/fee/test_fee_sms.py
 
@@ -1415,18 +1487,18 @@ Implemented in: backend/tests/unit/fee/test_fee_receipt_sms_rules.py (phase 1 un
 
 **Purpose.** Management reports on money collected, money still pending, and the fee structure, each with a table, summary statistics and an export file.
 
-**Roles and permissions.** `fee_reports:read` (all six report endpoints; a token with `is_superadmin` skips the check), `fee_reports:export` (export). Default seed: Admin and Staff both. Web: Reports hub card "Fee Reports" (`/fee/reports`, shown only with `fee_reports:read`; not in the Fee sidebar). Mobile: Reports tab card (`/reports/fee-reports`) and the screen `/fees/reports`.
+**Roles and permissions.** `fee_reports:read` (all six report endpoints; a token with `is_superadmin` skips the check), `fee_reports:export` (export). Default seed: Admin and Staff both. Web: sidebar Fee > Fee Reports (from the backend menu) and the Reports hub card "Fee Reports" (`/fee/reports`, page guarded by `fee_reports:read`; no card on the Fee dashboard). Mobile: Reports screen card "Fee Reports" (`/reports/fee-reports`) and the screen `/fees/reports` (no Fee hub tile).
 
 **Preconditions.** Transactions, student mappings and class mappings exist.
 
 **Steps, web.**
-1. Open Reports > "Fee Reports" (page "Fee Reports & Export", subtitle "Generate reports and export fee data").
-2. Use the filter bar: Class, Section, "All Categories", From and To date inputs, "All Methods" (Cash, UPI, Cheque, Bank Transfer), "All Status" (Completed, Pending, Cancelled, Bounced), and "Clear". Method, status and dates apply to the collection tab; class, section and category apply to all tabs.
+1. Open Fee > Fee Reports or Reports > "Fee Reports" (page "Fee Reports & Export", subtitle "Generate reports and export fee data"; the format select and "Export" sit in the header).
+2. Use the filter bar: "All Classes" (then a section select), "All Categories", and on the Collection Summary tab only From and To date inputs, "All Methods" (Cash, UPI, Cheque, Bank Transfer) and "All Status" (Completed, Pending, Cancelled, Bounced); "Clear" resets. Class, section and category apply to all tabs. The tables load without a filter; while no filter is set the page also shows "Select at least one filter to generate a report" under the tabs.
 3. Choose a tab: "Collection Summary" (table columns S.No., Transaction #, Student, Class/Section, Category, Type, Term, Due, Paid, Method, Status, Date, Collected By), "Pending Fees" (S.No., Admission No, Student, Class/Section, Category, Type, Term, Due, Paid, Balance, Due Date, Days Overdue) or "Fee Structure" (S.No., Category, Type, Term, Class, Section, Amount, Academic Year, Status). Each tab shows a statistics table (Metric, Value): Total Collected, Total Due, Collection %, Payment Methods; Total Pending, Total Overdue, Students Pending, Avg Overdue Days; Fee Types, Categories, Terms, Avg Fee. Pages hold 50 rows with Previous and Next.
-4. Pick the file format (CSV, Excel, PDF) and click "Export"; the button is disabled until at least one filter is set.
+4. Pick the file format (CSV, Excel, PDF; default Excel) and click "Export"; the button is disabled until at least one filter is set. Success toasts "Report exported successfully".
 5. The page sends no academic year, so figures cover all years (K21).
 
-**Steps, mobile.** Reports tab > Fee Reports: tabs "Collection Summary", "Pending Fees", "Fee Structure"; filters "From Date", "To Date" (YYYY-MM-DD), "Payment Method" (All, Cash, Online, Cheque, UPI, Bank, Card), "Status" (All, Completed, Pending, Cancelled, Bounced), Class and Section, "Apply Filters"; stat tiles Collected and Total Due, "By Payment Method", "Recent Transactions"; "Total Pending", "Students", "Overdue", "Overdue Amt"; "Avg Fee", "Fee Types", "Categories". Export is CSV only. The "Online" option matches no stored method.
+**Steps, mobile.** Two screens. `/reports/fee-reports` (Reports > "Fee Reports", see RPT F06): tabs "Collection", "Pending", "Structure", chips "All Time", "Today", "Last 7D", "This Month", "Export". `/fees/reports` ("Fee Reports"): tabs "Collection Summary", "Pending Fees", "Fee Structure"; filters "From Date", "To Date" (YYYY-MM-DD), "Payment Method" (All, Cash, Online, Cheque, UPI, Bank, Card), "Status" (All, Completed, Pending, Cancelled, Bounced), Class and Section, "Apply Filters"; stat tiles Collected and Total Due, "By Payment Method", "Recent Transactions"; "Total Pending", "Students", "Overdue", "Overdue Amt"; "Avg Fee", "Fee Types", "Categories". Export is CSV only. The "Online" option matches no stored method.
 
 **Expected results.** Read-only tables and a downloaded file containing every matching row (not only the visible page).
 
@@ -1490,14 +1562,19 @@ Implemented in: backend/tests/unit/fee/test_fee_receipt_sms_rules.py (phase 1 un
 | TC-FEE-15-A21 | Role matrix read endpoints (six) | Admin, Staff 200; Teacher, Student, Parent 403 | passing |
 | TC-FEE-15-A22 | Role matrix export | Admin, Staff 200; Teacher, Student, Parent 403 | passing |
 | TC-FEE-15-A23 | No token; cross-tenant header; tenant B report excludes tenant A rows | 401; 403; empty | passing |
-| TC-FEE-15-E01 | Web: open Reports > Fee Reports | Collection Summary tab with stats table and a table of rows | planned |
-| TC-FEE-15-E02 | Web: filter by Status "Completed" and a date range | Rows and stats change accordingly | planned |
-| TC-FEE-15-E03 | Web: switch to Pending Fees and Fee Structure | Each tab shows its own table and stats | planned |
-| TC-FEE-15-E04 | Web: Export button with no filter | Disabled | planned |
-| TC-FEE-15-E05 | Web: set a filter, format Excel, Export | An .xlsx file downloads with all matching rows | planned |
-| TC-FEE-15-E06 | Web: Staff user with `fee_reports:read` | Page loads; Export works (default Staff `export`) | planned |
-| TC-FEE-15-E07 | Web: user without `fee_reports:read` | "Access Denied: You don't have permission to view fee reports." | planned |
-| TC-FEE-15-E08 | Mobile: Fee Reports with "Apply Filters" on Pending Fees | Tiles Total Pending and Students match the web values | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-FEE-15-E01 | P1 | Web | Admin | Seeded payments | 1. Open Fee > Fee Reports (or Reports > "Fee Reports"). | "Fee Reports & Export"; "Collection Summary" tab with Metric/Value rows Total Collected, Total Due, Collection %, Payment Methods and the rows table; the note "Select at least one filter to generate a report" below | planned |
+| TC-FEE-15-E02 | P2 | Web | Admin | Seeded payments | 1. Choose "All Status" > "Completed".<br>2. Set From and To to today. | Rows and statistics recompute for completed rows in the range | planned |
+| TC-FEE-15-E03 | P2 | Web | Admin | Seeded data | 1. Click "Pending Fees".<br>2. Click "Fee Structure". | Pending: Total Pending, Total Overdue, Students Pending, Avg Overdue Days and Balance and Days Overdue columns; Structure: Fee Types, Categories, Terms, Avg Fee | planned |
+| TC-FEE-15-E04 | P3 | Web | Admin | No filter set | 1. Look at "Export". | Disabled | planned |
+| TC-FEE-15-E05 | P1 | Web | Admin | Seeded data | 1. Choose a class in "All Classes".<br>2. Keep format "Excel".<br>3. Click "Export". | Toast "Report exported successfully"; an .xlsx with every matching row | planned |
+| TC-FEE-15-E06 | P2 | Web | Staff | Seeded data | 1. Sign in as Staff.<br>2. Open Fee > Fee Reports, choose a class, click "Export". | Page loads; the file downloads (Staff has read and export) | planned |
+| TC-FEE-15-E07 | P3 | Web | Student | Signed in as seeded student Karthik Reddy (login 001) | 1. Open `/fee/reports` by URL. | "Access Denied" and "You don't have permission to view fee reports." | planned |
+| TC-FEE-15-E08 | P2 | Mobile | Admin | Seeded data | 1. Open `/fees/reports` (Fee Reports screen).<br>2. Choose "Pending Fees", tap "Apply Filters". | Pending tiles match the web Pending Fees totals for the same filters | planned |
 
 API tests implemented in: backend/tests/api/fee/test_fee_reports.py
 
@@ -1520,7 +1597,7 @@ Implemented in: backend/tests/unit/fee/test_fee_report_rules.py (phase 1 unit ca
 4. "My Transactions" (`/fee/my-transactions`): S.No., Transaction #, Date, Payment Method, Amount, Status, Receipt ("Generated" or a dash). Empty state "No transactions yet".
 5. Parent: `/fee/collection` shows "My Child's Fee Summary" (subtitle "View your child's current fee status"); with more than one child a "Select Child" dropdown appears; the header lists Student, Class and AY; the table has S.No., Fee Type, Assigned, After Concession, Paid, Due, Last Paid, Receipt # and Grand Total. "My Receipts" and "My Transactions" list the linked children's records filtered to the child chosen in the header switcher ("No child selected. Use the child switcher in the header above." when none).
 
-**Steps, mobile.** Fee hub for Student ("My Fees") or Parent ("Child Fees"): a card "My Fee Summary" or "Child Fee Summary" ("View dues, payments, concessions & old fees"), plus "My Receipts" and "My Transactions" cards. The `/fees/my-fees` screen shows Total Fee, Paid, a progress bar, "Fee Breakdown" and "Recent Receipts". The `/fees/collection` screen calls `my-summary` (student) or `child-summary` (parent) without `academic_year_id`, so it fails with 422 (K22).
+**Steps, mobile.** Home "Fee Management" card opens the Fee hub for Student ("My Fees", "View your fee summary and payment history": cards "My Fee Summary", "My Receipts", "My Transactions") or Parent ("Child Fees", "View child fee summary and payment history": cards "Child Fee Summary", "My Fees", "My Receipts", "My Transactions"); the summary card reads "View dues, payments, concessions & old fees". The `/fees/my-fees` screen shows tiles Total Fee, Paid, Due, Paid %, a progress bar, "Fee Breakdown" and "Recent Receipts" (empty text "No outstanding fees - you're all paid up."). Receipts and transactions show "Failed to load receipts" / "Failed to load transactions" with "Retry" when the API call fails. A parent with no child selected sees "No student selected. Use the selector in the header.". The `/fees/collection` screen calls `my-summary` (student) or `child-summary` (parent) without `academic_year_id`, so it fails with 422 (K22).
 
 **Expected results.** Each endpoint returns only the caller's own data (student) or linked children's data (parent). Read-only.
 
@@ -1542,7 +1619,7 @@ Implemented in: backend/tests/unit/fee/test_fee_report_rules.py (phase 1 unit ca
 - The PDF endpoint checks the receipt's student against the caller and returns 404 `Receipt not found` otherwise (F11).
 - A student's `fee_collection` grant is absent in the default seed, so `my-summary` and `my-history` return 403 (K22).
 
-**Error and edge cases.** A parent who selects a child with no payments sees empty states, not errors. A teacher is redirected away from all fee pages. A user hitting an admin URL such as `/fee/categories` directly is not redirected on web (student path allow-list matches `/fee`), but every API call returns 403.
+**Error and edge cases.** A parent who selects a child with no payments sees empty states, not errors. A teacher is redirected away from all fee pages. A student hitting an admin URL such as `/fee/categories` directly is not redirected on web (student path allow-list matches `/fee`); the page shows its own "Access Denied" panel ("You don't have permission to view fee categories."). A Student or Parent login without a linked student (such as the QA role logins) sees `Only students can access this endpoint` on My Receipts or `Permission denied: Parent cannot read_own fee_transactions` on `/fee/my-fees` for a parent.
 
 **Unit-testable logic.** Own and related scope resolution, parent-child allowed-id list, outstanding items per term, web child filter by admission number, pagination `has_next` (`skip + limit < total_count`).
 
@@ -1562,13 +1639,13 @@ Implemented in: backend/tests/unit/fee/test_fee_report_rules.py (phase 1 unit ca
 | TC-FEE-16-A05 | Parent `my-children-fees?transaction_status=completed&academic_year_id=Y1` | Filtered; `filters_applied` echoes both | passing |
 | TC-FEE-16-A06 | Student calls `my-children-fees`; parent calls `my-fees` | 403 each | passing |
 | TC-FEE-16-A07 | Admin calls `my-fees` and `my-receipts` | 403 (no `_own` grant) | passing |
-| TC-FEE-16-A08 | Student `GET /fee/transactions/my-outstanding-fees` | Term items for the latest admission's year; totals as per the rule | xfail: FEE-SELF-OUTSTANDING-500 |
-| TC-FEE-16-A09 | Parent `child-outstanding-fees/{child}`; with an unrelated student id | 200; 404 (entity check) | passing; xfail: FEE-SELF-OUTSTANDING-500 |
+| TC-FEE-16-A08 | Student `GET /fee/transactions/my-outstanding-fees` | Term items for the latest admission's year; totals as per the rule | passing |
+| TC-FEE-16-A09 | Parent `child-outstanding-fees/{child}`; with an unrelated student id | 200; 404 (entity check) | passing |
 | TC-FEE-16-A10 | Student `GET /fee/receipts/my-receipts` | Only own receipts, newest first | passing |
 | TC-FEE-16-A11 | Parent `GET /fee/receipts/my-children-receipts` | Receipts of all linked children only | passing |
 | TC-FEE-16-A12 | Parent calls `my-receipts`; student calls `my-children-receipts` | 403 each | passing |
 | TC-FEE-16-A13 | Parent without linked children calls `my-children-receipts` and `my-children-fees` | 400 `Only parents with children can access this endpoint` (or 403 when the grant is absent) | passing |
-| TC-FEE-16-A14 | Student `GET /fee/collection/my-summary?academic_year_id=Y1` with the default seed | 403 (no `fee_collection` grant); with the grant added in the QA tenant: 200 equal to the staff summary | passing; skipped variant: needs a temporary fee_collection:read grant on the shared Student role, which would race with other workers and is not permitted in the QA tenant |
+| TC-FEE-16-A14 | Student `GET /fee/collection/my-summary?academic_year_id=Y1` with the default seed | 403 (no `fee_collection` grant); with the grant added in the QA tenant: 200 equal to the staff summary | skipped: needs a temporary fee_collection:read grant on the shared Student role, which would race with other workers an... |
 | TC-FEE-16-A15 | Student `my-summary` without `academic_year_id` | 422 | passing |
 | TC-FEE-16-A16 | Admin `my-summary` | 400 `Only students can access this endpoint` | passing |
 | TC-FEE-16-A17 | Parent `GET /fee/collection/child-summary/{child}?academic_year_id=Y1` | 200; equals the staff summary for that child | passing |
@@ -1581,17 +1658,22 @@ Implemented in: backend/tests/unit/fee/test_fee_report_rules.py (phase 1 unit ca
 | TC-FEE-16-A24 | Tenant isolation: a student of tenant A cannot see tenant B data; cross-tenant header | 403 on header mismatch; own data only | passing |
 | TC-FEE-16-A25 | No token on every endpoint of this feature | 401 | passing |
 | TC-FEE-16-A26 | Teacher token on every endpoint of this feature | 403 | passing |
-| TC-FEE-16-E01 | Web: Student opens `/fee` | Cards "My Receipts" and "My Transactions" only | planned |
-| TC-FEE-16-E02 | Web: Student opens My Fee Summary | Table with Due, Paid, Outstanding per installment and Total Outstanding | planned |
-| TC-FEE-16-E03 | Web: Student opens My Receipts and clicks "Download" | PDF downloads | planned |
-| TC-FEE-16-E04 | Web: Student opens My Transactions | Rows with method, amount, status badge and Receipt "Generated" or a dash | planned |
-| TC-FEE-16-E05 | Web: Student with no payments | Empty states "No receipts yet" and "No transactions yet" | planned |
-| TC-FEE-16-E06 | Web: Parent with two children opens `/fee/collection` and switches child | Summary changes per child; header shows Student, Class, AY | planned |
-| TC-FEE-16-E07 | Web: Parent My Receipts and My Transactions with the header child switcher | Only the selected child's rows; "No child selected..." when none | planned |
-| TC-FEE-16-E08 | Web: Student types `/fee/categories` | Page opens (no redirect) but data requests fail with 403 and no data is shown | planned |
-| TC-FEE-16-E09 | Web: Teacher opens any `/fee/*` URL | Redirected to `/` | planned |
-| TC-FEE-16-E10 | Mobile: Student Fee hub then "My Receipts", "My Transactions", "My Fees" | Each screen loads; receipt download works | planned |
-| TC-FEE-16-E11 | Mobile: Parent "Child Fees" > "Child Fee Summary" | Request without `academic_year_id` fails (documents K22) | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-FEE-16-E01 | P2 | Web | Student | Signed in as seeded student Karthik Reddy (login 001, first-login password change done) | 1. Open Fee. | "Fee" page, "View your fees and receipts", "FEE SECTIONS" cards "My Receipts" and "My Transactions" only | planned |
+| TC-FEE-16-E02 | P1 | Web | Student | As TC-FEE-16-E01 | 1. Open `/fee/my-fees`. | "My Fee Summary" with "Admission #: 001" and rows S.No., Fee Type, Fee Term, Due, Paid, Outstanding; Total Outstanding | planned |
+| TC-FEE-16-E03 | P2 | Web | Student | As TC-FEE-16-E01; seeded receipts for Karthik Reddy | 1. Open My Receipts.<br>2. Click "Download" on a row. | Rows with Receipt #, Academic Year, Class / Section, Generated On; a PDF downloads | planned |
+| TC-FEE-16-E04 | P2 | Web | Student | As TC-FEE-16-E01 | 1. Open My Transactions. | Rows with Transaction #, Date, Payment Method, Amount, Status badge, Receipt "Generated" | planned |
+| TC-FEE-16-E05 | P3 | Web | Student | Signed in as seeded student Kavya Verma (login 006, no payments) | 1. Open My Receipts.<br>2. Open My Transactions. | "No receipts yet" and "No transactions yet" | planned |
+| TC-FEE-16-E06 | P1 | Web | Parent | Signed in as the seeded parent of Harsha Raju (004) and Tanvi Raju (005) | 1. Open `/fee/collection`.<br>2. Choose the other child in "Select Child". | "My Child's Fee Summary"; header Student, Class, AY; the table changes per child (Harsha due 28,100.00, Tanvi due 41,600.00 at seed time) | planned |
+| TC-FEE-16-E07 | P2 | Web | Parent | As TC-FEE-16-E06 | 1. Open My Receipts and My Transactions.<br>2. Switch child with the header switcher. | Only the selected child's rows; "No child selected. Use the child switcher in the header above." when none | planned |
+| TC-FEE-16-E08 | P3 | Web | Student | As TC-FEE-16-E01 | 1. Open `/fee/categories` by URL. | No redirect; "Access Denied" and "You don't have permission to view fee categories." | planned |
+| TC-FEE-16-E09 | P3 | Web | Teacher | None | 1. Sign in as Teacher.<br>2. Open `/fee/categories` by URL. | Redirected to the Dashboard; no Fee card | planned |
+| TC-FEE-16-E10 | P2 | Mobile | Student | Signed in to qa_manual as seeded student Karthik Reddy | 1. Open the Fee Management card ("My Fees" hub).<br>2. Open "My Receipts", "My Transactions" and "My Fee Summary". | Each screen loads with the student's data; receipt download works | planned |
+| TC-FEE-16-E11 | P3 | Mobile | Parent | Signed in as the seeded parent of Harsha and Tanvi Raju | 1. Open "Child Fees" > "Child Fee Summary". | Child summary loads for the selected child | blocked: K22 (child-summary is called without academic_year_id, 422) |
 
 API tests implemented in: backend/tests/api/fee/test_fee_self_service.py
 
@@ -1608,12 +1690,12 @@ Implemented in: backend/tests/unit/fee/test_fee_scope_rules.py (phase 1 unit cas
 **Preconditions.** Logged in with a role and permissions (a re-login is needed after a grant change because the UI caches permissions).
 
 **Steps, web.**
-1. Admin-type roles: open Fee (`/fee`) to see "Fee Management Dashboard" ("Comprehensive overview and management of all fee-related components") with "Fee Management Sections": Fee Categories, Fee Types, Fee Terms, Fee Mappings, Fee Term Amounts, Fee Collection, Fee Receipts, Fee Refunds, each with a "Manage" button. The sidebar Fee submenu lists the same eight entries.
-2. Student and parent: Fee shows "Fee Sections" with "My Receipts" and "My Transactions" (F16).
-3. `/fees` redirects to `/fee`. Teacher is redirected from every `/fee/*` to `/`.
-4. Fee Transactions (`/fee/transactions`) and Fee Reports (`/fee/reports`) have no dashboard card; Reports is reached from the Reports hub.
+1. Admin-type roles: open Fee (`/fee`) to see "Fee Management Dashboard" ("Comprehensive overview and management of all fee-related components") with "Fee Management Sections": Fee Categories, Fee Types, Fee Terms, Fee Mappings, Fee Term Amounts, Fee Collection, Fee Receipts, Fee Refunds, each with a "Manage" button. The sidebar Fee submenu comes from the backend menu: in the seeded menu it lists Fee Categories, Fee Types, Fee Terms, Fee Mappings, Term Amounts, Fee Collection, Fee Receipts, Fee Transactions, Fee Refunds, Fee Reports, My Fees, My Receipts.
+2. Student and parent: Fee shows "View your fees and receipts" and "Fee Sections" with "My Receipts" and "My Transactions" (F16).
+3. `/fees` redirects to `/fee`. Teacher is redirected from every `/fee/*` to `/`, which lands on the Dashboard.
+4. Fee Transactions (`/fee/transactions`) and Fee Reports (`/fee/reports`) have no dashboard card; they are reached from the sidebar (Reports also from the Reports hub).
 
-**Steps, mobile.** The Fee tab shows tiles Fee Categories, Fee Types, Fee Terms, Fee Mappings, Fee Term Amounts (opens the Class Mappings tab), Fee Collection, Fee Receipts, Fee Refunds, each shown only with the resource permission (`list`); Student and Parent see the self-service layout; Teacher is redirected to the home tab. There are no tiles for Transactions or Reports (Reports tab has Fee Reports).
+**Steps, mobile.** The Home "Fee Management" card opens the Fee hub "Fee Management" ("Manage all fee operations in one place", "FEE SECTIONS") with tiles Fee Categories, Fee Types, Fee Terms, Fee Mappings, Fee Term Amounts (opens the Class Mappings tab), Fee Collection, Fee Receipts, Fee Refunds, each shown only with the resource permission (`list`); Student and Parent see the self-service layout; Teacher has no Fee Management card and `/fees` redirects to the Home dashboard. There are no tiles for Transactions or Reports (Reports tab has Fee Reports).
 
 **Expected results.** Each role sees only the entries it can use; hidden pages still enforce permissions on the API.
 
@@ -1639,17 +1721,22 @@ Implemented in: backend/tests/unit/fee/test_fee_scope_rules.py (phase 1 unit cas
 | TC-FEE-17-U05 | Mobile `roleBlocksFees("teacher")` | true; false for admin, student, parent | passing |
 | TC-FEE-17-U06 | `permissionsMap` with only `fee_terms:list` | Dashboard shown (any of three list grants) | blocked: the dashboard decision is inline in FeeIndexPage in web/src/routes/_app/fee/index.tsx; needs the check exported |
 | TC-FEE-17-A01 | Login as Admin, Staff, Teacher, Student, Parent and read the menu and permission list | Admin and Staff have fee resources; Teacher none; Student and Parent only the self-service grants | passing |
-| TC-FEE-17-A02 | Grant change then login again | New grants appear only after the new login (permissions are cached at login) | skipped: needs a temporary grant change on the shared Student role, which would race with other workers and is not permitted in the QA tenant |
-| TC-FEE-17-E01 | Web: Admin opens Fee | Dashboard with eight section cards; each "Manage" opens the right page | planned |
-| TC-FEE-17-E02 | Web: click the "Fee Term Amounts" card | Lands on Fee Mappings with the Class Mappings tab and the highlighted first row | planned |
-| TC-FEE-17-E03 | Web: open `/fees` | Redirects to `/fee` | planned |
-| TC-FEE-17-E04 | Web: Student opens Fee | Cards "My Receipts" and "My Transactions" only | planned |
-| TC-FEE-17-E05 | Web: Teacher opens Fee from a typed URL | Redirected to the home page; no Fee menu | planned |
-| TC-FEE-17-E06 | Web: Staff opens Fee | Dashboard; pages open read-only where Staff lacks create and update | planned |
-| TC-FEE-17-E07 | Web: Admin sidebar | Fee submenu with the eight entries; no "Fee Transactions" or "Fee Reports" entry | planned |
-| TC-FEE-17-E08 | Mobile: Admin Fee tab | Eight tiles; "Fee Term Amounts" opens the Class Mappings tab | planned |
-| TC-FEE-17-E09 | Mobile: Teacher opens the Fee tab | Redirected to the home tab | planned |
-| TC-FEE-17-E10 | Mobile: Parent Fee tab | Layout titled "Child Fees" with the fee summary, receipts and transactions cards | planned |
+| TC-FEE-17-A02 | Grant change then login again | New grants appear only after the new login (permissions are cached at login) | skipped: needs a temporary grant change on the shared Student role, which would race with other workers and is not perm... |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-FEE-17-E01 | P1 | Web | Admin | None | 1. Open Fee. | "Fee Management Dashboard" with eight cards (Fee Categories, Fee Types, Fee Terms, Fee Mappings, Fee Term Amounts, Fee Collection, Fee Receipts, Fee Refunds); each "Manage" opens its page | planned |
+| TC-FEE-17-E02 | P3 | Web | Admin | Seeded class mappings | 1. Click "Manage" on "Fee Term Amounts". | Fee Mappings with the Class Mappings tab and the first row highlighted | planned |
+| TC-FEE-17-E03 | P3 | Web | Admin | None | 1. Open `/fees` by URL. | Redirected to `/fee` | planned |
+| TC-FEE-17-E04 | P3 | Web | Student | Signed in as seeded student Karthik Reddy | 1. Open Fee. | Cards "My Receipts" and "My Transactions" only | planned |
+| TC-FEE-17-E05 | P2 | Web | Teacher | None | 1. Sign in as Teacher.<br>2. Open `/fee` by URL. | Redirected to the Dashboard; no Fee card or sidebar entry | planned |
+| TC-FEE-17-E06 | P2 | Web | Staff | None | 1. Sign in as Staff.<br>2. Open Fee and each card. | Dashboard with the eight cards; categories, types and terms open without create, edit or delete controls | planned |
+| TC-FEE-17-E07 | P3 | Web | Admin | None | 1. Expand Fee in the sidebar. | Entries from the backend menu: Fee Categories, Fee Types, Fee Terms, Fee Mappings, Term Amounts, Fee Collection, Fee Receipts, Fee Transactions, Fee Refunds, Fee Reports, My Fees, My Receipts | planned |
+| TC-FEE-17-E08 | P2 | Mobile | Admin | Signed in to qa_manual | 1. Tap the "Fee Management" card.<br>2. Tap "Fee Term Amounts". | "FEE SECTIONS" with eight tiles; "Fee Term Amounts" opens Fee Mappings on the Class Mappings tab | planned |
+| TC-FEE-17-E09 | P3 | Mobile | Teacher | None | 1. Open `/fees`. | Redirected to the Home dashboard; no Fee Management card | planned |
+| TC-FEE-17-E10 | P3 | Mobile | Parent | Signed in as the seeded parent of Harsha and Tanvi Raju | 1. Tap the "Fee Management" card. | Hub "Child Fees" with "Child Fee Summary", "My Fees", "My Receipts", "My Transactions" | planned |
 
 API tests implemented in: backend/tests/api/fee/test_fee_menu.py
 
@@ -1686,7 +1773,7 @@ Differences between `docs/modules/fee.md` or the intended behaviour and the code
 | K21 | The web Fee Reports page sends no `academic_year_id` (all years are mixed) and disables Export until a filter is set | `FeeReports.tsx` |
 | K22 | The Student default seed has no `fee_collection` grant, so `my-summary` and `my-history` return 403 (the web and mobile student pages use `my-outstanding-fees`); mobile `collection.tsx` still calls `my-summary` and `child-summary` without the required `academic_year_id` (422) | `permission_catalog.py`, `mobile/app/fees/collection.tsx` |
 | K23 | `docs/modules/fee.md` says Admin and staff collect fees, but the default Staff seed has no `fee_collection` grant (only `fee_transactions`), the web Payment tab gates on `fee_transactions:create` while the API needs `fee_collection:create`, the mobile Fee Collection tile gates on `fee_transactions:list`, and the due-reminder endpoints check `fee_collection:read` rather than the documented `send_sms`. Admin also lacks `send_sms` in the default seed | `permission_catalog.py`, `FeePaymentTab.tsx`, `mobile/app/(tabs)/fees.tsx`, `fee_collection_endpoints.py` |
-| K24 | Web Transactions has no menu link, no control to bounce a payment or set `cheque_status`, and "Mark Completed" leaves `cheque_status` as pending; a cleared cheque also needs a separate "Generate Receipt" click because no receipt is created on status change | `FeeTransactions.tsx`, `fee_transaction_service.py` |
+| K24 | Web Transactions has no Fee dashboard card (the seeded menu gives it a sidebar entry), no control to bounce a payment or set `cheque_status`, and "Mark Completed" leaves `cheque_status` as pending; a cleared cheque also needs a separate "Generate Receipt" click because no receipt is created on status change | `FeeTransactions.tsx`, `fee_transaction_service.py` |
 | K25 | A student with more than one admission row makes summary, history and terms-due lookups fail with 500 (`scalar_one_or_none`) | `fee_collection_service.py` |
 | K26 | A legacy-mode payment that reduces old fees produces a receipt whose total exceeds the sum of its items because old fee amounts are not receipt items | `fee_collection_service.py`, `fee_receipt_service.py` |
 | K27 | Refunds are never subtracted from Paid, the history or the reports, and pending refunds are not counted against the refundable amount | `fee_refund_service.py`, `fee_collection_service.py` |

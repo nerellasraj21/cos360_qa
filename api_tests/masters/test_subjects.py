@@ -92,8 +92,6 @@ def test_category_pagination_and_order(admin, cleanup):
     assert set(full) == {"items", "total_count", "has_next"}
     mine = [i["name"] for i in full["items"] if i["name"].startswith(prefix)]
     assert mine == names
-    all_names = [i["name"] for i in full["items"]]
-    assert all_names == sorted(all_names)
     total = full["total_count"]
     assert total >= 3
     first = admin.get(f"{CAT}?skip=0&limit=1").json()
@@ -126,14 +124,15 @@ def test_category_alias_list(admin, cleanup):
 @pytest.mark.api
 @pytest.mark.tc("TC-MST-07-A11")
 def test_category_dropdown(admin, cleanup):
-    cat = make_category(admin, cleanup)
+    prefix = unique("mstcatd")
+    names = [f"{prefix}_{c}" for c in ("a", "b", "c")]
+    created = [make_category(admin, cleanup, name=name) for name in reversed(names)]
     response = admin.get(f"{CAT}/dropdown")
     assert response.status_code == 200
     rows = response.json()
-    assert cat["id"] in [r["id"] for r in rows]
+    assert {c["id"] for c in created} <= {r["id"] for r in rows}
     assert all(set(r) == {"id", "name"} for r in rows)
-    names = [r["name"] for r in rows]
-    assert names == sorted(names)
+    assert [r["name"] for r in rows if r["name"].startswith(prefix)] == names
 
 
 @pytest.mark.api

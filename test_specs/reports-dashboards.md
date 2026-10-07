@@ -2,9 +2,9 @@
 
 This module covers everything a user meets after login that summarises the school: the home dashboard and module hub pages (cards built from the user's menu and permissions, on web and mobile), the Reports hub, and the report endpoints under `/api/v1/reports/*` (student, staff, fee, attendance and financial reports with CSV, Excel and PDF export, plus an export history that is never written). The expense reports live in the Expense module (EXP F14) and are cross-referenced here. The mobile app additionally has client-side Academic and Transport reports and a student attendance report built from list APIs, and the web app has a fee reports page. There is no web page for student, staff, financial or generic attendance reports; those endpoints are API-only on web. This page documents what the code does on 2026-10-02 and, where `docs/modules/reports-dashboards.md` disagrees with the code, the code wins and the difference is listed under Known gaps.
 
-_Last verified against code: 2026-10-02_
+_Last verified against code: 2026-10-07_
 
-Conventions: test IDs follow `docs/testing/strategy.md` (`TC-RPT-<FF>-<P><NN>`; U unit, A API, E end to end). All Status values are `planned`. Where a UI label contains the rupee sign or a dash character it is written here as "Rs" or a hyphen (plain text only). "Today" in numeric examples is 2026-10-02.
+Conventions: test IDs follow `docs/testing/strategy.md` (`TC-RPT-<FF>-<P><NN>`; U unit, A API, E end to end). UI cases (`-E<NN>`) use the manual format (Priority P1 smoke, P2 regression, P3 edge) and run in the seeded tenant `qa_manual` (`docs/testing/test-environment.md`): classes Nursery to Class 5, 30 students (for example Karthik Reddy 001, Harsha Raju 004 and Tanvi Raju 005 with the same parents), 9 staff with attendance, the seeded fee data (see `docs/features/fee.md`), exams "Unit Test 1 - Class 1B", "Unit Test 1 - Class 2A" (published) and "Half Yearly Examination 2026" (active), routes "Route 1 - Kukatpally" and "Route 2 - Uppal" with 2 vehicles and 2 trips, and 12 expense transactions. Admin, Staff and Teacher use the QA logins; Student and Parent cases use a seeded student (login = admission number) or parent login, because the QA Student and Parent logins are not linked to a student. Where a UI label contains the rupee sign or a dash character it is written here as "Rs" or a hyphen (plain text only). "Today" in numeric examples is 2026-10-02.
 
 ## Roles
 
@@ -51,12 +51,12 @@ Endpoint prefixes under `/api/v1` (mounted in `backend/app/api/v1/main_router.py
 
 **Steps, web**
 1. Log in; `/` redirects to `/dashboard`. Header "Dashboard", subtitle "Welcome back, <name> (<Role>)" (name is the parent profile name or the username) or "Welcome to COS360 School Management System".
-2. A grid shows one card per top-level menu item except "Dashboard", in the canonical order Students, Staff Management, Exam, Fee, Expense, Communication, Reports, Masters, Administration, Transport. Each card has an icon, the menu name and a description (for example Expense: "Expense transactions, approvals and summaries"; Transport: "Routes, vehicles and trips"; Reports: "Analytics and reports across modules"; unknown names: "Open <name>").
+2. A grid shows one card per top-level menu item except "Dashboard", sorted by the canonical order; with the seeded menu the cards read Students, Staff, Fee, Expense, Communication, Reports, Masters, Administration, Transport, then Billing Admin, Exam, Timetable and Calendar (names outside `MENU_ORDER` in `menuUtils.ts` go last in menu order; the list has "exam management" and "exams" but not "exam", so the seeded "Exam" node lands after Billing Admin). Each card has an icon, the menu name and a description (for example Expense: "Expense transactions, approvals and summaries"; Transport: "Routes, vehicles and trips"; Reports: "Analytics and reports across modules"; unknown names such as Billing Admin, Exam, Timetable, Calendar: "Open <name>" in lower case, for example "Open exam").
 3. Click a card to open the module hub or page.
 
 **Steps, mobile**
 1. Open the Home tab (title "Dashboard"). The hero card shows "Good Morning," or "Good Afternoon," or "Good Evening," (before 12:00, before 17:00, otherwise), the username, today's date (for example "Friday, October 2") and an avatar with the first letter.
-2. Under "Modules" tap a card (Students, Staff Management, Exam Management, Fee Management, Expense, Communication, Reports, Masters, Administration, Transport). With no visible card: lock icon and "No modules available. Contact your administrator."
+2. Under "Modules" tap a card (Students, Staff Management, Exam Management, Fee Management, Expense, Communication, Reports, Masters, Administration, Transport, then menu-only modules such as Billing Admin, Timetable, Calendar). The bottom bar holds Home, Settings, Alerts and Profile. With no visible card: lock icon and "No modules available. Contact your administrator."
 
 **Expected results**: Web shows exactly the menu nodes the role is allowed; mobile shows the union of permission-entitled and menu-granted modules with the role hide rules applied, sorted in the web order.
 
@@ -92,16 +92,21 @@ Endpoint prefixes under `/api/v1` (mounted in `backend/app/api/v1/main_router.py
 | TC-RPT-01-A03 | Login as Student and as Parent | Menu limited to the student and parent URL allowlist (dashboard, students, fee self-service, exam) | passing |
 
 API tests implemented in: backend/tests/api/reports/test_conventions_audit.py
-| TC-RPT-01-E01 | Web Admin logs in | Lands on `/dashboard`; header "Dashboard"; welcome text includes the username and "(Admin)"; cards for every module in canonical order | planned |
-| TC-RPT-01-E02 | Web Teacher | No Fee card | planned |
-| TC-RPT-01-E03 | Web Student | No Masters, Reports, Communication cards; a Fee card with self-service entries | planned |
-| TC-RPT-01-E04 | Web Parent | Welcome text uses the parent profile name | planned |
-| TC-RPT-01-E05 | Web: click the Expense card | Navigates to `/expense` | planned |
-| TC-RPT-01-E06 | Mobile Admin | Hero greeting, date, avatar letter; module cards in web order | planned |
-| TC-RPT-01-E07 | Mobile Teacher | No Fee Management card | planned |
-| TC-RPT-01-E08 | Mobile Student | No Communication, Reports, Masters or Transport cards | planned |
-| TC-RPT-01-E09 | Mobile user with no permissions and an empty menu | "No modules available. Contact your administrator." | planned |
-| TC-RPT-01-E10 | Mobile: tap the Reports card | Opens the Reports tab | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-RPT-01-E01 | P1 | Web | Admin | Tenant qa_manual | 1. Sign in as Admin.<br>2. Open `/`. | Redirected to `/dashboard`; header "Dashboard"; "Welcome back, <username> (Admin)"; cards Students, Staff, Exam, Fee, Expense, Communication, Reports, Masters, Administration, Transport, then the other menu nodes (Billing Admin, Timetable, Calendar with "Open <name>" descriptions). Observed 2026-10-07: Exam is placed after Billing Admin | planned |
+| TC-RPT-01-E02 | P2 | Web | Teacher | None | 1. Sign in as Teacher.<br>2. Open the Dashboard. | No Fee card; other module cards present | planned |
+| TC-RPT-01-E03 | P2 | Web | Student | Signed in as seeded student Karthik Reddy (login 001) | 1. Open the Dashboard. | Cards Students, Fee, Exam only; no Masters, Reports or Communication | planned |
+| TC-RPT-01-E04 | P3 | Web | Parent | Signed in as the seeded parent of Harsha and Tanvi Raju | 1. Open the Dashboard. | Welcome text uses the parent profile name; cards Students, Fee, Exam | planned |
+| TC-RPT-01-E05 | P3 | Web | Admin | None | 1. Click the "Expense" card. | Navigates to `/expense` | planned |
+| TC-RPT-01-E06 | P1 | Mobile | Admin | Signed in to organisation qa_manual | 1. Open the Home tab. | Title "Dashboard"; greeting "Good Morning,", "Good Afternoon," or "Good Evening," with the username, today's date and the avatar letter; "Modules" cards Students, Staff Management, Exam Management, Fee Management, Expense, Communication, Reports, Masters, Administration, Transport, then other menu modules | planned |
+| TC-RPT-01-E07 | P2 | Mobile | Teacher | None | 1. Open the Home tab. | No Fee Management card | planned |
+| TC-RPT-01-E08 | P2 | Mobile | Student | Signed in as seeded student Karthik Reddy | 1. Open the Home tab. | Cards Students, Exam Management, Fee Management only | planned |
+| TC-RPT-01-E09 | P3 | Mobile | Admin | A user whose role has no permissions and an empty menu (none in the seed) | 1. Sign in and open the Home tab. | Lock icon and "No modules available. Contact your administrator." | blocked: no seeded role without permissions and menu |
+| TC-RPT-01-E10 | P3 | Mobile | Admin | None | 1. Tap the "Reports" card. | Opens the Reports screen with the report cards | planned |
 
 Implemented in (phase 1 unit tests): web/src/__tests__/reports/menu.test.ts (drives useMenuData with the store and query mocked); mobile mirror in mobile/__tests__/reports/menuUtils.test.ts.
 
@@ -116,7 +121,7 @@ Implemented in (phase 1 unit tests): web/src/__tests__/reports/menu.test.ts (dri
 **Preconditions**: Menu children exist for the module and the role.
 
 **Steps, web**
-1. Open a hub: `/admin` (header "Administration", subtitle "Manage system settings, users, roles, and organization-wide configurations", section label "Administration Sections"), `/masters` ("Masters Dashboard", "Configure and manage all master data for the school system", "Masters Sections"), `/students` ("Students Dashboard", "Comprehensive management of student data, admissions, and records", "Students Sections"), `/transport` ("Transport Dashboard", see TRN F01), `/reports` (F03).
+1. Open a hub: `/admin` (header "Administration", subtitle "Manage system settings, users, roles, and organization-wide configurations", section label "Administration Sections"), `/masters` ("Masters Dashboard", "Configure and manage all master data for the school system", "Masters Sections"), `/students` ("Students Dashboard", "Comprehensive management of student data, admissions, and records", "Students Sections"), `/transport` ("Transport Dashboard", "Transport Sections", see TRN F01), `/reports` (F03). The section labels render in upper case.
 2. Cards are the children of that module's node in the raw menu (not the processed sidebar menu). A card with a path navigates; a card without a path is dimmed. The Students hub hides "Student Transport"; the Transport hub hides Route Stops, Transport Trips and Student Transport. Card descriptions come from a hard-coded map keyed by menu name, otherwise "Manage <name>".
 3. There is no "Coming Soon" banner in the web hub code.
 
@@ -144,14 +149,19 @@ Implemented in (phase 1 unit tests): web/src/__tests__/reports/menu.test.ts (dri
 | TC-RPT-02-A02 | Login response menu for Student versus Admin | Student tree is the allowlisted subset | passing |
 
 API tests implemented in: backend/tests/api/reports/test_conventions_audit.py
-| TC-RPT-02-E01 | Web Admin opens `/admin` | Header "Administration"; cards from the Administration node | planned |
-| TC-RPT-02-E02 | Web Admin opens `/masters` | "Masters Dashboard" with a card per Masters child | planned |
-| TC-RPT-02-E03 | Web Admin opens `/students` | "Students Dashboard"; no "Student Transport" card | planned |
-| TC-RPT-02-E04 | Web: click a card whose menu item has a path | Navigates to that path | planned |
-| TC-RPT-02-E05 | Web: a card without a path | Dimmed; click does nothing | planned |
-| TC-RPT-02-E06 | Web: compare hub cards with sidebar children for Masters | Hub lacks the injected "School Registration" entry the sidebar shows | planned |
-| TC-RPT-02-E07 | Mobile Admin opens the Masters tab | Permission-based sections plus menu sections | planned |
-| TC-RPT-02-E08 | Mobile Teacher | Masters tab visible only when the teacher holds one of the module resources | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-RPT-02-E01 | P2 | Web | Admin | None | 1. Open `/admin`. | Header "Administration", label "Administration Sections", cards Users and School Settings | planned |
+| TC-RPT-02-E02 | P1 | Web | Admin | None | 1. Open `/masters`. | "Masters Dashboard", "Masters Sections" with Academic Years, Classes and Sections, Subject Categories, Subjects, Class Subject Mappings, Holidays, Parents, Roles and Permissions | planned |
+| TC-RPT-02-E03 | P2 | Web | Admin | None | 1. Open `/students`. | "Students Dashboard" with Admission, Attendance, Student Documents, Student Certificates, Certificate Types, Certificate Templates; no "Student Transport" card | planned |
+| TC-RPT-02-E04 | P2 | Web | Admin | None | 1. Open `/transport`.<br>2. Click "Routes". | Cards Routes, Vehicles, Trips, Pricing (no Route Stops); navigates to the routes page | planned |
+| TC-RPT-02-E05 | P3 | Web | Admin | A menu child without a path (none in the seeded menu) | 1. Open the hub that holds it. | Card dimmed; click does nothing | blocked: the seeded menu has no child without a path |
+| TC-RPT-02-E06 | P3 | Web | Admin | None | 1. Compare `/masters` cards with the sidebar Masters children. | The sidebar may show injected entries (for example "School Registration") that the hub does not | planned |
+| TC-RPT-02-E07 | P2 | Mobile | Admin | None | 1. Open the "Masters" card. | "Masters Dashboard", "MASTERS SECTIONS" with the same eight sections as web | planned |
+| TC-RPT-02-E08 | P3 | Mobile | Teacher | None | 1. Open the "Masters" card. | Sections shown only for masters resources the teacher holds | planned |
 
 ---
 
@@ -168,13 +178,13 @@ API tests implemented in: backend/tests/api/reports/test_conventions_audit.py
 2. Cards use descriptions from a map: Student Reports ("Attendance, performance, and enrollment analytics"), Fee Reports ("Fee collection, outstanding dues, and payment summaries"), Academic Reports ("Exam results, marks, and grade distribution"), Expense Reports ("Expense analysis, budget vs actual, and department-wise reports"), Transport Reports ("Route utilization, vehicle usage, and trip analytics"), Staff Reports ("Staff attendance, performance, and workforce analytics"), Export & Downloads ("Bulk export data in CSV, PDF, and Excel formats"); other names get "<name> analytics and reports". Only cards with a path navigate. Only fee and expense reports have web pages.
 
 **Steps, mobile**
-1. Reports tab (title "Reports", banner "Reports"). Cards: Student Reports (resources `students`, `student_attendance`; route `/reports/student-reports`), Fee Reports (`fee_reports`, `fee_transactions`), Staff Reports (`staff`, `staff_attendance`), Transport Reports (`routes`, `vehicles`, `transport_trips`), Academic Reports (`exams`, `exam_results`); backend menu children not covered by these are appended. The standalone `/reports` stack screen (title "Reports") lists the same five with subtitles ("Collection summary, pending fees, fee structure" for Fee, "Admission stats, class-wise strength, demographics" for Student, "Exam results, grade distributions, subject performance" for Academic, "Staff attendance, designation-wise count" for Staff, "Route utilisation, student transport summary" for Transport) using permissions only.
+1. Reports tab (title "Reports", banner "Reports"). Cards: Student Reports (resources `students`, `student_attendance`; route `/reports/student-reports`), Fee Reports (`fee_reports`, `fee_transactions`), Staff Reports (`staff`, `staff_attendance`), Transport Reports (`routes`, `vehicles`, `transport_trips`), Academic Reports (`exams`, `exam_results`); backend menu children not covered by these are appended. The standalone `/reports` stack screen (title "Reports", heading "Reports & Analytics", "Generate and export reports across all modules."; it is what the URL `/reports` opens) lists the same five with subtitles ("Collection summary, pending fees, fee structure" for Fee, "Admission stats, class-wise strength, demographics" for Student, "Exam results, grade distributions, subject performance" for Academic, "Staff attendance, designation-wise count" for Staff, "Route utilisation, student transport summary" for Transport) using permissions only.
 
 **Expected results**: Each visible card opens its report screen; a user without the card's resources does not see it.
 
 **API endpoints**: None specific.
 
-**Rules and validations**: Hub completeness depends on seeded menu rows (web) and the static list (mobile). Mobile screens add gates: Staff, Academic and Transport screens block role `student`, the Fee screen blocks `teacher`, Student Reports has no role block.
+**Rules and validations**: Hub completeness depends on seeded menu rows (web) and the static list (mobile). With the seeded menu the web hub shows Fee Reports and Expense Reports for Admin, only Fee Reports for Staff and no cards for Teacher. Mobile screens add gates: Staff, Academic and Transport screens block role `student`, the Fee screen blocks `teacher` (redirect to Home), Student Reports has no role block. A student or parent who opens `/reports` by URL still gets the stack screen with Fee, Student and Academic Reports cards, and the Fee Reports screen opens for them with "No data found".
 
 **Error and edge cases**: A user without matching permissions sees no cards; direct navigation to a screen shows the access gate.
 
@@ -193,12 +203,18 @@ API tests implemented in: backend/tests/api/reports/test_conventions_audit.py
 | TC-RPT-03-A02 | Teacher login `permissions` | `student_reports` and `attendance_reports` present; no `fee_reports` | passing |
 
 API tests implemented in: backend/tests/api/reports/test_conventions_audit.py
-| TC-RPT-03-E01 | Web Admin opens `/reports` with the Reports node childless | Fee Reports and Expense Reports cards (fallback) | planned |
-| TC-RPT-03-E02 | Web: click "Fee Reports" | Opens `/fee/reports` | planned |
-| TC-RPT-03-E03 | Web: tenant menu with a child "Student Reports" without a path | Card dimmed, no navigation | planned |
-| TC-RPT-03-E04 | Mobile Admin opens the Reports tab | Five report cards | planned |
-| TC-RPT-03-E05 | Mobile Teacher | Only cards whose resources the teacher holds (Student Reports; Academic and Transport when exam or route grants exist); no Fee Reports | planned |
-| TC-RPT-03-E06 | Mobile Student | Reports tab absent | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-RPT-03-E01 | P1 | Web | Admin | Seeded Reports menu node has no children | 1. Open Reports. | "Reports", "Comprehensive analytics and reporting across all school modules", "Reports Sections" with "Fee Reports" and "Expense Reports" | planned |
+| TC-RPT-03-E02 | P2 | Web | Admin | None | 1. Click "Fee Reports". | Opens `/fee/reports` | planned |
+| TC-RPT-03-E03 | P3 | Web | Staff | None | 1. Sign in as Staff.<br>2. Open Reports. | Only "Fee Reports" (Staff has no `expense_reports`) | planned |
+| TC-RPT-03-E04 | P2 | Mobile | Admin | None | 1. Open the Reports screen. | "Reports & Analytics" with Fee Reports, Student Reports, Academic Reports, Staff Reports, Transport Reports | planned |
+| TC-RPT-03-E05 | P2 | Mobile | Teacher | None | 1. Open the Reports screen. | Student Reports, Academic Reports, Transport Reports; no Fee Reports or Staff Reports | planned |
+| TC-RPT-03-E06 | P3 | Mobile | Student | Signed in as seeded student Karthik Reddy | 1. Look for a Reports card on Home.<br>2. Open `/reports` by URL. | No Reports card on Home; the URL still opens "Reports & Analytics" (Fee, Student, Academic Reports cards) | planned |
+| TC-RPT-03-E07 | P3 | Web | Teacher | None | 1. Sign in as Teacher.<br>2. Open Reports. | Header only, no cards (Teacher has neither fallback grant) | planned |
 
 ---
 
@@ -254,13 +270,18 @@ API tests implemented in: backend/tests/api/reports/test_conventions_audit.py
 | TC-RPT-04-A12 | Export with `format:"docx"`; `report_type:"other"`; custom `filename:"qa_students"` | 422; 400 "Unsupported report type"; filename `qa_students.csv` | passing |
 | TC-RPT-04-A13 | Export of 150 rows with `filters:{page_size:100}` | All 150 rows exported (page filters ignored) | passing |
 | TC-RPT-04-A14 | Export when no rows match | 200 with an empty body and a filename without extension (documents the gap) | passing |
-| TC-RPT-04-A15 | Role matrix on summary and details | Admin, Staff, Teacher 200; Student, Parent denied (summary returns 500, details returns 403) | passing; xfail: RPT-BUG-SUMMARY-500 (summary denial is 500, target 403) |
+| TC-RPT-04-A15 | Role matrix on summary and details | Admin, Staff, Teacher 200; Student, Parent denied (summary returns 500, details returns 403) | passing |
 | TC-RPT-04-A16 | Role matrix on export | Admin, Staff, Teacher 200; Student, Parent 403 | passing |
 | TC-RPT-04-A17 | No token on each endpoint | 401 (the summary may surface as 500 because of the bare except; record the status) | passing |
 | TC-RPT-04-A18 | Tenant isolation | Tenant B summary and export contain no tenant A admissions; details of an A student returns 404 | passing |
 
 API tests implemented in: backend/tests/api/reports/test_student_reports.py
-| TC-RPT-04-E01 | Web: look for a student report page | None exists; the Reports hub offers none (documents the gap) | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-RPT-04-E01 | P3 | Web | Admin | None | 1. Open Reports and look for a student report page. | None exists; no Student Reports card (documents the gap) | planned |
 
 Implemented in (phase 1 unit tests): backend/tests/unit/reports/test_phase1_reports_lists.py.
 
@@ -308,14 +329,19 @@ Implemented in (phase 1 unit tests): backend/tests/unit/reports/test_phase1_repo
 | TC-RPT-05-A05 | `?page=2&page_size=2` with 5 staff; `?page_size=0` | `sl_no` 3 and 4; 422 | passing |
 | TC-RPT-05-A06 | `GET /reports/staff/details/{staff_id}` | 200 with the sixteen documented fields | passing |
 | TC-RPT-05-A07 | Details for an unknown staff id | 404 "Staff not found" | passing |
-| TC-RPT-05-A08 | `POST /reports/staff/export` csv, xlsx, pdf | 200 with `text/csv`, the spreadsheet type, `application/pdf` | passing; xfail: RPT-EXPORT-ENUM (gender cell is GenderEnum.Male) |
+| TC-RPT-05-A08 | `POST /reports/staff/export` csv, xlsx, pdf | 200 with `text/csv`, the spreadsheet type, `application/pdf` | passing |
 | TC-RPT-05-A09 | Export with `report_type:"staff_attendance"` | 400 "Unsupported report type" | passing |
-| TC-RPT-05-A10 | Role matrix summary and details | Admin 200; Staff 200; Teacher, Student, Parent denied (summary 500, details 403) | passing; xfail: RPT-BUG-SUMMARY-500 (summary denial is 500, target 403) |
+| TC-RPT-05-A10 | Role matrix summary and details | Admin 200; Staff 200; Teacher, Student, Parent denied (summary 500, details 403) | passing |
 | TC-RPT-05-A11 | Role matrix export | Admin 200; Staff 403 (read only); Teacher, Student, Parent 403 | passing |
 | TC-RPT-05-A12 | Tenant isolation | Tenant B sees no tenant A staff | passing |
 
 API tests implemented in: backend/tests/api/reports/test_staff_reports.py
-| TC-RPT-05-E01 | Web: look for a staff report page | None exists (documents the gap) | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-RPT-05-E01 | P3 | Web | Admin | None | 1. Open Reports and look for a staff report page. | None exists (documents the gap) | planned |
 
 Implemented in (phase 1 unit tests): backend/tests/unit/reports/test_phase1_reports_lists.py.
 
@@ -331,13 +357,13 @@ Implemented in (phase 1 unit tests): backend/tests/unit/reports/test_phase1_repo
 
 **Steps, web**
 1. Open Fee > Fee Reports (`/fee/reports`; menu label "Fee Reports"). Header "Fee Reports & Export", subtitle "Generate reports and export fee data".
-2. Filters: class, section, "All Categories" (fee category), "From" and "To" dates, "All Methods" (Cash, UPI, Cheque, Bank Transfer), "All Status" (Completed, Pending, Cancelled, Bounced), "Clear". Until one filter is chosen the page shows "Select at least one filter to generate a report".
-3. Tabs "Collection Summary", "Pending Fees", "Fee Structure", each with statistic cards and a paginated table (page size 50, Previous and Next).
+2. Filters: "All Classes" (then section), "All Categories" (fee category), and on Collection Summary only "From" and "To" dates, "All Methods" (Cash, UPI, Cheque, Bank Transfer), "All Status" (Completed, Pending, Cancelled, Bounced); "Clear". The tables and statistics load without a filter; until one filter is chosen the page also shows "Select at least one filter to generate a report" below the tabs and "Export" is disabled.
+3. Tabs "Collection Summary", "Pending Fees", "Fee Structure", each with a statistics table (Metric, Value) and a paginated table (page size 50, Previous and Next).
 4. Collection table columns: S.No., Transaction #, Student, Class/Section, Category, Type, Term, Due, Paid, Method, Status, Date, Collected By. Pending: S.No., Admission No, Student, Class/Section, Category, Type, Term, Due, Paid, Balance, Due Date, Days Overdue. Structure: S.No., category, type, term, class, amount, year, status.
 5. A format selector (CSV, Excel, PDF; default Excel) and "Export" (enabled only with at least one filter) download the report for the active tab: `fee_collection_summary`, `pending_fees` or `fee_structure`.
 
 **Steps, mobile**
-1. Reports tab, "Fee Reports" (blocked for teacher). Banner "Fee Reports" with "Export" (CSV share of the active tab). Tabs "Collection", "Pending", "Structure". On Collection a date filter: "All Time", "Today", "Last 7D", "This Month". Stat tiles: Collected, Rate (collection), Total Pending, Students, Overdue (pending), Avg Fee, Categories, Fee Types (structure).
+1. Reports tab, "Fee Reports" (blocked for teacher). Banner "Fee Reports" with "Export" (CSV share of the active tab). Tabs "Collection", "Pending", "Structure". On Collection a date filter: "All Time", "Today", "Last 7D", "This Month". Stat tiles: Collected, Due, Rate and amounts per payment method with a "TRANSACTIONS" list (collection), Total Pending, Students, Overdue (pending), Avg Fee, Categories, Fee Types (structure); empty lists show "No data found". The transaction rows print the raw timestamp (for example `2026-10-07T10:56:21.592868`). A second screen, `/fees/reports`, is documented in FEE F15.
 
 **Expected results**: Tables and stats agree with the underlying fee data; exports contain every matching row.
 
@@ -354,7 +380,7 @@ Implemented in (phase 1 unit tests): backend/tests/unit/reports/test_phase1_repo
 - Collection stats count only `completed` transactions: `total_collected = sum(amount_paid)`; `total_due = sum over distinct (student, fee type, term date) of the maximum amount_due`; `collection_percentage = round(collected / due x 100, 2)`, 0 when due is 0; `payment_methods`, `fee_categories` and `monthly_collection` ("YYYY-MM") group the collected amounts.
 - Pending rows: each fee mapping instalment with `due - paid > 0`. Paid amounts come from `completed` fee transactions per instalment (or per fee type when the mapping has no term dates). `days_overdue = today - due_date` when the due date is before today, else null. `amount_min`, `amount_max` and `days_overdue` filter the computed rows; `days_overdue` keeps rows overdue by at least that many days. Stats: overdue rows are those with `days_overdue > 0`; `average_overdue_days = round(mean, 1)`; totals rounded to 2 places.
 - Date filters: `date_from` is a datetime or date string; a `date_to` given as `YYYY-MM-DD` is extended to 23:59:59.999999.
-- These routes use bare parameter defaults, so `page=0` or `page_size=5000` surface as 500 (the validation error is caught), and an invalid date string also gives 500; the collection-summary 500 includes the exception text in `detail`.
+- `page` (>= 1), `page_size` (1 to 1000) and `sort_order` are validated at the router and an unparsable date string is rejected, all with 422 (as on every report group).
 - Export ignores page and page_size and returns every row; unsupported `report_type` gives 400 "Unsupported fee report type".
 
 **Error and edge cases**: No matching data returns `data: []` and stats with zeros (`collection_percentage` 0.0). Superadmin tokens bypass the read permission check but not the export check.
@@ -380,17 +406,17 @@ Fixture: student S1 has fee type Tuition with a mapped instalment due 5000.00 on
 | TC-RPT-06-U11 | `_parse_date_to("2026-09-30")` and `("2026-09-30T10:00:00")` | 2026-09-30 23:59:59.999999; unchanged datetime | passing |
 | TC-RPT-06-U12 | Pending sort by `days_overdue` (a key that can be None) ascending and descending, and by `balance_amount` descending | Rows with None last in both directions; balance order 4000.00 then 2000.00 | passing |
 | TC-RPT-06-U13 | Structure stats for class mapping totals 1000 and 3000 | `average_fee_amount=2000.0`, `fee_range={"min":1000.0,"max":3000.0}` | passing |
-| TC-RPT-06-A01 | Admin `GET /reports/fees/collection-summary` for the fixture | Rows only for item lines with a transaction; documented fields; `amount_due` and `amount_paid` are numbers | passing (empty-scope shape only); skipped: completed payments cannot be cleaned up |
-| TC-RPT-06-A02 | `?status=completed`; `?payment_method=cash`; `?fee_type_id=<t>`; `?class_id=<c>` | Each narrows rows | skipped: needs completed fee payments |
+| TC-RPT-06-A01 | Admin `GET /reports/fees/collection-summary` for the fixture | Rows only for item lines with a transaction; documented fields; `amount_due` and `amount_paid` are numbers | skipped: a completed fee payment cannot be removed afterwards (admission delete returns 409), so collection rows cannot... |
+| TC-RPT-06-A02 | `?status=completed`; `?payment_method=cash`; `?fee_type_id=<t>`; `?class_id=<c>` | Each narrows rows | skipped: needs completed fee payments; |
 | TC-RPT-06-A03 | `?date_from=2026-09-01&date_to=2026-09-05` (date-only upper bound) | Includes T1 created on 2026-09-05 | passing |
 | TC-RPT-06-A04 | `?date_from=garbage` | 422 "date_from must be an ISO date or datetime" | passing |
 | TC-RPT-06-A05 | `?page=2&page_size=1` with 3 rows | `sl_no` 2, `total_pages=3` | passing |
 | TC-RPT-06-A06 | `?page=0`; `?page_size=5000` | Both 422 (router-level bounds) | passing |
 | TC-RPT-06-A07 | `?sort_by=transaction_number&sort_order=asc`; unknown `sort_by` | Ordered; unknown ignored | passing |
 | TC-RPT-06-A08 | `GET .../collection-summary/stats` | Matches U01 | passing |
-| TC-RPT-06-A09 | `GET /reports/fees/pending-fees` | S1 row (balance 2000.0, days_overdue 62) and S2 row (balance 4000.0, days_overdue null) | xfail: RPT-PENDING-SPLIT |
-| TC-RPT-06-A10 | `?days_overdue=30`; `?amount_min=2500&amount_max=5000` | S1 only; S2 only | xfail: RPT-PENDING-SPLIT |
-| TC-RPT-06-A11 | `GET .../pending-fees/stats` | Matches U09 | xfail: RPT-PENDING-SPLIT |
+| TC-RPT-06-A09 | `GET /reports/fees/pending-fees` | S1 row (balance 2000.0, days_overdue 62) and S2 row (balance 4000.0, days_overdue null) | passing |
+| TC-RPT-06-A10 | `?days_overdue=30`; `?amount_min=2500&amount_max=5000` | S1 only; S2 only | passing |
+| TC-RPT-06-A11 | `GET .../pending-fees/stats` | Matches U09 | passing |
 | TC-RPT-06-A12 | `GET /reports/fees/fee-structure` | One row per (fee type, class mapping) with `section_name` null | passing |
 | TC-RPT-06-A13 | `GET .../fee-structure/stats` | Matches U13; `category_wise_breakdown` counts fee types per category | passing |
 | TC-RPT-06-A14 | `POST /reports/fees/export` for each of the three report types in csv, xlsx, pdf | 200 with the right content type and every matching row | passing |
@@ -401,18 +427,23 @@ Fixture: student S1 has fee type Tuition with a mapped instalment due 5000.00 on
 | TC-RPT-06-A19 | Tenant isolation | Tenant B reports and stats exclude tenant A's transactions | passing |
 
 API tests implemented in: backend/tests/api/reports/test_fee_reports.py
-| TC-RPT-06-E01 | Web Admin opens `/fee/reports` | Prompt "Select at least one filter to generate a report"; no table data | planned |
-| TC-RPT-06-E02 | Web: set a class filter | Collection Summary table and four stat cards load | planned |
-| TC-RPT-06-E03 | Web: switch to Pending Fees | Table with Balance and Days Overdue columns; cards Total Pending, Total Overdue, Students Pending, Avg Overdue Days | planned |
-| TC-RPT-06-E04 | Web: switch to Fee Structure | Cards Fee Types, Categories, Terms, Avg Fee | planned |
-| TC-RPT-06-E05 | Web: choose a payment method and status, click "Clear" | Filters reset; the empty prompt returns | planned |
-| TC-RPT-06-E06 | Web: select Excel and click "Export" with a filter set | A spreadsheet file downloads | planned |
-| TC-RPT-06-E07 | Web: Next page on a table with more than 50 rows | Page 2 loads with continued S.No. | planned |
-| TC-RPT-06-E08 | Web Teacher opens the page | Access denied panel | planned |
-| TC-RPT-06-E09 | Mobile Admin: Fee Reports, switch tabs | Collection, Pending, Structure stats and lists load | planned |
-| TC-RPT-06-E10 | Mobile: date filter "Today" on Collection | List and stats re-query with today's range | planned |
-| TC-RPT-06-E11 | Mobile: Export | A CSV of the active tab is shared | planned |
-| TC-RPT-06-E12 | Mobile Teacher | Screen blocked by the access gate | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-RPT-06-E01 | P1 | Web | Admin | Seeded payments in qa_manual | 1. Open Fee > Fee Reports. | Collection Summary loads with statistics and rows; the note "Select at least one filter to generate a report" shows below; "Export" disabled | planned |
+| TC-RPT-06-E02 | P2 | Web | Admin | Seeded payments | 1. Choose "Class 1" in "All Classes". | Collection Summary rows and statistics limited to Class 1; the note disappears; "Export" enabled | planned |
+| TC-RPT-06-E03 | P2 | Web | Admin | Seeded data | 1. Click "Pending Fees". | Columns include Balance, Due Date, Days Overdue; statistics Total Pending, Total Overdue, Students Pending, Avg Overdue Days | planned |
+| TC-RPT-06-E04 | P2 | Web | Admin | Seeded class mappings | 1. Click "Fee Structure".<br>2. Choose "Class 1". | Statistics Fee Types, Categories, Terms, Avg Fee and rows per fee type of Class 1 | planned |
+| TC-RPT-06-E05 | P3 | Web | Admin | None | 1. Choose a method in "All Methods" and a status in "All Status".<br>2. Click "Clear". | Filters reset; the "Select at least one filter" note returns | planned |
+| TC-RPT-06-E06 | P1 | Web | Admin | A class filter set | 1. Keep "Excel" and click "Export". | Toast "Report exported successfully"; an .xlsx file downloads | planned |
+| TC-RPT-06-E07 | P3 | Web | Admin | More than 50 pending rows (seeded Pending Fees without filter) | 1. Click "Pending Fees".<br>2. Click "Next". | Page 2 loads with S.No. continuing from 51 | planned |
+| TC-RPT-06-E08 | P3 | Web | Student | Signed in as seeded student Karthik Reddy | 1. Open `/fee/reports` by URL. | "Access Denied", "You don't have permission to view fee reports." (Teacher is redirected to the Dashboard instead) | planned |
+| TC-RPT-06-E09 | P2 | Mobile | Admin | Seeded payments | 1. Open Reports > "Fee Reports".<br>2. Switch "Collection", "Pending", "Structure". | Each tab shows its tiles (Collected, Due, Rate; Total Pending, Students, Overdue; Avg Fee, Categories, Fee Types) and list | planned |
+| TC-RPT-06-E10 | P3 | Mobile | Admin | Seeded payments | 1. On "Collection" tap "Today". | List and tiles reload for today's range | planned |
+| TC-RPT-06-E11 | P2 | Mobile | Admin | Seeded payments | 1. Tap "Export". | A CSV of the active tab opens in the share sheet | planned |
+| TC-RPT-06-E12 | P3 | Mobile | Teacher | None | 1. Open `/reports/fee-reports` by URL. | Redirected to Home (screen blocked for the teacher role) | planned |
 
 Implemented in (phase 1 unit tests): backend/tests/unit/reports/test_phase1_reports_fee.py.
 
@@ -430,7 +461,7 @@ Implemented in (phase 1 unit tests): backend/tests/unit/reports/test_phase1_repo
 
 **Steps, mobile**
 1. Reports tab, "Student Reports" (banner "Student Attendance Report"). Filter chips "Today", "Last 7D", "Last 30D"; tiles Present, Absent, Late, "Present Rate"; list "ATTENDANCE RECORDS"; "Export" shares a CSV (`student_attendance_report.csv`). Empty: "No records for this period". This screen is client-side: it loads `GET /student/attendance/search` and counts statuses itself (rate = present / total records, one decimal, a dash when empty).
-2. Reports tab, "Staff Reports" (banner "Staff Attendance Report", blocks role student). Chips "Today", "Last 7D", "Last 30D", "Last 90D"; tiles Present, Absent, Rate (`attendance_percentage` with one decimal); list "RECORDS" (first 100 rows); "Export" CSV built from the on-screen rows. It calls the staff stats and report endpoints below.
+2. Reports tab, "Staff Reports" (banner "Staff Attendance Report"; role student is redirected to Home; a role without `staff` or `staff_attendance` read, such as Teacher or Parent, sees "Access Denied" and "You don't have permission to view this screen. Please contact your administrator."). Chips "Today", "Last 7D", "Last 30D", "Last 90D"; tiles Present, Absent, Rate (`attendance_percentage` with one decimal); list "RECORDS" (first 100 rows); "Export" CSV built from the on-screen rows. It calls the staff stats and report endpoints below.
 
 **Expected results**: API rows and stats are computed server side for staff and student reports; the mobile student screen computes from raw attendance.
 
@@ -472,7 +503,7 @@ Fixture for stats: 12 student records in 2026-09: 8 present, 2 half_day, 1 absen
 | TC-RPT-07-A02 | `?attendance_status=absent`; `?date_from=2026-09-10&date_to=2026-09-10`; `?student_id=<s>`; `?class_id=<c>` | Each narrows rows | passing |
 | TC-RPT-07-A03 | `?month=9&year=2026`; `?month=13` | Rows for September 2026; 422 | passing |
 | TC-RPT-07-A04 | `?page=2&page_size=5`; `?page=0`; `?page_size=1001`; `?sort_order=x` | Second page of 5 with `sl_no` 6 to 10; 422 for the invalid ones | passing |
-| TC-RPT-07-A05 | Student with two admissions | Rows duplicated per admission (documents the gap) | skipped: admission API cannot produce two admissions for one student |
+| TC-RPT-07-A05 | Student with two admissions | Rows duplicated per admission (documents the gap) | skipped: the admission API creates a new student per admission, so a student with two admissions cannot be produced |
 | TC-RPT-07-A06 | `GET /reports/attendance/students/stats` for the fixture | `total_students` as distinct students, `present_count=8`, `half_day_count=2`, `absent_count=1`, `late_count=1`, `attendance_percentage=75.0` | passing |
 | TC-RPT-07-A07 | Stats with `?attendance_status=absent&month=9&year=2026` | Same totals as without those parameters (ignored) | passing |
 | TC-RPT-07-A08 | `GET /reports/attendance/staff` with 3 staff records | Documented fields; `clock_in`, `clock_out`, `total_hours`, `marked_at` null; `staff_id` is a UUID | passing |
@@ -485,12 +516,18 @@ Fixture for stats: 12 student records in 2026-09: 8 present, 2 half_day, 1 absen
 | TC-RPT-07-A15 | Tenant isolation | Tenant B reports and stats exclude tenant A's attendance | passing |
 
 API tests implemented in: backend/tests/api/reports/test_attendance_reports.py
-| TC-RPT-07-E01 | Mobile Admin: Student Reports with "Last 7D" | Tiles Present, Absent, Late, Present Rate and a records list | planned |
-| TC-RPT-07-E02 | Mobile: Student Reports with no records | "No records for this period" and a dash for the rate | planned |
-| TC-RPT-07-E03 | Mobile: Export on Student Reports | A CSV named `student_attendance_report.csv` is shared | planned |
-| TC-RPT-07-E04 | Mobile Admin: Staff Reports, chip "Last 30D" | Present, Absent, Rate tiles from the stats endpoint; list "RECORDS" | planned |
-| TC-RPT-07-E05 | Mobile Student opens Staff Reports | Blocked by the screen gate | planned |
-| TC-RPT-07-E06 | Web: look for an attendance report page | None exists (documents the gap) | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-RPT-07-E01 | P1 | Mobile | Admin | Seeded student attendance in qa_manual | 1. Open Reports > "Student Reports".<br>2. Tap "Last 7D". | Banner "Student Attendance Report"; tiles Present, Absent, Late, Present Rate; "ATTENDANCE RECORDS" list | planned |
+| TC-RPT-07-E02 | P3 | Mobile | Admin | A period with no attendance | 1. Tap "Today" on a day with no records. | "No records for this period" and a dash for the rate | planned |
+| TC-RPT-07-E03 | P3 | Mobile | Admin | Records shown | 1. Tap "Export". | A CSV named `student_attendance_report.csv` is shared | planned |
+| TC-RPT-07-E04 | P1 | Mobile | Admin | Seeded staff attendance | 1. Open Reports > "Staff Reports".<br>2. Tap "Last 30D". | Banner "Staff Attendance Report"; tiles Present, Absent, Rate; "RECORDS" list | planned |
+| TC-RPT-07-E05 | P3 | Mobile | Student | Signed in as seeded student Karthik Reddy | 1. Open `/reports/staff-reports` by URL. | Redirected to Home (role student blocked) | planned |
+| TC-RPT-07-E06 | P3 | Web | Admin | None | 1. Look for an attendance report page. | None exists (documents the gap) | planned |
+| TC-RPT-07-E07 | P3 | Mobile | Teacher | None | 1. Open `/reports/staff-reports` by URL. | "Access Denied" with "You don't have permission to view this screen. Please contact your administrator." | planned |
 
 Implemented in (phase 1 unit tests): backend/tests/unit/reports/test_phase1_reports_lists.py.
 
@@ -544,9 +581,9 @@ Fixture for 2026-09: completed fee transactions 6000.00 (2026-09-05) and 4000.00
 | TC-RPT-08-A03 | `?period_type=weekly`; `?month=13` | 422 | passing |
 | TC-RPT-08-A04 | `GET /reports/financial/expenditure` for the fixture | All four expenses (including rejected and cancelled), newest `transaction_date` first, documented fields | passing |
 | TC-RPT-08-A05 | Expenditure `?category_id=<c>&type_id=<t>`; `?amount_min=600&amount_max=1000`; `?department=<uuid>`; `?month=9&year=2026` | Each narrows rows; the amount range returns 700.00 and 1000.00 | passing |
-| TC-RPT-08-A06 | Expenditure row whose department row is missing | `department` shows the raw id | skipped: a department row cannot be removed |
+| TC-RPT-08-A06 | Expenditure row whose department row is missing | `department` shows the raw id | skipped: needs an expense whose department row no longer exists; |
 | TC-RPT-08-A07 | Expenditure `?page=2&page_size=2` | `sl_no` 3 and 4 | passing |
-| TC-RPT-08-A08 | `GET /reports/financial/ledger` for the fixture | 4 rows: fee credits 6000.00 and 4000.00, expense debits 1000.00 and 500.00 (rejected, cancelled and the pending fee row absent) | passing |
+| TC-RPT-08-A08 | `GET /reports/financial/ledger` for the fixture | 200; `total_count` 2: expense debits 1000.00 and 500.00 (`account_type` Expense, `reference_type` Expense Payment); the rejected expense is absent | passing |
 | TC-RPT-08-A09 | Ledger `?account_type=Income`; `?transaction_type=Debit`; `?reference_type=Fee Payment` | Income only; debit only; `reference_type` ignored (all four rows) | passing |
 | TC-RPT-08-A10 | Ledger `?page_size=2&page=2` | `balance` of the first row on page 2 reflects only that page | passing |
 | TC-RPT-08-A11 | `POST /reports/financial/export` expenditure and ledger in csv, xlsx, pdf | 200 with the content type and all rows | passing |
@@ -556,7 +593,12 @@ Fixture for 2026-09: completed fee transactions 6000.00 (2026-09-05) and 4000.00
 | TC-RPT-08-A15 | Tenant isolation | Tenant B summary, ledger and expenditure exclude tenant A data | passing |
 
 API tests implemented in: backend/tests/api/reports/test_financial_reports.py
-| TC-RPT-08-E01 | Web and mobile: look for a financial report screen | None exists on either client (documents the gap) | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-RPT-08-E01 | P3 | Web | Admin | None | 1. Look for a financial report screen on web and on mobile. | None exists on either client (documents the gap) | planned |
 
 Implemented in (phase 1 unit tests): backend/tests/unit/reports/test_phase1_reports_lists.py.
 
@@ -600,10 +642,15 @@ Uses the F08 fixture expenses (pending 1000.00, approved 500.00, rejected 700.00
 | TC-RPT-09-A04 | Admin with `expense_reports:read` and Staff without it call `/expense/reports/by-category` | 200; 403 | passing |
 
 API tests implemented in: backend/tests/api/reports/test_financial_reports.py
-| TC-RPT-09-E01 | Web Admin on `/reports` (childless Reports node) | "Expense Reports" fallback card opens `/expense/reports` | planned |
-| TC-RPT-09-E02 | Web: generate the by-category report for 2026-09 | Total Amount 2250.00 in the summary card | planned |
-| TC-RPT-09-E03 | Mobile Admin: Expense Reports from the drawer | Screen "Expense Reports" with tabs By Category, By Type, Trend | planned |
-| TC-RPT-09-E04 | Mobile: Reports tab | No Expense Reports card (documents the entry-point difference) | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-RPT-09-E01 | P2 | Web | Admin | Seeded Reports node has no children | 1. Open Reports.<br>2. Click "Expense Reports". | Opens `/expense/reports` | planned |
+| TC-RPT-09-E02 | P2 | Web | Admin | 12 seeded expense transactions | 1. On Expense Reports keep Report Type "By Category".<br>2. Set Start Date and End Date to cover the seeded transactions.<br>3. Click "Generate Report". | "Total Amount" and "Total Transactions" equal the sum and count of all seeded expenses in the range (every status) | planned |
+| TC-RPT-09-E03 | P2 | Mobile | Admin | Seeded expenses | 1. Open "Expense Reports" from the Expense navigation. | Screen "Expense Reports" with "Date Range", "Apply", tabs By Category, By Type, Trend | planned |
+| TC-RPT-09-E04 | P3 | Mobile | Admin | None | 1. Open the Reports screen. | No Expense Reports card (documents the entry-point difference) | planned |
 
 Implemented in (phase 1 unit tests): backend/tests/unit/reports/test_phase1_reports_lists.py.
 
@@ -641,10 +688,15 @@ Implemented in (phase 1 unit tests): backend/tests/unit/reports/test_phase1_repo
 | TC-RPT-10-A02 | Teacher and Admin call the exam list | 200 (grants `exams:read` or `list`) | passing |
 
 API tests implemented in: backend/tests/api/reports/test_conventions_audit.py
-| TC-RPT-10-E01 | Mobile Admin: Academic Reports | Three tiles and the "ALL EXAMS" list | planned |
-| TC-RPT-10-E02 | Mobile: Export | A CSV of exams is shared | planned |
-| TC-RPT-10-E03 | Mobile Student | Blocked by the gate | planned |
-| TC-RPT-10-E04 | Mobile with no exams | "No exams found" | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-RPT-10-E01 | P1 | Mobile | Admin | Seeded exams "Unit Test 1 - Class 1B", "Unit Test 1 - Class 2A" (published) and "Half Yearly Examination 2026" (active) | 1. Open Reports > "Academic Reports". | Banner "Academic / Exam Overview"; tiles Published 2, Active 1, Draft 0 (at seed time); "ALL EXAMS" lists the three exams | planned |
+| TC-RPT-10-E02 | P3 | Mobile | Admin | As TC-RPT-10-E01 | 1. Tap "Export". | A CSV of the exams is shared | planned |
+| TC-RPT-10-E03 | P3 | Mobile | Student | Signed in as seeded student Karthik Reddy | 1. Open `/reports/academic-reports` by URL. | Blocked by the screen gate | planned |
+| TC-RPT-10-E04 | P3 | Mobile | Admin | A tenant with no exams (qa_school) | 1. Open Academic Reports. | "No exams found" | planned |
 
 ---
 
@@ -681,10 +733,15 @@ API tests implemented in: backend/tests/api/reports/test_conventions_audit.py
 | TC-RPT-11-A02 | Teacher calls the three list endpoints | All 200 (read and list grants) | passing |
 
 API tests implemented in: backend/tests/api/reports/test_conventions_audit.py
-| TC-RPT-11-E01 | Mobile Admin: Transport Reports | Tiles with counts; ROUTES and VEHICLES lists | planned |
-| TC-RPT-11-E02 | Mobile: Export | CSV `transport_report.csv` shared | planned |
-| TC-RPT-11-E03 | Mobile Student | Blocked by the gate | planned |
-| TC-RPT-11-E04 | Mobile in an empty tenant | "No routes configured" and "No vehicles configured" | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-RPT-11-E01 | P1 | Mobile | Admin | Seeded routes "Route 1 - Kukatpally" and "Route 2 - Uppal", 2 vehicles, 2 trips | 1. Open Reports > "Transport Reports". | Banner "Transport Overview"; tiles Routes 2, Vehicles 2, Trips 2 with active counts; "ROUTES" and "VEHICLES" lists | planned |
+| TC-RPT-11-E02 | P3 | Mobile | Admin | As TC-RPT-11-E01 | 1. Tap "Export". | `transport_report.csv` is shared | planned |
+| TC-RPT-11-E03 | P3 | Mobile | Student | Signed in as seeded student Karthik Reddy | 1. Open `/reports/transport-reports` by URL. | Blocked by the screen gate | planned |
+| TC-RPT-11-E04 | P3 | Mobile | Admin | A tenant with no transport data | 1. Open Transport Reports. | "No routes configured" and "No vehicles configured" | planned |
 
 ---
 
@@ -705,7 +762,7 @@ API tests implemented in: backend/tests/api/reports/test_conventions_audit.py
 **API endpoints**: All `GET` report endpoints and `POST .../export` of F04 to F08.
 
 **Rules and validations**
-- Envelope: `total_pages = ceil(total_count / page_size)`; `sl_no` continues across pages. List parameters `page >= 1`, `page_size` 1-1000 (default 100), `sort_order` asc or desc, except the fee routes which do not validate them (F06).
+- Envelope: `total_pages = ceil(total_count / page_size)`; `sl_no` continues across pages. List parameters `page >= 1`, `page_size` 1-1000 (default 100), `sort_order` asc or desc; out-of-range values are 422 on every group.
 - Export request body: `report_type`, `filters` (object, parsed into the same filter model as the list), `format` in csv, xlsx, pdf (else 422 from the schema), optional `filename`. Default filename `<group>_<report_type>_<tenant id>`. The filename is used verbatim in the header (not sanitised).
 - Every export fetches all rows (page and page_size in `filters` are ignored) and streams the file synchronously. The background export path (`should_use_background_job`, `create_background_export_job`) is not called by any endpoint.
 - CSV: UTF-8, header from the first row's keys. Excel: sheet named per report, bold white header on a blue fill, column width capped at 50, datetimes as `YYYY-MM-DD HH:MM:SS`. PDF: A4, title, optional subtitle "Report Type: <Title Case>", a "Generated on" line, the table and "Total Records: <n>".
@@ -737,11 +794,16 @@ API tests implemented in: backend/tests/api/reports/test_conventions_audit.py
 | TC-RPT-12-A04 | `POST` export with `format:"pdf"` | Body starts with `%PDF` | passing |
 | TC-RPT-12-A05 | `POST` export with `format:"xls"` | 422 | passing |
 | TC-RPT-12-A06 | `POST` export with a `filename` containing a space and a dot | Header filename equals the supplied text plus the extension (unsanitised); record for hardening | passing |
-| TC-RPT-12-A07 | Export of 1500 rows | 200 synchronous file with all 1500 rows (no background job, no 5000-row limit) | skipped: 1500 rows cannot be created and cleaned up |
+| TC-RPT-12-A07 | Export of 1500 rows | 200 synchronous file with all 1500 rows (no background job, no 5000-row limit) | skipped: creating 1500 rows is impractical and they could not be cleaned up afterwards |
 | TC-RPT-12-A08 | Export request without `filters` or without `report_type` | 422 | passing |
 | TC-RPT-12-A09 | Calls without a token on a GET and a POST | 401 | passing |
-| TC-RPT-12-E01 | Web fee reports: export with each of CSV, Excel, PDF | Three downloads with the matching extension | planned |
-| TC-RPT-12-E02 | Mobile: Export on any report screen | A CSV is produced and the share sheet opens | planned |
+
+**UI test cases.**
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-RPT-12-E01 | P2 | Web | Admin | Fee Reports with a class filter set | 1. Choose CSV and click "Export".<br>2. Repeat with Excel and PDF. | Three downloads with .csv, .xlsx and .pdf extensions | planned |
+| TC-RPT-12-E02 | P3 | Mobile | Admin | Any report screen with data | 1. Tap "Export". | A CSV is produced and the share sheet opens | planned |
 
 Implemented in (phase 1 unit tests): backend/tests/unit/reports/test_phase1_reports_export.py (U11 in test_phase1_reports_lists.py).
 
@@ -781,14 +843,14 @@ Implemented in (phase 1 unit tests): backend/tests/unit/reports/test_phase1_repo
 | TC-RPT-13-U01 | Content-type map for csv, xlsx, pdf, "zip" | text/csv, the spreadsheet type, application/pdf, application/octet-stream | passing |
 | TC-RPT-13-U02 | Download guard order for status "pending" | 400 "Export is not completed. Current status: pending" | passing |
 | TC-RPT-13-U03 | Download guard for a completed record without `file_path` | 404 "Export file not found" | passing |
-| TC-RPT-13-A01 | After exporting a report synchronously, `GET /reports/audit` | `[]` (exports are not audited); record any 500 caused by the user id type | passing |
+| TC-RPT-13-A01 | After exporting a report synchronously, `GET /reports/audit` | The export returns 200; `GET /reports/audit` returns 200 `[]` (exports are not audited) | passing |
 | TC-RPT-13-A02 | `GET /reports/audit?page_size=101`; `?page=0` | 422 | passing |
 | TC-RPT-13-A03 | `GET /reports/audit/{random uuid}`; malformed id | 404 "Export record not found"; 422 | passing |
 | TC-RPT-13-A04 | `GET /reports/download/{random uuid}` | 404 "Export record not found" | passing |
-| TC-RPT-13-A05 | Insert a `completed` audit row with a real file for the user and download it | 200 with the file bytes and `Content-Disposition` | skipped: needs a report_audit row; tests may not write the database |
-| TC-RPT-13-A06 | Insert a `pending` row and download | 400 with the status in the message | skipped: needs a report_audit row; tests may not write the database |
+| TC-RPT-13-A05 | Insert a `completed` audit row with a real file for the user and download it | 200 with the file bytes and `Content-Disposition` | skipped: needs a completed report_audit row with a file on disk; |
+| TC-RPT-13-A06 | Insert a `pending` row and download | 400 with the status in the message | skipped: needs a pending report_audit row; |
 | TC-RPT-13-A07 | Another user's or another tenant's record id | 404 | passing |
-| TC-RPT-13-A08 | Role matrix on the three endpoints | Admin, Staff, Teacher pass the check; Student, Parent denied (list returns 500, the others 403) | passing; xfail: RPT-BUG-AUDIT-500 (list denial is 500, target 403) |
+| TC-RPT-13-A08 | Role matrix on the three endpoints | Admin, Staff, Teacher pass the check; Student, Parent denied (list returns 500, the others 403) | passing |
 | TC-RPT-13-A09 | No token | 401 | passing |
 
 API tests implemented in: backend/tests/api/reports/test_conventions_audit.py
@@ -807,7 +869,7 @@ Differences between `docs/modules/reports-dashboards.md` (or the UI) and the cod
 4. Student summary: `gender`, `caste`, `religion` and `student_type` filters are ignored; rows carry no student name, father name or contact (the `StudentSummaryData` schema is unused); admissions without a section are dropped by inner joins.
 5. Staff summary: only `gender` filters; `department_id`, `employment_type`, `caste`, `address_city`, `subject_id` and `academic_year_id` are ignored; staff without a designation are excluded; `academic_year` is always "N/A".
 6. Attendance: stats endpoints ignore `attendance_status`, `month`, `year` and (students) `student_id`; the student excused status is counted as "Excused" and the staff one as "excused"; `marked_at`, `clock_in`, `clock_out` and `total_hours` are always null; the student list can repeat a student with several admissions; the staff row `staff_id` is the UUID (no employee code).
-7. Fee reports: routes use bare parameter defaults, so out-of-range paging or malformed dates return 500, and the collection summary error includes the exception text; the web page needs at least one filter before it shows data and exports; the web export filters for pending and structure include keys those filter models ignore.
+7. Fee reports: the web page needs at least one filter before it exports (the tables load without one, under a "Select at least one filter" note); the web export filters for pending and structure include keys those filter models ignore.
 8. Financial: the ledger running balance restarts on every page; `reference_type` is ignored; a lone `date_from` on the summary is ignored (falls back to the current month); pending expenses count as spend; `fee_pending`, the four breakdown lists and `monthly_trends` are empty or zero; there is no summary export; no web or mobile screen consumes these endpoints.
 9. Exports: empty data returns a 200 with an empty body and a filename without extension; `filename` is placed in the header unsanitised; `validate_export_limits` and the background path are not used; large exports are synchronous.
 10. Export history: `GET /reports/audit` and `/download/{id}` have nothing to return because exports are not audited; the background export path is broken and unused (see the module doc).

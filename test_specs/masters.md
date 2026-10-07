@@ -2,7 +2,7 @@
 
 Masters is the tenant reference data that every other module hangs off: academic years, classes and sections, subject categories, subjects, class-subject mappings, parent profiles, location and caste lookups, and the single school-settings row (shown as "School Registration" / "School Settings"). This page documents every feature the way a school admin meets it (set up the year first, then classes, categories, subjects, mappings, then parents, lookups and school identity) and is the specification for the MST test cases. Holidays and the timetable are mounted under the same API prefix but are documented in `docs/features/timetable-calendar.md` (code TTC). Staff, designations and staff attendance are in `docs/features/staff.md` (STF), Roles and Permissions is in `docs/features/tenants-and-admin.md` (TEN), and the transport masters (routes, stops, vehicles, trips) are in `docs/features/transport.md` (TRN). They appear here only as cards on the Masters hub (F15).
 
-_Last verified against code: 2026-10-02_
+_Last verified against code: 2026-10-07_
 
 Module rules, gotchas and code map: `docs/modules/masters.md`. Flows and decisions: `docs/graph/views/masters.md`. Test conventions and IDs: `docs/testing/strategy.md`.
 
@@ -25,13 +25,14 @@ Access is decided per resource by the tenant's role grants (`docs/permissions.md
 | `castes` | create, read, update, delete, list | read, list | read, list | none | none |
 | `school_settings` | read, update | none | none | none | none |
 
-Menu and screen visibility: Admin, Staff and Teacher receive every Masters menu entry; Student and Parent receive only the self-service URL allowlist, so they have no Masters menu on web and no Masters tab on mobile (`hideForRoles` in `mobile/app/(tabs)/_layout.tsx`). Typing a Masters URL on web still opens the page, and its API calls return 403 where the role has no grant. On web the Teacher and Staff roles are additionally capped by `teacherPermissionMatrix.ts` and `staffPermissionMatrix.ts` (read and list only on the academic masters).
+Menu and screen visibility: Admin, Staff and Teacher receive every Masters menu entry (web sidebar Masters, mobile Home > "Masters" module card); Student and Parent receive only the self-service URL allowlist, so they have no Masters menu on web and no Masters card on the mobile Home screen (their Home shows Students, Exam Management and Fee Management only). Typing a Masters URL still opens the page; screens whose read grant the role holds (academic years, classes, subjects) show data, the others get 403 (web shows an empty table, mobile shows "Failed to load ... data" with "Retry"). On web the Teacher and Staff roles are additionally capped by `teacherPermissionMatrix.ts` and `staffPermissionMatrix.ts` (read and list only on the academic masters).
 
 Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sections:create` but not `sections:read`, `sections:list`, `sections:update` or `sections:delete`, and the web classes page gates the section Edit and Delete buttons on `sections:update` and `sections:delete`.
 
 ## Conventions used by the test cases
 
-- API base: `/api/v1`. Phase 2 tests run against `qa_school` on the local test API (`docs/testing/test-environment.md`). The QA baseline holds no master data, so every test creates its own rows with unique names (prefix `QA-<run id>`) and removes them afterwards. Phase 3 specs seed one year, one class with sections A and B, two categories and three subjects through API fixtures before the UI steps.
+- API base: `/api/v1`. Phase 2 tests run against `qa_school` on the local test API (`docs/testing/test-environment.md`). The QA baseline holds no master data, so every API test creates its own rows with unique names (prefix `QA-<run id>`) and removes them afterwards.
+- UI cases (IDs ending `-E`) run against the seeded manual-test tenant `qa_manual` (`backend/scripts/qa/setup_manual_tenant.py`). Its masters data: one academic year "2026-2027" (2026-06-01 to 2027-03-31, active); classes Nursery, LKG, UKG and Class 1 to Class 5, each with sections such as NUR-A/NUR-B and 1-A/1-B; subject categories Languages, Core Academics, Co-Curricular; ten subjects (English, Hindi, Telugu, Mathematics, Environmental Studies, General Science, Social Studies, Computer Science, Art and Craft, Physical Education) mapped to every section of their classes; 30 students with father and mother parent profiles (for example Venkat Raju and Sirisha Raju, parents of Harsha and Tanvi Raju). It has no castes, no states and no school settings row. Cases that create rows use names starting "QA " and delete them afterwards; do not edit or delete the seeded rows. The QA Admin, Staff and Teacher logins work in `qa_manual`; the QA Student and Parent logins are not linked to a student.
 - Role fixtures: Admin, Staff, Teacher, Student, Parent, each with an API-obtained token. A "403" case means status 403 with `detail` starting `Permission not found in database`.
 - Request validation (422) runs before the permission check, so role-matrix tests must send valid bodies.
 - Create endpoints are rate limited per client IP (`rate_limit_create`: 30 per minute, bulk mappings 10 per minute) and dropdown endpoints 100 per minute. Suites that create many rows must pace themselves or disable the limiter; one dedicated case per feature proves the 429.
@@ -68,20 +69,20 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 **Roles and permissions.**
 - Create: `academic_years:create`. Edit and activate or deactivate: `academic_years:update`. Deactivate (Delete button) and permanent delete: `academic_years:delete`.
 - List: `academic_years:list` (paged list and the web page gate). Single read, `dropdown` and `active`: `academic_years:read`.
-- Admin has all five. Staff, Teacher, Student and Parent have read and list only. Menu: Masters > Academic Years (web `/masters/academicyears`), Masters tab > Academic Years (mobile).
+- Admin has all five. Staff, Teacher, Student and Parent have read and list only. Menu: Masters > Academic Years (web `/masters/academicyears`), Home > Masters > Academic Years (mobile `/masters/academicyears`).
 
 **Preconditions.** Admin session. No other data is needed to create a year; permanent delete needs a year that no admission, fee class mapping, fee student mapping, fee type, class-subject mapping, class, subject or holiday references.
 
 **Steps, web.**
-1. Open Masters > Academic Years. The card "Academic Years" shows the table (columns S.No., ID, Title, Start Date, End Date, Active), a column-selector button (funnel icon), an "Export" menu and an "Add Academic Year" button (only with `academic_years:create`).
-2. Search: type in "Search..." (matches any visible column; the label "n of m results" appears). Sort: click a column header (first click ascending, second descending, third clears). Page: "Previous" / "Next" and "Rows per page" (5, 10, 20, 50, 100; default 5).
+1. Open Masters > Academic Years. The card "Academic Years" shows the table (columns S.No., ID, Title, Start Date, End Date, Active, Actions), a column-selector button "Filters" (funnel icon), an "Export" menu and an "Add Academic Year" button (only with `academic_years:create`). Row actions are the "Edit" and "Delete" icons (update and delete grants).
+2. Search: type in "Search..." (matches any visible column of the rows on the current page only, because the list is server paged; the label "n of m results" appears). Sort: click a column header (first click ascending, second descending, third clears). Page: "Previous" / "Next" and "Rows per page" (5, 10, 20, 50, 100; default 5).
 3. Create: click "Add Academic Year", dialog "Add New Academic Year", fill Title (required), Start Date (required), End Date (required), Active (checkbox, checked by default), click "Add Academic Year". Toast "Academic year created!". Failure toast "Failed to create academic year".
 4. Edit: click the Edit icon on a row, change Title, Start Date, End Date or the Active checkbox inline, press the green check (or Enter in a text box) to save, the red X (or Escape) to discard. Toast "Academic year updated!". One PUT is sent per changed field.
-5. Deactivate: click the trash icon, dialog "Delete Row?" with Cancel and Delete. Toast "Academic year deleted!". The row stays in the table with an inactive badge (the table loads with `active_only=false`).
+5. Deactivate: click the trash icon, dialog "Delete Row?" ("Are you sure you want to delete this row? This action cannot be undone.") with Cancel and Delete. Toast "Academic year deleted!". The row stays in the table with an inactive badge (the table loads with `active_only=false`).
 6. Export: "Export" > "Export to CSV", "Export to Excel" or "Download Data" produce `academic_years_data.csv`, `academic_years_data.xlsx`, `academic_years_data.json` from the visible columns and filtered rows. Column selector: "Select All" and per-column checkboxes (at least one column always stays).
 
 **Steps, mobile.**
-1. Masters tab > "Academic Years". Header shows "Academic Years" and "n record(s) found", an "Export" button and "Add Academic Year" (with create permission).
+1. Home > Masters > "Academic Years". Header shows "Academic Years" and "n records found", an "Export" button, "Add Academic Year" (with create permission) and "Filters". The list has the columns S.NO., TITLE / DATES (title with start and end date joined by an arrow), ACTIVE (Active or Inactive badge) and ACTIONS (Edit and Delete icons with the grants).
 2. Search: "Search..." filters title and the two dates. There is no sort and no paging (all years up to 100 are loaded). Pull down to refresh.
 3. Create: "Add Academic Year" opens the modal "Add Academic Year": Title * (placeholder "e.g. 2025-26"), Start Date * and End Date * (text boxes, "YYYY-MM-DD"), Active toggle, buttons "Cancel" and "Create" ("Saving..." while pending). Empty required field: toast "Error - Please fill in all required fields". Success: toast "Created - Academic year has been created."
 4. Edit: Edit icon (label "Edit") opens "Edit Academic Year" with the same fields; button "Update"; toast "Updated - Academic year has been updated."
@@ -142,57 +143,62 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 | TC-MST-01-U08 | [web] `fetchPaginatedAcademicYears` with a response of 5 items and no `total`, limit 5 | `hasMore` true and `total` estimated as skip+items+limit (10) | passing |
 | TC-MST-01-U09 | [web] `Table` sort cycle on the Title column | asc, desc, then unsorted original order; numeric-aware compare (`2026-27` after `2025-26`) | blocked: needs the sort helper exported from web/src/components/common/table.tsx (logic is inside the Table component) |
 | TC-MST-01-U10 | [mobile] Academic-year filter with query `2026` over title, start_date, end_date | Returns years whose title or either date contains `2026`; empty query returns all | blocked: needs the filter exported from mobile/app/masters/academicyears.tsx (inline useMemo) |
-| TC-MST-01-A01 | Admin `POST /masters/academic_years/` `{title:"QA-2031-32", start_date:"2031-04-01", end_date:"2032-03-31", is_active:false}` | 201; body has `id`, same title and dates, `is_active:false` | planned |
-| TC-MST-01-A02 | Admin POST omitting `is_active` while another year is active | 201 with `is_active:true`; afterwards `GET /?active_only=false` shows exactly one active year (the new one) | planned |
-| TC-MST-01-A03 | Admin POST a second year with `is_active:true` | Previously active year now `is_active:false` in `GET /?active_only=false` | planned |
-| TC-MST-01-A04 | POST a title that already exists (same case) | 400 `Academic year already exists` | planned |
-| TC-MST-01-A05 | POST `QA-2031-32` and `qa-2031-32` | Both succeed (comparison is case-sensitive) | planned |
-| TC-MST-01-A06 | POST with missing `title`; POST with `start_date:"not-a-date"` | 422 for each, `detail[].loc` names the field | planned |
-| TC-MST-01-A07 | POST title of exactly 50 characters, then 51 characters | 50: 201. 51: 400 detail starts `Academic Year creation failed` | planned |
-| TC-MST-01-A08 | POST with `end_date` earlier than `start_date` | 422 | planned |
-| TC-MST-01-A09 | `GET /` with no query while 3 years exist and exactly 1 is active | `items` has 1 row (the active one), `total_count` 1, `has_next` false (defaults `active_only=true`, `limit=10`) | planned |
-| TC-MST-01-A10 | `GET /?active_only=false&skip=0&limit=5` then `skip=5&limit=5` with 7 years | Page 1: 5 items, `total_count` 7, `has_next` true; page 2: 2 items, `has_next` false | planned |
-| TC-MST-01-A11 | `GET /dropdown` and `GET /dropdown?active_only=false` | Items are `{id, title}` ordered by title; second call also lists inactive years | planned |
-| TC-MST-01-A12 | `GET /active` | Array of years with `is_active:true` only | planned |
-| TC-MST-01-A13 | `GET /{id}` for an existing and a random UUID | 200 `AcademicYearRead`; unknown id 404 detail contains `not found` | planned |
-| TC-MST-01-A14 | Admin `PUT /{id}` `{title:"QA-2031-32-B"}` | 200, title changed, dates and `is_active` unchanged | planned |
-| TC-MST-01-A15 | `PUT /{id}` `{is_active:true}` on an inactive year | 200; every other year now inactive | planned |
-| TC-MST-01-A16 | `PUT /{id}` with another year's title | 400 detail starts `Academic Year update failed` | planned |
-| TC-MST-01-A17 | `PUT /{random uuid}` | 404 detail starts `Academic Year with id` | planned |
-| TC-MST-01-A18 | `DELETE /{id}` on an active year | 200 returns the row with `is_active:false`; still in `GET /?active_only=false`; absent from `GET /dropdown` | planned |
-| TC-MST-01-A19 | `DELETE /{random uuid}` | 404 | planned |
-| TC-MST-01-A20 | `DELETE /{id}/permanent` on a year with no references | 200 `{message:"Academic Year QA-... deleted successfully"}`; `GET /{id}` then 404 | planned |
-| TC-MST-01-A21 | Permanent delete a year that has a class-subject mapping (created through F10 setup) | 400 detail `Cannot delete academic year ... 1 class subject mapping(s)` | planned |
-| TC-MST-01-A22 | Permanent delete a year that has only a class (no mapping, admission or fee row) | 400 detail starts `Academic Year deletion failed` (foreign key) | planned |
-| TC-MST-01-A23 | Permanent delete a random UUID | 404 | planned |
-| TC-MST-01-A24 | Read matrix: `GET /`, `/dropdown`, `/active`, `/{id}` as Admin, Staff, Teacher, Student, Parent | 200 for all five roles | planned |
-| TC-MST-01-A25 | Write matrix: POST, PUT, DELETE, DELETE permanent as Staff, Teacher, Student, Parent with valid bodies | 403 `Permission not found in database` for each; Admin 2xx | planned |
-| TC-MST-01-A26 | Every endpoint without an Authorization header | 401 | planned |
-| TC-MST-01-A27 | Tenant isolation: year created in tenant A | Not in tenant B `GET /`, `/dropdown`; `GET /{id}` with B token 404; A token with `cschema` of B returns 403 | planned |
-| TC-MST-01-A28 | Create-and-read cache: POST then immediately `GET /dropdown` | New year present (cache invalidated by create) | planned |
-| TC-MST-01-A29 | 31 POSTs from one client within a minute (limiter enabled) | The 31st returns 429 with `RATE_LIMIT_EXCEEDED` | planned |
-| TC-MST-01-E01 | [web] Admin opens Masters > Academic Years with 7 seeded years | Table shows S.No., ID, Title, Start Date, End Date, Active; 5 rows; "Next" enabled | planned |
-| TC-MST-01-E02 | [web] Type `2031` in "Search..." | Only matching rows remain and "n of m results" shows; clearing restores all | planned |
-| TC-MST-01-E03 | [web] Click the Title header three times | Ascending, descending, then original order; chevron icon changes | planned |
-| TC-MST-01-E04 | [web] Change "Rows per page" to 10 and use Previous/Next | Row count and "1-7 of 7" style range update; Previous disabled on page 1 | planned |
-| TC-MST-01-E05 | [web] Add Academic Year with title `QA 2033-34`, dates 2033-04-01 to 2034-03-31 | Toast "Academic year created!"; dialog closes; row appears with Active badge | planned |
-| TC-MST-01-E06 | [web] Submit the add dialog with empty Title | Browser required-field validation blocks submit; no request sent | planned |
-| TC-MST-01-E07 | [web] Add a year whose title already exists | Toast "Failed to create academic year"; dialog stays open | planned |
-| TC-MST-01-E08 | [web] Edit icon, change Title, press green check | Toast "Academic year updated!"; new title shown | planned |
-| TC-MST-01-E09 | [web] Edit icon, change Title, press red X | No request; original title kept | planned |
-| TC-MST-01-E10 | [web] Edit an inactive year and tick Active, save | The previously active year now shows an inactive badge after refresh | planned |
-| TC-MST-01-E11 | [web] Trash icon, dialog "Delete Row?" Cancel then repeat with Delete | Cancel: no change. Delete: toast "Academic year deleted!"; row remains with inactive badge | planned |
-| TC-MST-01-E12 | [web] Export > Export to CSV with Title and Active columns visible | File `academic_years_data.csv` downloads with header `Title,Active` and one row per filtered year | planned |
-| TC-MST-01-E13 | [web] Teacher opens `/masters/academicyears` | No "Add Academic Year", no Edit or trash icons; Export visible | planned |
-| TC-MST-01-E14 | [web] Student and Parent sessions | No Masters entry in the sidebar | planned |
-| TC-MST-01-E15 | [mobile] Admin opens Masters > Academic Years | Header "Academic Years", count "n record(s) found", cards with `start -> end` and Active/Inactive badge | planned |
-| TC-MST-01-E16 | [mobile] Search `2033` | List filters; clearing shows all | planned |
-| TC-MST-01-E17 | [mobile] Add Academic Year with empty Title | Toast "Error - Please fill in all required fields"; modal stays | planned |
-| TC-MST-01-E18 | [mobile] Add Academic Year `QA 2034-35`, valid dates, Create | Modal closes; toast "Created"; new card appears | planned |
-| TC-MST-01-E19 | [mobile] Edit icon, change title, Update | Toast "Updated"; card shows new title | planned |
-| TC-MST-01-E20 | [mobile] Delete icon, confirm "Delete" | Toast "Deleted"; card now shows Inactive | planned |
-| TC-MST-01-E21 | [mobile] Export > Export to CSV on the web build | `academic_years_data.csv` downloads | planned |
-| TC-MST-01-E22 | [mobile] Teacher on `/masters/academicyears`; Student and Parent | Teacher: list with no Add/Edit/Delete. Student and Parent: no Masters tab | planned |
+| TC-MST-01-A01 | Admin `POST /masters/academic_years/` `{title:"QA-2031-32", start_date:"2031-04-01", end_date:"2032-03-31", is_active:false}` | 201; body has `id`, same title and dates, `is_active:false` | passing |
+| TC-MST-01-A02 | Admin POST omitting `is_active` while another year is active | 201 with `is_active:true`; afterwards `GET /?active_only=false` shows exactly one active year (the new one) | skipped: Creating a year with is_active true (the default) would change the tenant's active year, which the QA rules fo... |
+| TC-MST-01-A03 | Admin POST a second year with `is_active:true` | Previously active year now `is_active:false` in `GET /?active_only=false` | skipped: Creating an active year deactivates the baseline year, which the QA rules forbid |
+| TC-MST-01-A04 | POST a title that already exists (same case) | 400 `Academic year already exists` | passing |
+| TC-MST-01-A05 | POST `QA-2031-32` and `qa-2031-32` | Both succeed (comparison is case-sensitive) | passing |
+| TC-MST-01-A06 | POST with missing `title`; POST with `start_date:"not-a-date"` | 422 for each, `detail[].loc` names the field | passing |
+| TC-MST-01-A07 | POST title of exactly 50 characters, then 51 characters | 50: 201. 51: 400 detail starts `Academic Year creation failed` | passing |
+| TC-MST-01-A08 | POST with `end_date` earlier than `start_date` | 422 | passing |
+| TC-MST-01-A09 | `GET /` with no query while 3 years exist and exactly 1 is active | `items` has 1 row (the active one), `total_count` 1, `has_next` false (defaults `active_only=true`, `limit=10`) | passing |
+| TC-MST-01-A10 | `GET /?active_only=false&skip=0&limit=5` then `skip=5&limit=5` with 7 years | Page 1: 5 items, `total_count` 7, `has_next` true; page 2: 2 items, `has_next` false | passing |
+| TC-MST-01-A11 | `GET /dropdown` and `GET /dropdown?active_only=false` | Items are `{id, title}` ordered by title; second call also lists inactive years | passing |
+| TC-MST-01-A12 | `GET /active` | Array of years with `is_active:true` only | passing |
+| TC-MST-01-A13 | `GET /{id}` for an existing and a random UUID | 200 `AcademicYearRead`; unknown id 404 detail contains `not found` | passing |
+| TC-MST-01-A14 | Admin `PUT /{id}` `{title:"QA-2031-32-B"}` | 200, title changed, dates and `is_active` unchanged | passing |
+| TC-MST-01-A15 | `PUT /{id}` `{is_active:true}` on an inactive year | 200; every other year now inactive | skipped: Activating a year deactivates the baseline year, which the QA rules forbid |
+| TC-MST-01-A16 | `PUT /{id}` with another year's title | 400 detail starts `Academic Year update failed` | passing |
+| TC-MST-01-A17 | `PUT /{random uuid}` | 404 detail starts `Academic Year with id` | passing |
+| TC-MST-01-A18 | `DELETE /{id}` on an active year | 200 returns the row with `is_active:false`; still in `GET /?active_only=false`; absent from `GET /dropdown` | passing |
+| TC-MST-01-A19 | `DELETE /{random uuid}` | 404 | passing |
+| TC-MST-01-A20 | `DELETE /{id}/permanent` on a year with no references | 200 `{message:"Academic Year QA-... deleted successfully"}`; `GET /{id}` then 404 | passing |
+| TC-MST-01-A21 | Permanent delete a year that has a class-subject mapping (created through F10 setup) | 400 detail `Cannot delete academic year ... 1 class subject mapping(s)` | passing |
+| TC-MST-01-A22 | Permanent delete a year that has only a class (no mapping, admission or fee row) | 400 detail starts `Academic Year deletion failed` (foreign key) | passing |
+| TC-MST-01-A23 | Permanent delete a random UUID | 404 | passing |
+| TC-MST-01-A24 | Read matrix: `GET /`, `/dropdown`, `/active`, `/{id}` as Admin, Staff, Teacher, Student, Parent | 200 for all five roles | passing |
+| TC-MST-01-A25 | Write matrix: POST, PUT, DELETE, DELETE permanent as Staff, Teacher, Student, Parent with valid bodies | 403 `Permission not found in database` for each; Admin 2xx | passing |
+| TC-MST-01-A26 | Every endpoint without an Authorization header | 401 | passing |
+| TC-MST-01-A27 | Tenant isolation: year created in tenant A | Not in tenant B `GET /`, `/dropdown`; `GET /{id}` with B token 404; A token with `cschema` of B returns 403 | passing |
+| TC-MST-01-A28 | Create-and-read cache: POST then immediately `GET /dropdown` | New year present (cache invalidated by create) | passing |
+| TC-MST-01-A29 | 31 POSTs from one client within a minute (limiter enabled) | The 31st returns 429 with `RATE_LIMIT_EXCEEDED` | skipped: The test API runs with rate limiting disabled, so the 429 cannot be produced |
+
+UI test cases (manual and automated, tenant `qa_manual`):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-MST-01-E01 | P1 | Web | Admin | qa_manual with the seeded year "2026-2027" | 1. Sign in as Admin (organisation qa_manual).<br>2. Open Masters > Academic Years. | Card "Academic Years" with columns S.No., ID, Title, Start Date, End Date, Active, Actions; row "2026-2027", 2026-06-01, 2027-03-31, badge Active; buttons "Filters", "Export", "Add Academic Year"; Edit and Delete icons on the row | planned |
+| TC-MST-01-E02 | P3 | Web | Admin | TC-MST-01-E05 done (year "QA 2033-34" exists) | 1. Open Masters > Academic Years.<br>2. Type "QA 2033" in "Search...".<br>3. Clear the search box. | Only "QA 2033-34" remains and "1 of n results" shows (search covers the rows of the current page only); clearing restores all rows | planned |
+| TC-MST-01-E03 | P3 | Web | Admin | At least two years exist (TC-MST-01-E05 done) | 1. Open Masters > Academic Years.<br>2. Click the "Title" header three times. | First click ascending, second descending, third back to the original order; the header chevron icon changes each time | planned |
+| TC-MST-01-E04 | P3 | Web | Admin | 6 or more years exist (create inactive years "QA 2031-32" to "QA 2036-37" as in TC-MST-01-E05) | 1. Open Masters > Academic Years.<br>2. Check the range text and "Previous".<br>3. Click "Next".<br>4. Set "Rows per page" to 10. | Page 1 shows 5 rows, "Previous" disabled, range "1-5 of ..."; "Next" shows the following rows; with 10 per page all rows show on one page. The total in the range text is estimated (Known gaps 10) | planned |
+| TC-MST-01-E05 | P1 | Web | Admin | No year titled "QA 2033-34" | 1. Open Masters > Academic Years.<br>2. Click "Add Academic Year".<br>3. Enter Title "QA 2033-34", Start Date 2033-04-01, End Date 2034-03-31.<br>4. Untick "Active" (keeps "2026-2027" active).<br>5. Click "Add Academic Year". | Toast "Academic year created!"; dialog "Add New Academic Year" closes; row "QA 2033-34" with badge Inactive appears; "2026-2027" stays Active. Cleanup: permanent delete via API `DELETE /masters/academic_years/{id}/permanent` | planned |
+| TC-MST-01-E06 | P3 | Web | Admin | None | 1. Click "Add Academic Year".<br>2. Leave Title empty, fill both dates.<br>3. Click "Add Academic Year". | Submit is blocked (required field); no request is sent; dialog stays open | planned |
+| TC-MST-01-E07 | P2 | Web | Admin | Seeded year "2026-2027" | 1. Click "Add Academic Year".<br>2. Enter Title "2026-2027", Start Date 2033-04-01, End Date 2034-03-31, untick "Active".<br>3. Click "Add Academic Year". | Toast "Failed to create academic year" (the backend reason is not shown); dialog stays open; no new row | planned |
+| TC-MST-01-E08 | P2 | Web | Admin | TC-MST-01-E05 done | 1. Click the Edit icon on row "QA 2033-34".<br>2. Change Title to "QA 2033-34 B".<br>3. Click the green check. | Toast "Academic year updated!"; row shows "QA 2033-34 B" | planned |
+| TC-MST-01-E09 | P3 | Web | Admin | TC-MST-01-E05 done | 1. Click the Edit icon on row "QA 2033-34".<br>2. Change Title to "QA changed".<br>3. Click the red X. | No request; the original title stays | planned |
+| TC-MST-01-E10 | P3 | Web | Admin | TC-MST-01-E05 done (inactive QA year); "2026-2027" active | 1. Click the Edit icon on the QA year.<br>2. Tick "Active" and click the green check.<br>3. Reload the page.<br>4. Cleanup: edit "2026-2027", tick "Active", save. | After step 3 the QA year is Active and "2026-2027" shows Inactive; after step 4 "2026-2027" is the only active year again | planned |
+| TC-MST-01-E11 | P2 | Web | Admin | TC-MST-01-E05 done | 1. Click the trash icon on the QA year.<br>2. In "Delete Row?" click "Cancel".<br>3. Click the trash icon again and click "Delete". | Cancel: nothing changes. Delete: toast "Academic year deleted!"; the row stays with badge Inactive (deactivated, not removed) | planned |
+| TC-MST-01-E12 | P3 | Web | Admin | Seeded year | 1. Click "Filters" and keep only Title and Active ticked.<br>2. Click "Export" > "Export to CSV". | File `academic_years_data.csv` downloads with header `Title,Active` and one row per listed year | planned |
+| TC-MST-01-E13 | P2 | Web | Teacher | Seeded year | 1. Sign in as Teacher.<br>2. Open Masters > Academic Years. | List visible with "Export"; no "Add Academic Year"; no Edit or Delete icons | planned |
+| TC-MST-01-E14 | P2 | Web | Student | Seeded student Advik Mehta (login 002, first-login password change done); seeded parent login venkat.raju@example.com | 1. Sign in as the student.<br>2. Check the sidebar.<br>3. Repeat signed in as the parent. | Sidebar has no "Masters" entry for either role (Student: Dashboard, Students, Fee, Exam) | planned |
+| TC-MST-01-E15 | P1 | Mobile | Admin | Seeded year "2026-2027" | 1. Sign in as Admin (organisation qa_manual).<br>2. Tap Home > "Masters" > "Academic Years". | Header "Academic Years", "1 records found" (or the current count), "Export", "Add Academic Year", "Filters"; row "2026-2027" with its two dates and badge Active | planned |
+| TC-MST-01-E16 | P3 | Mobile | Admin | TC-MST-01-E18 done | 1. Open Academic Years.<br>2. Type "QA 2034" in "Search...".<br>3. Clear the search. | Only the matching year shows; clearing shows all | planned |
+| TC-MST-01-E17 | P3 | Mobile | Admin | None | 1. Tap "Add Academic Year".<br>2. Leave "Title *" empty, fill both dates.<br>3. Tap "Create". | Toast "Error - Please fill in all required fields"; modal stays open | planned |
+| TC-MST-01-E18 | P1 | Mobile | Admin | No year "QA 2034-35" | 1. Tap "Add Academic Year".<br>2. Enter Title "QA 2034-35", Start Date "2034-04-01", End Date "2035-03-31".<br>3. Switch "Active" off.<br>4. Tap "Create". | Modal closes; toast "Created - Academic year has been created."; new row with badge Inactive; "2026-2027" stays Active. Cleanup: permanent delete via API | planned |
+| TC-MST-01-E19 | P2 | Mobile | Admin | TC-MST-01-E18 done | 1. Tap the Edit icon on "QA 2034-35".<br>2. Change Title to "QA 2034-35 B".<br>3. Tap "Update". | Toast "Updated - Academic year has been updated."; row shows the new title | planned |
+| TC-MST-01-E20 | P2 | Mobile | Admin | TC-MST-01-E18 done | 1. Tap the Delete icon on the QA year.<br>2. In "Delete Academic Year" tap "Delete". | Toast "Deleted - Academic year has been deleted."; the row shows Inactive and stays listed | planned |
+| TC-MST-01-E21 | P3 | Mobile | Admin | Seeded year | 1. Tap "Export".<br>2. In "Export As" tap "Export to CSV". | On the web build `academic_years_data.csv` downloads; on a device the share sheet opens | planned |
+| TC-MST-01-E22 | P2 | Mobile | Teacher | Seeded year | 1. Sign in as Teacher.<br>2. Open Home > Masters > Academic Years.<br>3. Sign in as seeded student Advik Mehta and look at Home. | Teacher: list with "Export", no "Add Academic Year", no Edit or Delete icons. Student: Home shows only Students, Exam Management and Fee Management (no Masters card) | planned |
 
 ---
 
@@ -243,15 +249,20 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 | TC-MST-02-U02 | [web] Same with no active year | Selection becomes the last year in the list | passing |
 | TC-MST-02-U03 | [web] Persisted `academic-year-storage` holds id `371` or a 5-character id | Value is removed and selection starts empty | passing |
 | TC-MST-02-U04 | [mobile] Context with stored id not in the loaded list | Replaced by the active year, else the first year, and written to AsyncStorage | blocked: logic is inside the AcademicYearContext provider effect (mobile/contexts/AcademicYearContext.tsx); needs a pure resolver exported (components cannot be rendered) |
-| TC-MST-02-A01 | `GET /auth/academic-years` with only a `cschema` header | 200 list containing the QA years (id, title) | planned |
-| TC-MST-02-A02 | Admin `PUT /masters/academic_years/{B}` `{is_active:true}` with A active | A inactive, B the only active year | planned |
-| TC-MST-02-A03 | Teacher `PUT` the same | 403 `Permission not found in database`; active year unchanged | planned |
-| TC-MST-02-A04 | Create 12 years and call `GET /masters/academic_years/?active_only=false` with no `limit` (as the web store and mobile context do) | 10 items, `total_count` 12, `has_next` true (the client-visible limit) | planned |
-| TC-MST-02-A05 | `GET /masters/academic_years/active` after A02 | Exactly one item, B | planned |
-| TC-MST-02-E01 | [web] Admin logs in selecting year B | After login, API shows B active; year-bound pages request `academic_year_id=B` | planned |
-| TC-MST-02-E02 | [web] Teacher logs in selecting year B | Pages scope to B; API active year unchanged | planned |
-| TC-MST-02-E03 | [mobile] Admin logs in selecting year B | Subjects and Holidays screens request `academic_year_id=B`; backend active year unchanged | planned |
-| TC-MST-02-E04 | [web] 12 years seeded; open Subjects | Only 10 years are available to the store; year 11 and 12 cannot be selected (documents the limit) | planned |
+| TC-MST-02-A01 | `GET /auth/academic-years` with only a `cschema` header | 200 list containing the QA years (id, title) | passing |
+| TC-MST-02-A02 | Admin `PUT /masters/academic_years/{B}` `{is_active:true}` with A active | A inactive, B the only active year | skipped: Activating a year changes the tenant's active year, which the QA rules forbid |
+| TC-MST-02-A03 | Teacher `PUT` the same | 403 `Permission not found in database`; active year unchanged | passing |
+| TC-MST-02-A04 | Create 12 years and call `GET /masters/academic_years/?active_only=false` with no `limit` (as the web store and mobile context do) | 10 items, `total_count` 12, `has_next` true (the client-visible limit) | passing |
+| TC-MST-02-A05 | `GET /masters/academic_years/active` after A02 | Exactly one item, B | passing |
+
+UI test cases (manual and automated, tenant `qa_manual`):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-MST-02-E01 | P1 | Web | Admin | Seeded year "2026-2027" (the only year) | 1. Sign out.<br>2. On the login page enter organisation qa_manual, Admin credentials and choose year "2026-2027".<br>3. Open Masters > Subjects. | Login succeeds; the header shows "Year 2026-2027"; `GET /masters/academic_years/active` returns "2026-2027" as the only active year | planned |
+| TC-MST-02-E02 | P2 | Web | Teacher | TC-MST-01-E05 done (second, inactive year) | 1. Sign in as Teacher choosing the QA year.<br>2. Open Masters > Classes and Sections.<br>3. Check the active year through the API or as Admin. | Year-bound pages request the QA year; the backend active year is still "2026-2027" (no activation for non-Admin) | planned |
+| TC-MST-02-E03 | P2 | Mobile | Admin | TC-MST-01-E18 done (second, inactive year) | 1. Sign in on mobile choosing the QA year.<br>2. Open Home > Masters > Subjects.<br>3. Check the active year as Admin on web. | Mobile screens are scoped to the QA year (Subjects shows no seeded subjects); the backend active year stays "2026-2027" | planned |
+| TC-MST-02-E04 | P3 | Web | Admin | 12 or more academic years exist (QA years created as in TC-MST-01-E05) | 1. Sign in as Admin.<br>2. Open Masters > Subjects and inspect the year store (`academic-year-storage`) or the year list request. | The year list call has no `limit`, so only the first 10 years reach the store; years 11 and 12 cannot be selected (documents Known gaps 10). Cleanup: remove the QA years | planned |
 
 ---
 
@@ -262,21 +273,21 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 **Roles and permissions.**
 - List: `classes:list` (page gate, `GET read_all`). Single class: `classes:read`.
 - Create class with sections: `classes:create`. The "Add Section" icon on a row needs `sections:create`.
-- Admin full; Staff and Teacher read and list; Student and Parent hold `classes:read` and `classes:list` and can call the read endpoints. Menu: Masters > Classes and Sections (web `/masters/classesandsections`), Masters tab > Classes & Sections (mobile).
+- Admin full; Staff and Teacher read and list; Student and Parent hold `classes:read` and `classes:list` and can call the read endpoints. Menu: Masters > Classes and Sections (web `/masters/classesandsections`), Home > Masters > Classes and Sections (mobile screen "Classes & Sections").
 
 **Preconditions.** An academic year exists (F01) and is selected as the working year.
 
 **Steps, web.**
-1. Open Masters > Classes and Sections. The card "Classes & Sections" lists classes with columns Class Name, Class Code, Sections (badge "n section(s)"), Status, plus S.No., an expand chevron and Actions. Buttons: "Columns", "Export", "Add Class & Sections".
+1. Open Masters > Classes and Sections. The card "Classes & Sections" lists classes with columns Class Name, Class Code, Sections (badge "1 section" or "n sections"), Status, plus S.No., an expand chevron and Actions (icons "Add Section", "Edit Class", "Delete Class" by grant). Buttons: "Columns", "Export", "Add Class & Sections".
 2. Search: "Search classes..." matches class name or class code. Sort: click Class Name, Class Code, Sections or Status (asc, desc, clear). Pagination (rows per page 5, 10, 20, 50) appears only when there are more rows than the page size (default 10).
 3. Expand a row with the chevron to see its sections ("No sections found" when empty) and the description.
 4. Columns: "Columns" > "Select All" and per-column checkboxes. Export: "Export" > "Export to CSV" (`classes_sections_data.csv`) or "Export to Excel" (`classes_sections_data.xlsx`); the Sections cell lists names joined with `;` (CSV) or `, ` (Excel); Status exports as Active or Inactive.
-5. Create: "Add Class & Sections" opens a three-step dialog. Step 1 "Enter Class Details": Class Name, Class Code, Active (default checked), buttons "Cancel" and "Next". Step 2 "Add Sections": "Quick Add Sections Alphabetically" with From (default A) and To (default D) and "Generate Sections"; "Manual Sections" rows with + and x buttons (at least one row stays). Buttons "Cancel", "Back", "View". Step 3 "Summary" shows name, code, year id, active, sections, buttons "Cancel", "Edit", "Submit". Success toast "Class and sections created successfully!". The class is created in the working year.
+5. Create: "Add Class & Sections" opens a three-step dialog. Step 1 "Enter Class Details": Class Name, Class Code, Active (default checked), buttons "Cancel" and "Next" (disabled until name and code are filled). Step 2 "Add Sections": "Quick Add Sections Alphabetically" with "From:" (default A) and "To:" (default D) and "Generate Sections" (toast "Generated N sections from X to Y"); "Manual Sections" rows (placeholder "Section 1", "Section 2", ...) with + ("Add Section") and x ("Remove Section") buttons (at least one row stays), "Total sections: n". Buttons "Cancel", "Back", "View". Step 3 "Summary" shows Class Name, Class Code, Year (the year id), Active, Sections, buttons "Cancel", "Edit", "Submit". Success toast "Class and sections created successfully!". The class is created in the working year.
 
 **Steps, mobile.**
-1. Masters tab > Classes & Sections. Header icons: Columns, Export, Add. Search "Search classes or sections..." matches class name, code or any section name.
-2. Cards show the class (S.No., name, "Code: ...", Active/Inactive badge), tap to expand sections. The Columns sheet toggles Class Code, Sections and Status. Export sheet "Export As": "Export to CSV", "Export to Excel".
-3. Create: the Add icon opens the same three-step wizard (Class Name placeholder "e.g. Class 1", Class Code placeholder "e.g. C1", "Quick Add Sections Alphabetically", "Generate Sections", "Manual Sections", Back, View, Edit, Submit). It requires an active working year, otherwise toast "Error - No active academic year".
+1. Home > Masters > Classes and Sections. Screen "Classes & Sections" with "n classes" and header icons Columns, Export, Add. Search "Search classes or sections..." matches class name, code or any section name.
+2. Cards show the class (S.No., name, "Code: ...", Active/Inactive badge, "n sections") with icons Add (add section), Edit, Delete and an expand chevron; expanding lists the sections with their badges ("No sections - tap + to add one" when empty). The Columns sheet ("Select All") toggles Class Code, Sections and Status. Export sheet "Export As": "Export to CSV", "Export to Excel".
+3. Create: the header Add icon opens the same three-step wizard ("Enter Class Details" with Class Name * placeholder "e.g., Class 1", Class Code * placeholder "e.g., C1", Active; "Quick Add Sections Alphabetically", "Generate Sections" (toast "Sections Generated"), "Manual Sections"; Back, View, Edit, Submit). Validation toasts "Validation - Class name is required", "Validation - Class code is required", "Validation - At least one section is required"; without a working year "Error - No active academic year". Success toast "Class and sections created successfully".
 
 **Expected results.** One class row and N section rows (names as entered, all active unless unticked) are stored in a single transaction and appear in the list.
 
@@ -317,40 +328,45 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 | TC-MST-03-U06 | [web] Class table search `c1` over name and code, sort by Sections count | Matches name or code case-insensitively; sorts numerically by section count | blocked: needs search and sort helpers exported from web/src/components/masters/classesandsections/ClassSectionsTable.tsx |
 | TC-MST-03-U07 | [web] Export builders for a class with sections A and B, inactive | CSV cell `A; B`, Excel cell `A, B`, status `Inactive` | blocked: needs the export row builders exported from web/src/components/masters/classesandsections/ClassSectionsTable.tsx |
 | TC-MST-03-U08 | [mobile] Class filter `b` | Returns classes whose name, code or any section name contains `b` | blocked: needs the class filter exported from mobile/app/masters/classesandsections.tsx |
-| TC-MST-03-A01 | Admin `POST /masters/class_sections/` `{name:"QA-C1", short_code:"QC1", academic_year_id, sections:[{name:"A"},{name:"B"}]}` | 201; `sections` has 2 items with `class_id` equal to the class id, both `is_active:true` | planned |
-| TC-MST-03-A02 | POST without `sections` | 201 with `sections:[]` | planned |
-| TC-MST-03-A03 | POST with an existing class name | 400 detail starts `Error creating class with sections` | planned |
-| TC-MST-03-A04 | POST with sections `[{name:"A"},{name:"A"}]` | 400 (unique per class); no class row remains | planned |
-| TC-MST-03-A05 | POST two classes both with sections A and B | Both 201 (section names repeat across classes) | planned |
-| TC-MST-03-A06 | POST with `short_code` omitted, then `name` omitted, then `academic_year_id` omitted | 422 each | planned |
-| TC-MST-03-A07 | POST `name` of 50 and 51 characters; `short_code` of 10 and 11 characters | 50 and 10: 201. 51 and 11: 400 | planned |
-| TC-MST-03-A08 | POST with a random `academic_year_id` | 400 (foreign key) | planned |
-| TC-MST-03-A09 | POST a class named like a class in another academic year | 201 (name is unique per academic year) | planned |
-| TC-MST-03-A10 | `GET /read_all` with 2 classes in different years and `academic_year_id` of the first | Both classes returned (year filter ignored) with their sections | planned |
-| TC-MST-03-A11 | `GET /read_all` on a tenant with zero classes | 400 detail contains `No classes found` | planned |
-| TC-MST-03-A12 | `GET /by_class_id/{id}` for an existing class | 200 `ClassRead` with sections | planned |
-| TC-MST-03-A13 | `GET /by_class_id/{random uuid}` | 404 detail `Class not found` | planned |
-| TC-MST-03-A14 | Read matrix: `GET /read_all` and `GET /by_class_id/{id}` as Admin, Staff, Teacher, Student, Parent | 200 for all five | planned |
-| TC-MST-03-A15 | Write matrix: `POST /` as Staff, Teacher, Student, Parent | 403 for each; Admin 201 | planned |
-| TC-MST-03-A16 | No Authorization header on POST and GET | 401 | planned |
-| TC-MST-03-A17 | Tenant isolation: class created in tenant A | Absent from tenant B `GET /read_all`; `GET /by_class_id/{id}` with B token returns 404 | planned |
-| TC-MST-03-A18 | 31 POSTs within a minute (limiter enabled) | The 31st returns 429 | planned |
-| TC-MST-03-E01 | [web] Admin opens Masters > Classes and Sections with 2 classes | Card "Classes & Sections" with both rows, "n section(s)" badges, Status badges | planned |
-| TC-MST-03-E02 | [web] Type `QA-C1` in "Search classes..." | Only matching class shown with "1 of 2 results" | planned |
-| TC-MST-03-E03 | [web] Click Sections header twice | Ascending then descending by section count | planned |
-| TC-MST-03-E04 | [web] Expand a class | Sections grid with each name and status; class without sections shows "No sections found" | planned |
-| TC-MST-03-E05 | [web] Columns > deselect Status | Status column disappears; at least one column remains when deselecting all | planned |
-| TC-MST-03-E06 | [web] Add Class & Sections: name `QA-C9`, code `QC9`, Next, From A To C, Generate Sections, View, Submit | Toast "Generated 3 sections from A to C", then "Class and sections created successfully!"; new class shows "3 sections" | planned |
-| TC-MST-03-E07 | [web] Wizard Next with empty Class Code | Next button disabled until both name and code are filled | planned |
-| TC-MST-03-E08 | [web] Generate with From `D` To `A` | Toast "Start letter must come before end letter"; sections unchanged | planned |
-| TC-MST-03-E09 | [web] Submit a class whose name already exists | Toast starts "Failed to create class and sections:"; dialog closes (see Known gaps) | planned |
-| TC-MST-03-E10 | [web] Export > Export to CSV | `classes_sections_data.csv` downloads with headers for visible columns | planned |
-| TC-MST-03-E11 | [web] Teacher opens the page | No "Add Class & Sections", no Add Section / Edit / Delete icons; list and Export visible | planned |
-| TC-MST-03-E12 | [mobile] Admin opens Classes & Sections; search a section name | Matching class cards only; expand shows sections | planned |
-| TC-MST-03-E13 | [mobile] Add wizard: `QA-C8`, `QC8`, Generate A..B, View, Submit | Toast "Class and sections created successfully"; card appears | planned |
-| TC-MST-03-E14 | [mobile] Wizard with empty class name | Toast "Validation - Class name is required" | planned |
-| TC-MST-03-E15 | [mobile] Columns sheet hides Status; Export > Export to Excel | Badge hidden; `classes_sections_data.xls` downloads | planned |
-| TC-MST-03-E16 | [mobile] Student and Parent | No Masters tab | planned |
+| TC-MST-03-A01 | Admin `POST /masters/class_sections/` `{name:"QA-C1", short_code:"QC1", academic_year_id, sections:[{name:"A"},{name:"B"}]}` | 201; `sections` has 2 items with `class_id` equal to the class id, both `is_active:true` | passing |
+| TC-MST-03-A02 | POST without `sections` | 201 with `sections:[]` | passing |
+| TC-MST-03-A03 | POST with an existing class name | 400 detail starts `Error creating class with sections` | passing |
+| TC-MST-03-A04 | POST with sections `[{name:"A"},{name:"A"}]` | 400 (unique per class); no class row remains | passing |
+| TC-MST-03-A05 | POST two classes both with sections A and B | Both 201 (section names repeat across classes) | passing |
+| TC-MST-03-A06 | POST with `short_code` omitted, then `name` omitted, then `academic_year_id` omitted | 422 each | passing |
+| TC-MST-03-A07 | POST `name` of 50 and 51 characters; `short_code` of 10 and 11 characters | 50 and 10: 201. 51 and 11: 400 | passing |
+| TC-MST-03-A08 | POST with a random `academic_year_id` | 400 (foreign key) | passing |
+| TC-MST-03-A09 | POST a class named like a class in another academic year | 201 (name is unique per academic year) | passing |
+| TC-MST-03-A10 | `GET /read_all` with 2 classes in different years and `academic_year_id` of the first | Both classes returned (year filter ignored) with their sections | passing |
+| TC-MST-03-A11 | `GET /read_all` on a tenant with zero classes | 200 `[]` | passing |
+| TC-MST-03-A12 | `GET /by_class_id/{id}` for an existing class | 200 `ClassRead` with sections | passing |
+| TC-MST-03-A13 | `GET /by_class_id/{random uuid}` | 404 detail `Class not found` | passing |
+| TC-MST-03-A14 | Read matrix: `GET /read_all` and `GET /by_class_id/{id}` as Admin, Staff, Teacher, Student, Parent | 200 for all five | passing |
+| TC-MST-03-A15 | Write matrix: `POST /` as Staff, Teacher, Student, Parent | 403 for each; Admin 201 | passing |
+| TC-MST-03-A16 | No Authorization header on POST and GET | 401 | passing |
+| TC-MST-03-A17 | Tenant isolation: class created in tenant A | Absent from tenant B `GET /read_all`; `GET /by_class_id/{id}` with B token returns 404 | passing |
+| TC-MST-03-A18 | 31 POSTs within a minute (limiter enabled) | The 31st returns 429 | skipped: The test API runs with rate limiting disabled, so the 429 cannot be produced |
+
+UI test cases (manual and automated, tenant `qa_manual`):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-MST-03-E01 | P1 | Web | Admin | Seeded classes Nursery to Class 5 | 1. Sign in as Admin (qa_manual).<br>2. Open Masters > Classes and Sections. | Card "Classes & Sections" lists the 8 classes with codes (NUR, LKG, UKG, C1 to C5), "2 sections" badges and Active status; buttons "Columns", "Export", "Add Class & Sections"; row icons "Add Section", "Edit Class", "Delete Class" | planned |
+| TC-MST-03-E02 | P2 | Web | Admin | Seeded classes | 1. Type "Class 1" in "Search classes...". | Only "Class 1" remains; "1 of 8 results" shows | planned |
+| TC-MST-03-E03 | P3 | Web | Admin | TC-MST-03-E06 done (QA C9 has 3 sections) | 1. Click the "Sections" header.<br>2. Click it again. | Ascending then descending by section count; QA C9 (3) sorts after or before the 2-section classes | planned |
+| TC-MST-03-E04 | P2 | Web | Admin | Seeded classes; TC-MST-03-E07 variant done or any class without sections | 1. Click the expand chevron on "Class 1".<br>2. Expand a class without sections. | Class 1 shows tiles "1-A" and "1-B" with status; the empty class shows "No sections found" | planned |
+| TC-MST-03-E05 | P3 | Web | Admin | Seeded classes | 1. Click "Columns".<br>2. Untick "Status".<br>3. Untick every remaining column. | Status column disappears; at least one column always stays visible | planned |
+| TC-MST-03-E06 | P1 | Web | Admin | No class "QA C9" in 2026-2027 | 1. Click "Add Class & Sections".<br>2. Enter Class Name "QA C9", Class Code "QC9", click "Next".<br>3. Set "From:" A and "To:" C, click "Generate Sections".<br>4. Click "View".<br>5. Click "Submit". | Toast "Generated 3 sections from A to C"; Summary lists A, B, C; toast "Class and sections created successfully!"; row "QA C9" shows "3 sections". Delete it at the end of the run (TC-MST-04-E04) | planned |
+| TC-MST-03-E07 | P3 | Web | Admin | None | 1. Click "Add Class & Sections".<br>2. Enter Class Name "QA C10" and leave Class Code empty. | "Next" stays disabled until both name and code are filled | planned |
+| TC-MST-03-E08 | P3 | Web | Admin | None | 1. Open the wizard, fill name and code, click "Next".<br>2. Set "From:" D and "To:" A, click "Generate Sections". | Toast "Start letter must come before end letter"; the section list is unchanged | planned |
+| TC-MST-03-E09 | P2 | Web | Admin | Seeded class "Class 1" | 1. Open the wizard with Class Name "Class 1", Class Code "QX1".<br>2. Generate A to B, click "View", click "Submit". | Toast starts "Failed to create class and sections:" with the duplicate reason; no second "Class 1" row (the dialog closes, see Known gaps) | planned |
+| TC-MST-03-E10 | P3 | Web | Admin | Seeded classes | 1. Click "Export" > "Export to CSV". | `classes_sections_data.csv` downloads with headers of the visible columns; Sections cells list names joined with `;` | planned |
+| TC-MST-03-E11 | P2 | Web | Teacher | Seeded classes | 1. Sign in as Teacher.<br>2. Open Masters > Classes and Sections. | List, "Columns" and "Export" visible; no "Add Class & Sections"; no Add Section, Edit Class or Delete Class icons | planned |
+| TC-MST-03-E12 | P1 | Mobile | Admin | Seeded classes | 1. Sign in as Admin (qa_manual).<br>2. Open Home > Masters > Classes and Sections.<br>3. Type "2-A" in "Search classes or sections...".<br>4. Tap the chevron on the card. | "8 classes" before the search; only "Class 2" remains; expanding shows sections 2-A and 2-B with badges | planned |
+| TC-MST-03-E13 | P1 | Mobile | Admin | No class "QA C8" | 1. Tap the header Add icon.<br>2. Enter "QA C8" and "QC8", tap "Next".<br>3. Set From A, To B, tap "Generate Sections", tap "View".<br>4. Tap "Submit". | Toast "Sections Generated"; then toast "Class and sections created successfully"; card "QA C8" with "2 sections". Cleanup: delete the class | planned |
+| TC-MST-03-E14 | P3 | Mobile | Admin | None | 1. Tap the header Add icon.<br>2. Leave "Class Name *" empty, enter a code, tap "Next". | Toast "Validation - Class name is required" (or "Next" stays disabled); wizard stays on step 1 | planned |
+| TC-MST-03-E15 | P3 | Mobile | Admin | Seeded classes | 1. Tap "Columns", untick "Status", close.<br>2. Tap "Export" > "Export to Excel". | Status badges hidden on the cards; `classes_sections_data.xls` downloads on the web build | planned |
+| TC-MST-03-E16 | P2 | Mobile | Student | Seeded student Advik Mehta (login 002) and parent venkat.raju@example.com | 1. Sign in as the student and check Home.<br>2. Repeat as the parent. | No "Masters" card on Home for either role | planned |
 
 ---
 
@@ -364,10 +380,10 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 
 **Steps, web.**
 1. Masters > Classes and Sections. On a class row click the Edit icon (title "Edit Class"). Dialog "Edit Class": Class Name, Class Code, Description, Active ("Class is active"). Buttons "Cancel" and "Update Class" ("Updating..."). Empty name or code: toast "Class name is required" or "Class code is required". Success: toast "Class and sections updated successfully!". Failure: toast "Failed to update class and sections: <reason>".
-2. Click the Delete icon (title "Delete Class"). Dialog "Confirm Deletion": "Are you sure you want to delete class "<name>"?" with, when the class has sections, a warning that deletion fails if admissions, fee mappings or subject mappings exist. Buttons "Cancel" and "Delete" ("Deleting..."). Success: toast "Class and sections deleted successfully!". Failure: toast "Failed to delete class and sections: <reason>".
+2. Click the Delete icon (title "Delete Class"). Dialog "Confirm Deletion": "Are you sure you want to delete class "<name>"?", then, when the class has sections, the warning "This class has N sections. Deletion will fail if any section or class has linked student admissions, fee mappings, or subject mappings. Deactivate instead if records exist.", then "This action cannot be undone." Buttons "Cancel" and "Delete" ("Deleting..."). Success: toast "Class and sections deleted successfully!". Failure: toast "Failed to delete class and sections: <reason>".
 
 **Steps, mobile.**
-1. Masters tab > Classes & Sections. On a class card tap the Edit icon: modal "Edit Class" (Class Name "e.g. Class 1", Class Code "e.g. C1", Description "Optional description...", Active "Class is active"), buttons "Cancel" and "Update Class". Toast "Class updated successfully".
+1. Home > Masters > Classes and Sections. On a class card tap the Edit icon: modal "Edit Class" (Class Name * "e.g., Class 1", Class Code "e.g., C1", Description "Optional description...", Active "Class is active"), buttons "Cancel" and "Update Class". Toast "Class updated successfully".
 2. Tap the Delete icon: confirm "Delete Class" ("Delete "<name>"? This will also delete all associated sections. This action cannot be undone."). Toast "Class deleted successfully"; failure toast "Delete Failed" with the reason.
 
 **Expected results.** Edited fields are saved and sections are untouched. A deleted class and all its sections are hard-deleted. A deactivated class disappears from the active class dropdown but remains in the full list.
@@ -409,32 +425,38 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 | TC-MST-04-U06 | [backend] `delete_class_with_sections` with all counts 0 | Sections deleted, class deleted, one commit, caches invalidated | passing |
 | TC-MST-04-U07 | [web] `EditClassModal` submit with empty code | Toast "Class code is required"; `onSubmit` not called | blocked: needs the validation helper exported from web/src/components/masters/classesandsections/EditClassModal.tsx |
 | TC-MST-04-U08 | [web] `EditClassModal` submit valid | `onSubmit(classId, {name, short_code, description, is_active, academic_year_id})` with no `sections` | blocked: needs the payload builder exported from web/src/components/masters/classesandsections/EditClassModal.tsx |
-| TC-MST-04-A01 | Admin `PUT /{id}` `{name:"QA-C1-R", academic_year_id:<same>}` | 200 `{message:"Class and sections updated successfully"}`; GET shows new name and unchanged sections | planned |
-| TC-MST-04-A02 | `PUT /{id}` `{is_active:false, academic_year_id}` | 200; class absent from `GET /dropdown`; still in `GET /read_all` | planned |
-| TC-MST-04-A03 | `PUT /{id}` omitting `academic_year_id` | 422 | planned |
-| TC-MST-04-A04 | `PUT /{id}` with `academic_year_id:null` | 400 (database NOT NULL) | planned |
-| TC-MST-04-A05 | `PUT /{id}` renaming to another class's name | 400 | planned |
-| TC-MST-04-A06 | `PUT /{id}` with `sections:[{name:"Z"}]` on a class with no dependants | 200; sections replaced and section ids differ from before (destructive behaviour) | planned |
-| TC-MST-04-A07 | `PUT /{id}` with `sections` on a class whose section has a class-subject mapping | 400; original section ids and the mapping still exist | planned |
-| TC-MST-04-A08 | `PUT /{random uuid}` | 404 detail `Class not found` | planned |
-| TC-MST-04-A09 | `DELETE /{id}` on a class with 2 sections and no references | 204; class and both sections gone (`GET /by_class_id/{id}` and `GET /sections/{sid}` return 404) | planned |
-| TC-MST-04-A10 | `DELETE /{id}` on a class with a class-subject mapping | 400 detail contains `being used by 1 record(s): 1 subject mapping(s)`; class intact | planned |
-| TC-MST-04-A11 | `DELETE /{id}` on a class whose section has a timetable | 400 detail contains `section-related record(s)`; after `DELETE /students/timetable/frontend/{section}` the delete succeeds | planned |
-| TC-MST-04-A12 | `DELETE /{random uuid}` | 404 | planned |
-| TC-MST-04-A13 | Write matrix: PUT and DELETE as Staff, Teacher, Student, Parent | 403 for each; Admin 200 and 204 | planned |
-| TC-MST-04-A14 | No Authorization header on PUT and DELETE | 401 | planned |
-| TC-MST-04-A15 | Tenant isolation: tenant B token on `PUT` and `DELETE` of tenant A's class | PUT 404; DELETE 404; the row is unchanged | planned |
-| TC-MST-04-A16 | Delete a class, then `GET /dropdown` and `/class-list` immediately | Class absent (cache invalidated by delete) | planned |
-| TC-MST-04-E01 | [web] Admin Edit Class: change name to `QA-C1-R`, Update Class | Toast "Class and sections updated successfully!"; row shows new name; sections count unchanged | planned |
-| TC-MST-04-E02 | [web] Edit Class, clear Class Code, Update Class | Toast "Class code is required"; dialog stays | planned |
-| TC-MST-04-E03 | [web] Edit Class, untick Active | Status badge shows inactive; class missing from the Class dropdown on other pages | planned |
-| TC-MST-04-E04 | [web] Delete a class with sections and no references: Delete, confirm | Dialog warning mentions the section count; toast "Class and sections deleted successfully!"; row gone | planned |
-| TC-MST-04-E05 | [web] Delete a class that has a subject mapping | Toast "Failed to delete class and sections: Cannot delete class ... subject mapping(s)"; row remains | planned |
-| TC-MST-04-E06 | [web] Cancel in the delete dialog | Nothing deleted | planned |
-| TC-MST-04-E07 | [mobile] Edit icon, change name, Update Class | Toast "Class updated successfully"; card updated | planned |
-| TC-MST-04-E08 | [mobile] Delete icon on an unused class, confirm | Toast "Class deleted successfully"; card gone | planned |
-| TC-MST-04-E09 | [mobile] Delete a class with a mapping | Toast "Delete Failed" with the used-by message | planned |
-| TC-MST-04-E10 | [web] and [mobile] Teacher opens the screen | No Edit or Delete icons | planned |
+| TC-MST-04-A01 | Admin `PUT /{id}` `{name:"QA-C1-R", academic_year_id:<same>}` | 200 `{message:"Class and sections updated successfully"}`; GET shows new name and unchanged sections | passing |
+| TC-MST-04-A02 | `PUT /{id}` `{is_active:false, academic_year_id}` | 200; class absent from `GET /dropdown`; still in `GET /read_all` | passing |
+| TC-MST-04-A03 | `PUT /{id}` omitting `academic_year_id` | 422 | passing |
+| TC-MST-04-A04 | `PUT /{id}` with `academic_year_id:null` | 400 (database NOT NULL) | passing |
+| TC-MST-04-A05 | `PUT /{id}` renaming to another class's name | 400 | passing |
+| TC-MST-04-A06 | `PUT /{id}` with `sections:[{name:"Z"}]` on a class with no dependants | 200; sections replaced and section ids differ from before (destructive behaviour) | passing |
+| TC-MST-04-A07 | `PUT /{id}` with `sections` on a class whose section has a class-subject mapping | 400; original section ids and the mapping still exist | passing |
+| TC-MST-04-A08 | `PUT /{random uuid}` | 404 detail `Class not found` | passing |
+| TC-MST-04-A09 | `DELETE /{id}` on a class with 2 sections and no references | 204; class and both sections gone (`GET /by_class_id/{id}` and `GET /sections/{sid}` return 404) | passing |
+| TC-MST-04-A10 | `DELETE /{id}` on a class with a class-subject mapping | 400 detail contains `being used by 1 record(s): 1 subject mapping(s)`; class intact | passing |
+| TC-MST-04-A11 | `DELETE /{id}` on a class whose section has a timetable | 400 detail contains `section-related record(s)`; after `DELETE /students/timetable/frontend/{section}` the delete succeeds | passing |
+| TC-MST-04-A12 | `DELETE /{random uuid}` | 404 | passing |
+| TC-MST-04-A13 | Write matrix: PUT and DELETE as Staff, Teacher, Student, Parent | 403 for each; Admin 200 and 204 | passing |
+| TC-MST-04-A14 | No Authorization header on PUT and DELETE | 401 | passing |
+| TC-MST-04-A15 | Tenant isolation: tenant B token on `PUT` and `DELETE` of tenant A's class | PUT 404; DELETE 404; the row is unchanged | passing |
+| TC-MST-04-A16 | Delete a class, then `GET /dropdown` and `/class-list` immediately | Class absent (cache invalidated by delete) | passing |
+
+UI test cases (manual and automated, tenant `qa_manual`):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-MST-04-E01 | P1 | Web | Admin | TC-MST-03-E06 done (QA C9) | 1. Click "Edit Class" on "QA C9".<br>2. Change Class Name to "QA C9 R".<br>3. Click "Update Class". | Toast "Class and sections updated successfully!"; row shows "QA C9 R"; still "3 sections" | planned |
+| TC-MST-04-E02 | P3 | Web | Admin | TC-MST-03-E06 done | 1. Click "Edit Class" on the QA class.<br>2. Clear "Class Code".<br>3. Click "Update Class". | Submit blocked by the required field or toast "Class code is required"; dialog stays open; no request | planned |
+| TC-MST-04-E03 | P2 | Web | Admin | TC-MST-03-E06 done | 1. Click "Edit Class" on the QA class.<br>2. Untick "Class is active", click "Update Class".<br>3. Open Timetable and open "Select Class". | Status badge shows inactive; the QA class is not offered in "Select Class". Cleanup: tick Active again | planned |
+| TC-MST-04-E04 | P2 | Web | Admin | QA class from TC-MST-03-E06 with no mappings left (TC-MST-09-E06 cleanup done) | 1. Click "Delete Class" on the QA class.<br>2. Read the dialog.<br>3. Click "Delete". | "Confirm Deletion" shows "This class has 3 sections. Deletion will fail if ..."; toast "Class and sections deleted successfully!"; row gone | planned |
+| TC-MST-04-E05 | P2 | Web | Admin | QA class with a subject mapping (TC-MST-10-E01 done) | 1. Click "Delete Class" on the QA class.<br>2. Click "Delete". | Toast "Failed to delete class and sections: Cannot delete class 'QA C9' because it is being used by N record(s): ... subject mapping(s)"; row remains | planned |
+| TC-MST-04-E06 | P3 | Web | Admin | Seeded class "Class 1" | 1. Click "Delete Class" on "Class 1".<br>2. Click "Cancel". | Dialog closes; nothing deleted | planned |
+| TC-MST-04-E07 | P1 | Mobile | Admin | TC-MST-03-E13 done (QA C8) | 1. Tap the Edit icon on "QA C8".<br>2. Change "Class Name *" to "QA C8 R".<br>3. Tap "Update Class". | Toast "Class updated successfully"; card shows "QA C8 R" | planned |
+| TC-MST-04-E08 | P2 | Mobile | Admin | QA C8 with no mappings | 1. Tap the Delete icon on the QA class.<br>2. In "Delete Class" tap "Delete". | Confirm text "Delete "QA C8 R"? This will also delete all associated sections. This action cannot be undone."; toast "Class deleted successfully"; card gone | planned |
+| TC-MST-04-E09 | P2 | Mobile | Admin | QA class with a subject mapping (TC-MST-10-E09 done) | 1. Tap the Delete icon on that class.<br>2. Tap "Delete". | Toast "Delete Failed" with the used-by message; card remains | planned |
+| TC-MST-04-E10 | P2 | Web | Teacher | Seeded classes | 1. Sign in as Teacher.<br>2. Open Masters > Classes and Sections and expand "Class 1". | No "Edit Class" or "Delete Class" icons on rows; no section icons | planned |
+| TC-MST-04-E11 | P2 | Mobile | Teacher | Seeded classes | 1. Sign in as Teacher.<br>2. Open Home > Masters > Classes and Sections and expand "Class 1". | No Add, Edit or Delete icons on cards or section rows | planned |
 
 ---
 
@@ -442,18 +464,18 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 
 **Purpose.** An admin adds sections to an existing class, renames or deactivates a section, or removes an unused section.
 
-**Roles and permissions.** Add: `sections:create`. Edit: `classes:update` on the API (the web Edit Section button checks `sections:update`). Delete: `classes:delete` on the API (the web button checks `sections:delete`). Read one section: `classes:read`. The default Admin grant has `sections:create` only (Known gaps).
+**Roles and permissions.** Add: `sections:create`. Edit: `classes:update` on the API (the web Edit Section button checks `sections:update`; the mobile Edit icon checks `classes:update`). Delete: `classes:delete` on the API (the web button checks `sections:delete`; mobile checks `classes:delete`). Read one section: `classes:read`. The default Admin grant has `sections:create` only (Known gaps), so on web a default Admin sees the "Add Section" icon but no section Edit or Delete icons; on mobile the Admin sees all three.
 
 **Preconditions.** A class exists (F03).
 
 **Steps, web.**
-1. Masters > Classes and Sections. Click the Plus icon on a class row ("Add Section"). Dialog "Add Sections to <class>": "Quick Add Alphabetically" with From and To and "Generate", plus a list of "Section name" boxes with row + and x buttons. Submit button "Add N Section(s)". Names that already exist in the class (case-insensitive, trimmed) are skipped: all duplicates: error toast "Sections already exist: ..." (singular "Section already exist: ..." for one name); some duplicates: warning "Skipped duplicate sections: ..." (singular for one). Success toast "3 sections added successfully!" ("1 section added successfully!" for one).
-2. Expand the class row; on a section tile click Edit ("Edit Section"). Dialog "Edit Section", field "Section Name" (placeholder "e.g., A, B, C") and "Section is active"; buttons "Cancel" and "Update Section". Empty name: toast "Section name is required". Success toast "Section updated successfully!".
-3. Click Delete ("Delete Section"): dialog "Confirm Deletion", "Delete". Success toast "Section deleted successfully!". Failure toast "Failed to delete section: <reason>".
+1. Masters > Classes and Sections. Click the Plus icon on a class row (title "Add Section"). Dialog "Add Sections to <class>": "Quick Add Alphabetically" with "From:" (A) and "To:" (D) and "Generate" (replaces the list, toast "Generated N sections"), the hint "Creates sections A-D (e.g., A, B, C, D)", then "Sections": one box per row (placeholder "Section name (e.g., A)", "(e.g., B)", ...) with "Add row" (+) and "Remove row" (x) buttons, and "Total: n section(s)". Buttons "Cancel" and "Add N Section(s)" (disabled while every box is empty; "Adding..." while pending). Names that already exist in the class (case-insensitive, trimmed) are skipped: all duplicates: error toast "Sections already exist: A, B" (singular "Section already exist: A" for one name), nothing is sent; some duplicates: warning "Skipped duplicate sections: ..." (singular "Skipped duplicate section: A") and the rest are sent. Success toast "3 sections added successfully!" ("1 section added successfully!" for one); failure "Failed to add sections: <reason>".
+2. Expand the class row; on a section tile click Edit (title "Edit Section", shown only with `sections:update`). Dialog "Edit Section" with "Class: <class>", field "Section Name" (placeholder "e.g., A, B, C") and "Section is active"; buttons "Cancel" and "Update Section" ("Saving..."). Empty name: toast "Section name is required". Success toast "Section updated successfully!".
+3. Click Delete (title "Delete Section", shown only with `sections:delete`): dialog "Confirm Deletion", "Are you sure you want to delete section "<name>"? This action cannot be undone.", "Delete". Success toast "Section deleted successfully!". Failure toast "Failed to delete section: <reason>".
 
 **Steps, mobile.**
-1. Masters tab > Classes & Sections; expand a card. The Add icon (label "Add") opens the section modal ("Section name", placeholder "e.g., A, B, C", "Section is active", button "Add Section"). Empty name: toast "Validation - Section name is required". Note: this call is rejected by the API today (Known gaps).
-2. Edit icon on a section row: same modal with "Update Section"; toast "Section updated successfully". Delete icon: confirm "Delete Section" ("Delete section "<name>"? This action cannot be undone."); toast "Section deleted successfully"; failure toast "Delete Failed".
+1. Home > Masters > Classes and Sections. The Add icon on a class card (label "Add") opens the modal "Add New Section" ("Class: <class>", "Section Name *" placeholder "e.g., A, B, C", "Section is active", buttons "Cancel" and "Add Section"). Empty name: toast "Validation - Section name is required". Note: the add call is rejected by the API today (Known gaps), so the result is an error toast "Create Failed" with the 422 reason.
+2. Expand the card; the Edit icon on a section row opens "Edit Section" with "Update Section"; toast "Section updated successfully". Delete icon: confirm "Delete Section" ("Delete section "<name>"? This action cannot be undone.", button "Delete"); toast "Section deleted successfully"; failure toast "Delete Failed" with the reason.
 
 **Expected results.** New sections belong to the chosen class and are active unless unticked; edits change only the sent fields; a deleted section row is removed (hard delete). Existing sections keep their ids.
 
@@ -494,41 +516,46 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 | TC-MST-05-U05 | [backend] `update_section` with `{name:None, is_active:False}` | Only `is_active` changes; name untouched | passing |
 | TC-MST-05-U06 | [backend] `delete_section` when the commit raises an error containing `violates foreign key` | HTTPException 400 with the `Deactivate it instead` text | passing |
 | TC-MST-05-U07 | [web] `handleAddSections` with existing `a, B` and new `A, c` | `A` reported duplicate, only `c` sent | blocked: needs handleAddSections duplicate logic exported from web/src/pages/masters/classesandsections.tsx |
-| TC-MST-05-A01 | Admin `POST /{class}/sections` `[{name:"C"},{name:"D"}]` | 201 two `SectionOut` with `class_id` of the class, `is_active:true` | planned |
-| TC-MST-05-A02 | POST `[]` | 201 `[]` | planned |
-| TC-MST-05-A03 | POST a single object `{name:"E"}` instead of a list | 422 | planned |
-| TC-MST-05-A04 | POST a name that already exists in the class; then the same name twice in one payload | 400 `Error adding sections: ...` each time; no partial rows | planned |
-| TC-MST-05-A05 | POST to a random class id | 404 `Class not found` | planned |
-| TC-MST-05-A06 | POST name of 50 and 51 characters | 50: 201. 51: 400 | planned |
-| TC-MST-05-A07 | `GET /sections/{id}` | 200 `SectionOut` with `created_at`, `updated_at`, `class_id` | planned |
-| TC-MST-05-A08 | `GET /sections/{random uuid}` | 404 detail `Section not found` | planned |
-| TC-MST-05-A09 | `PUT /sections/{id}` `{id:null, name:"A2", is_active:false}` | 200; name and flag changed | planned |
-| TC-MST-05-A10 | `PUT /sections/{id}` without `id` in body | 422 | planned |
-| TC-MST-05-A11 | `PUT /sections/{id}` `{id:null, description:null}` after setting a description | 200; description unchanged (null ignored) | planned |
-| TC-MST-05-A12 | `PUT /sections/{id}` renaming to a sibling's name | 400 `A section with this name already exists in the class` | planned |
-| TC-MST-05-A13 | `PUT /sections/{random uuid}` | 404 detail `Section not found` | planned |
-| TC-MST-05-A14 | `DELETE /sections/{id}` for an unreferenced section | 200 `{message:"Section deleted successfully"}`; `GET` then 404 | planned |
-| TC-MST-05-A15 | `DELETE /sections/{id}` for a section with a class-subject mapping | 400 detail starts `Cannot delete this section because it is referenced`; section intact | planned |
-| TC-MST-05-A16 | `DELETE /sections/{random uuid}` | 404 | planned |
-| TC-MST-05-A17 | `PUT` or `DELETE` on `/{class_id}/sections/{section_id}` | 404 or 405 (path does not exist) | planned |
-| TC-MST-05-A18 | Role matrix on add: Staff, Teacher, Student, Parent `POST /{class}/sections` | 403 each; Admin 201 | planned |
-| TC-MST-05-A19 | Role matrix on `GET /sections/{id}`: all five roles | 200 (needs `classes:read`) | planned |
-| TC-MST-05-A20 | Role matrix on `PUT` and `DELETE /sections/{id}`: Staff, Teacher, Student, Parent | 403 each; Admin 200 | planned |
-| TC-MST-05-A21 | No Authorization header on all four endpoints | 401 | planned |
-| TC-MST-05-A22 | Tenant isolation: tenant B token on tenant A's section (GET, PUT, DELETE) | GET, PUT and DELETE 404; row untouched; POST to tenant A's class id with B token returns 404 | planned |
-| TC-MST-05-E01 | [web] Plus icon, From C To E, Generate, Add 3 Section(s) | Toast "3 sections added successfully!"; class shows 5 sections | planned |
-| TC-MST-05-E02 | [web] Add Sections with only names that already exist (A and B) | Error toast "Sections already exist: A, B"; no request | planned |
-| TC-MST-05-E03 | [web] Add `A` and `F` where `A` exists | Warning "Skipped duplicate section: A"; `F` added | planned |
-| TC-MST-05-E04 | [web] Edit Section: rename to `A2`, untick active, Update Section | Toast "Section updated successfully!"; tile shows `A2` with inactive badge; section missing from Section dropdowns | planned |
-| TC-MST-05-E05 | [web] Edit Section with empty name | Toast "Section name is required" | planned |
-| TC-MST-05-E06 | [web] Delete a section with no references, confirm | Toast "Section deleted successfully!"; tile gone | planned |
-| TC-MST-05-E07 | [web] Delete a section that has a mapping | Toast "Failed to delete section: Cannot delete this section ... Deactivate it instead." | planned |
-| TC-MST-05-E08 | [web] Admin default seed: open an expanded class | Section Edit and Delete icons are visible only when the Admin role also holds `sections:update` and `sections:delete` (record the result; see Known gaps) | planned |
-| TC-MST-05-E09 | [mobile] Edit a section name, Update Section | Toast "Section updated successfully"; list updated | planned |
-| TC-MST-05-E10 | [mobile] Delete a section, confirm | Toast "Section deleted successfully" | planned |
-| TC-MST-05-E11 | [mobile] Add Section with name `G` | Toast "Create Failed" (API rejects the single-object body; records the known defect) | planned |
-| TC-MST-05-E12 | [mobile] Add Section with empty name | Toast "Validation - Section name is required" | planned |
-| TC-MST-05-E13 | [web] Teacher expands a class | No Add, Edit or Delete icons | planned |
+| TC-MST-05-A01 | Admin `POST /{class}/sections` `[{name:"C"},{name:"D"}]` | 201 two `SectionOut` with `class_id` of the class, `is_active:true` | passing |
+| TC-MST-05-A02 | POST `[]` | 201 `[]` | passing |
+| TC-MST-05-A03 | POST a single object `{name:"E"}` instead of a list | 422 | passing |
+| TC-MST-05-A04 | POST a name that already exists in the class; then the same name twice in one payload | 400 `Error adding sections: ...` each time; no partial rows | passing |
+| TC-MST-05-A05 | POST to a random class id | 404 `Class not found` | passing |
+| TC-MST-05-A06 | POST name of 50 and 51 characters | 50: 201. 51: 400 | passing |
+| TC-MST-05-A07 | `GET /sections/{id}` | 200 `SectionOut` with `created_at`, `updated_at`, `class_id` | passing |
+| TC-MST-05-A08 | `GET /sections/{random uuid}` | 404 detail `Section not found` | passing |
+| TC-MST-05-A09 | `PUT /sections/{id}` `{id:null, name:"A2", is_active:false}` | 200; name and flag changed | passing |
+| TC-MST-05-A10 | `PUT /sections/{id}` without `id` in body | 422 | passing |
+| TC-MST-05-A11 | `PUT /sections/{id}` `{id:null, description:null}` after setting a description | 200; description unchanged (null ignored) | passing |
+| TC-MST-05-A12 | `PUT /sections/{id}` renaming to a sibling's name | 400 `A section with this name already exists in the class` | passing |
+| TC-MST-05-A13 | `PUT /sections/{random uuid}` | 404 detail `Section not found` | passing |
+| TC-MST-05-A14 | `DELETE /sections/{id}` for an unreferenced section | 200 `{message:"Section deleted successfully"}`; `GET` then 404 | passing |
+| TC-MST-05-A15 | `DELETE /sections/{id}` for a section with a class-subject mapping | 400 detail starts `Cannot delete this section because it is referenced`; section intact | passing |
+| TC-MST-05-A16 | `DELETE /sections/{random uuid}` | 404 | passing |
+| TC-MST-05-A17 | `PUT` or `DELETE` on `/{class_id}/sections/{section_id}` | 404 or 405 (path does not exist) | passing |
+| TC-MST-05-A18 | Role matrix on add: Staff, Teacher, Student, Parent `POST /{class}/sections` | 403 each; Admin 201 | passing |
+| TC-MST-05-A19 | Role matrix on `GET /sections/{id}`: all five roles | 200 (needs `classes:read`) | passing |
+| TC-MST-05-A20 | Role matrix on `PUT` and `DELETE /sections/{id}`: Staff, Teacher, Student, Parent | 403 each; Admin 200 | passing |
+| TC-MST-05-A21 | No Authorization header on all four endpoints | 401 | passing |
+| TC-MST-05-A22 | Tenant isolation: tenant B token on tenant A's section (GET, PUT, DELETE) | GET, PUT and DELETE 404; row untouched; POST to tenant A's class id with B token returns 404 | passing |
+
+UI test cases (manual and automated, tenant `qa_manual`):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-MST-05-E01 | P1 | Web | Admin | TC-MST-03-E06 done (QA C9 with A, B, C) | 1. Click "Add Section" on "QA C9".<br>2. Set "From:" D, "To:" E, click "Generate".<br>3. Click "Add 2 Section(s)". | Toast "Generated 2 sections"; toast "2 sections added successfully!"; row shows "5 sections" | planned |
+| TC-MST-05-E02 | P2 | Web | Admin | QA C9 with A and B | 1. Click "Add Section" on "QA C9".<br>2. Type "A" in the first box, click "Add row", type "b".<br>3. Click "Add 2 Section(s)". | Error toast "Sections already exist: A, b"; no request sent | planned |
+| TC-MST-05-E03 | P2 | Web | Admin | QA C9 with A | 1. Click "Add Section" on "QA C9".<br>2. Enter "A" and, in a new row, "F".<br>3. Click "Add 2 Section(s)". | Warning "Skipped duplicate section: A"; toast "1 section added successfully!"; F added | planned |
+| TC-MST-05-E04 | P2 | Web | Admin | QA C9 with section A | 1. Expand "QA C9".<br>2. Click "Edit Section" on A, rename to "A2", untick "Section is active".<br>3. Click "Update Section". | Toast "Section updated successfully!"; tile shows A2 inactive | blocked: default Admin lacks sections:update, so the web Edit Section icon is hidden (Known gaps 4) |
+| TC-MST-05-E05 | P3 | Web | Admin | QA C9 | 1. Click "Edit Section" on a section.<br>2. Clear "Section Name", click "Update Section". | Toast "Section name is required" | blocked: default Admin lacks sections:update (Known gaps 4) |
+| TC-MST-05-E06 | P2 | Web | Admin | QA C9 with an unreferenced section | 1. Click "Delete Section" on it.<br>2. Click "Delete". | Toast "Section deleted successfully!"; tile gone | blocked: default Admin lacks sections:delete, so the icon is hidden (Known gaps 4) |
+| TC-MST-05-E07 | P3 | Web | Admin | QA C9 section with a mapping | 1. Click "Delete Section" on it.<br>2. Click "Delete". | Toast "Failed to delete section: Cannot delete this section ... Deactivate it instead." | blocked: default Admin lacks sections:delete (Known gaps 4) |
+| TC-MST-05-E08 | P2 | Web | Admin | Default-seeded Admin role; seeded "Class 1" | 1. Open Masters > Classes and Sections.<br>2. Expand "Class 1". | Tiles 1-A and 1-B show no Edit Section or Delete Section icons, while the class row shows "Add Section" (records Known gaps 4) | planned |
+| TC-MST-05-E09 | P1 | Mobile | Admin | TC-MST-03-E13 done (QA C8 with A, B) | 1. Expand "QA C8".<br>2. Tap Edit on section A, change "Section Name *" to "A2".<br>3. Tap "Update Section". | Toast "Section updated successfully"; row shows A2 | planned |
+| TC-MST-05-E10 | P2 | Mobile | Admin | QA C8 with an unreferenced section | 1. Tap Delete on that section row.<br>2. In "Delete Section" tap "Delete". | Toast "Section deleted successfully"; row gone | planned |
+| TC-MST-05-E11 | P2 | Mobile | Admin | QA C8 | 1. Tap the Add icon on the "QA C8" card.<br>2. Enter "G" in "Section Name *".<br>3. Tap "Add Section". | Section G is added and listed | blocked: mobile add-section sends a single object and the API returns 422 "Create Failed" (Known gaps 6) |
+| TC-MST-05-E12 | P3 | Mobile | Admin | Any class | 1. Tap the Add icon on a class card.<br>2. Leave "Section Name *" empty, tap "Add Section". | Toast "Validation - Section name is required"; modal "Add New Section" stays | planned |
+| TC-MST-05-E13 | P2 | Web | Teacher | Seeded classes | 1. Sign in as Teacher.<br>2. Expand "Class 1". | No "Add Section", "Edit Section" or "Delete Section" icons | planned |
 
 ---
 
@@ -540,7 +567,7 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 
 **Preconditions.** Classes and sections exist (F03).
 
-**Steps, web.** The shared `ClassesDropdown` calls `GET /dropdown`; `SectionsByClassDropdown` calls `GET /by_class_id/{class_id}/sections` through the `useSectionsByClassId` hook. Choosing a class loads that class's sections; changing the class clears the section.
+**Steps, web.** Example screen: sidebar "Timetable" (`/TimeTable`, page "Time Table Management") shows "Select Class" and "Select Section" with the hint "Please select a class and section to view or create a timetable". The shared `ClassesDropdown` calls `GET /dropdown`; `SectionsByClassDropdown` calls `GET /by_class_id/{class_id}/sections` through the `useSectionsByClassId` hook. Choosing a class loads that class's sections; changing the class clears the section.
 
 **Steps, mobile.** The class list picker uses `GET /class-list`, sections use `GET /by_class_id/{id}/sections`; the pickers are custom dropdowns that need non-empty labels.
 
@@ -579,25 +606,30 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 | TC-MST-06-U02 | [backend] `cache_dropdown` called twice with the same args and fake session tenant | Second call returns the cached object; a different tenant id misses | passing |
 | TC-MST-06-U03 | [backend] `invalidate_cache("dropdown","classes")` after caching `get_classes_dropdown` and `get_subjects_dropdown` | Class keys removed; subject keys kept | passing |
 | TC-MST-06-U04 | [mobile] Option mapper with `{name: undefined}` | Produces `label ''`, never undefined | blocked: no option mapper exists in mobile code; mobile/src/api/masters.ts returns dropdown data unchanged |
-| TC-MST-06-A01 | `GET /dropdown` with one active and one inactive class | Only the active class `{id, name}`; ordered by name | planned |
-| TC-MST-06-A02 | `GET /dropdown?active_only=false` | Both classes | planned |
-| TC-MST-06-A03 | `GET /by_class_id/{id}/sections` with sections A (active), B (inactive) | `[A]` only, ordered by name | planned |
-| TC-MST-06-A04 | `GET /by_class_id/{random uuid}/sections` | 200 `[]` | planned |
-| TC-MST-06-A05 | `GET /class-list` | All classes including inactive, each with `id,name,short_code,is_active,academic_year_id,created_at,updated_at` | planned |
-| TC-MST-06-A06 | `GET /section-list` | All sections of all classes with `class_id` | planned |
-| TC-MST-06-A07 | `GET /class-section-list` | Items `{section_id, class_section_name:"<class> - <section>"}` | planned |
-| TC-MST-06-A08 | `GET /sections-by-class-name?class_name=<name>`; unknown name; missing param | Sections list; 404 `Class not found`; 422 | planned |
-| TC-MST-06-A09 | `GET /by-class-section?class_name=&section_name=` valid; unknown class; unknown section | 200 student list (possibly empty); 404 `Class not found`; 404 `Section not found for given class` | planned |
-| TC-MST-06-A10 | Role matrix: all seven GET endpoints as Admin, Staff, Teacher, Student, Parent | 200 for all five roles | planned |
-| TC-MST-06-A11 | No Authorization header on each endpoint | 401 | planned |
-| TC-MST-06-A12 | Tenant isolation: tenant B's `dropdown`, `class-list`, `section-list`, `class-section-list` | Contain none of tenant A's classes or sections | planned |
-| TC-MST-06-A13 | Create a class then immediately call `dropdown` and `class-list` | New class present (create invalidates) | planned |
-| TC-MST-06-A14 | `PUT /sections/{id}` rename, then `GET /by_class_id/{class}/sections` within 5 minutes | Old name still returned (no invalidation on section update); records current behaviour | planned |
-| TC-MST-06-A15 | 101 dropdown calls within a minute (limiter enabled) | The 101st returns 429 | planned |
-| TC-MST-06-E01 | [web] Timetable page: open "Select Class" | Lists only active classes ordered by name | planned |
-| TC-MST-06-E02 | [web] Choose a class, then "Select Section" | Lists that class's active sections; section is disabled until a class is chosen | planned |
-| TC-MST-06-E03 | [web] Change the class after choosing a section | Section selection clears | planned |
-| TC-MST-06-E04 | [mobile] Timetable editor class cards, then section cards | Class list then the chosen class's sections | planned |
+| TC-MST-06-A01 | `GET /dropdown` with one active and one inactive class | Only the active class `{id, name}`; ordered by name | passing |
+| TC-MST-06-A02 | `GET /dropdown?active_only=false` | Both classes | passing |
+| TC-MST-06-A03 | `GET /by_class_id/{id}/sections` with sections A (active), B (inactive) | `[A]` only, ordered by name | passing |
+| TC-MST-06-A04 | `GET /by_class_id/{random uuid}/sections` | 200 `[]` | passing |
+| TC-MST-06-A05 | `GET /class-list` | All classes including inactive, each with `id,name,short_code,is_active,academic_year_id,created_at,updated_at` | passing |
+| TC-MST-06-A06 | `GET /section-list` | All sections of all classes with `class_id` | passing |
+| TC-MST-06-A07 | `GET /class-section-list` | Items `{section_id, class_section_name:"<class> - <section>"}` | passing |
+| TC-MST-06-A08 | `GET /sections-by-class-name?class_name=<name>`; unknown name; missing param | Sections list; 404 `Class not found`; 422 | passing |
+| TC-MST-06-A09 | `GET /by-class-section?class_name=&section_name=` valid; unknown class; unknown section | 200 student list (possibly empty); 404 `Class not found`; 404 `Section not found for given class` | passing |
+| TC-MST-06-A10 | Role matrix: all seven GET endpoints as Admin, Staff, Teacher, Student, Parent | 200 for all five roles | passing |
+| TC-MST-06-A11 | No Authorization header on each endpoint | 401 | passing |
+| TC-MST-06-A12 | Tenant isolation: tenant B's `dropdown`, `class-list`, `section-list`, `class-section-list` | Contain none of tenant A's classes or sections | passing |
+| TC-MST-06-A13 | Create a class then immediately call `dropdown` and `class-list` | New class present (create invalidates) | passing |
+| TC-MST-06-A14 | `PUT /sections/{id}` rename, then `GET /by_class_id/{class}/sections` within 5 minutes | Old name still returned (no invalidation on section update); records current behaviour | passing |
+| TC-MST-06-A15 | 101 dropdown calls within a minute (limiter enabled) | The 101st returns 429 | skipped: The test API runs with rate limiting disabled, so the 429 cannot be produced |
+
+UI test cases (manual and automated, tenant `qa_manual`):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-MST-06-E01 | P1 | Web | Admin | Seeded classes; one QA class made inactive (TC-MST-04-E03 step 2) | 1. Open sidebar "Timetable".<br>2. Open "Select Class". | Only active classes, ordered by name; the inactive QA class is absent | planned |
+| TC-MST-06-E02 | P2 | Web | Admin | Seeded classes | 1. On Timetable check "Select Section" before choosing a class.<br>2. Choose "Class 1" in "Select Class".<br>3. Open "Select Section". | Section is disabled until a class is chosen; then lists 1-A and 1-B | planned |
+| TC-MST-06-E03 | P3 | Web | Admin | Seeded classes | 1. Choose "Class 1" and "1-A".<br>2. Change the class to "Class 2". | The section selection clears | planned |
+| TC-MST-06-E04 | P2 | Mobile | Admin | Seeded classes | 1. Open Home > Masters > Timetable Management (or `/masters/timetable`).<br>2. Pick "Class 1", then look at the section choices. | The class list, then sections 1-A and 1-B of the chosen class | planned |
 
 ---
 
@@ -605,20 +637,20 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 
 **Purpose.** An admin keeps a flat, tenant-wide list of category names (for example Languages, Sciences) that subjects are grouped under.
 
-**Roles and permissions.** Create: `subject_categories:create`. Edit: `subject_categories:update`. Delete: `subject_categories:delete`. List and dropdown: `subject_categories:list`. Single read: `subject_categories:read`. Admin has all; Staff and Teacher read and list; Student and Parent have none. Menu: Masters > Subject Categories (web `/masters/subjectcategories`), Masters tab > Subject Categories (mobile).
+**Roles and permissions.** Create: `subject_categories:create`. Edit: `subject_categories:update`. Delete: `subject_categories:delete`. List and dropdown: `subject_categories:list`. Single read: `subject_categories:read`. Admin has all; Staff and Teacher read and list; Student and Parent have none. Menu: Masters > Subject Categories (web `/masters/subjectcategories`), Home > Masters > Subject Categories (mobile).
 
 **Preconditions.** None.
 
 **Steps, web.**
-1. Masters > Subject Categories. Card "Subject Categories" with column Name, S.No. and Actions; buttons: column selector, "Export" and "Add Subject Categories". Search "Search...", sort by Name, "Previous"/"Next" and "Rows per page" (default 5, server paged).
-2. Add: click "Add Subject Categories", dialog "Add Subject Categories", field "Category Name" (required), submit "Add Subject Categories". Toast "Subject category created successfully!". Failure toast "Failed to create subject category: <reason>".
+1. Masters > Subject Categories. Card "Subject Categories" with column Name, S.No. and Actions; buttons: column selector "Filters", "Export" and "Add Subject Categories". Search "Search..." (filters only the rows of the current page), sort by Name, "Previous"/"Next" and "Rows per page" (default 5, server paged).
+2. Add: click "Add Subject Categories", dialog "Add Subject Categories", field "Category Name" (required), buttons "Cancel" and "Add Subject Categories". Toast "Subject category created successfully!". Failure toast "Failed to create subject category: <reason>".
 3. Edit: Edit icon, change Name inline, green check. Toast "Subject category updated successfully!".
 4. Delete: trash icon, dialog "Delete Row?", Delete. Toast "Subject category deleted successfully!". Failure toast "Failed to delete subject category: Cannot delete category '<name>' because it is being used by N subject(s)...".
 5. Export > "Export to CSV", "Export to Excel", "Download Data" (`subject_categories_data.*`). Categories can also be created inline from the subject form (F08).
 
 **Steps, mobile.**
-1. Masters tab > Subject Categories. Header "Subject Categories", "Export" and "Add Subject Categories". Search "Search categories...".
-2. Add or Edit: modal field "Category Name *" (placeholder "Enter category name"), "Cancel" and save. Empty name: toast "Error - Category name is required". Toasts "Category Created", "Category Updated", "Category Deleted".
+1. Home > Masters > Subject Categories. Header "Subject Categories" with "n categories", "Export", "Add Subject Categories" and "Filters". Search "Search categories...".
+2. Add or Edit: modal "Add Subject Categories" with field "Category Name *" (placeholder "Enter category name"), "Cancel" and the save button ("Add Subject Categories" when adding). Empty name: toast "Error - Category name is required". Toasts "Category Created - Subject category created successfully.", "Category Updated", "Category Deleted"; failures "Create Failed", "Update Failed", "Delete Failed" with the reason.
 3. Delete icon: confirm "Delete Subject Category" ("Are you sure you want to delete "<name>"?"). Export sheet "Export As" with CSV, Excel and Download Data.
 
 **Expected results.** Names are listed alphabetically from the server; a created category is immediately available in the category dropdown; a category used by subjects cannot be deleted.
@@ -663,43 +695,48 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 | TC-MST-07-U04 | [backend] `delete_subject_category` with 3 subjects using it | 400 `Cannot delete category '<name>' because it is being used by 3 subject(s)...` | passing |
 | TC-MST-07-U05 | [backend] list `has_next` for (0,50,120), (100,50,120) | True, False | passing |
 | TC-MST-07-U06 | [web] `fetchSubjectCategories` given a plain array, `{items,total_count}` and `{data,count}` shapes | Each normalised to `{items,total}` | passing |
-| TC-MST-07-A01 | Admin `POST /categories` `{name:"QA-Sciences"}` | 200 `{id,name}` | planned |
-| TC-MST-07-A02 | Admin `POST /api/v1/subject-categories` `{name:"QA-Arts"}` | 201 `{id,name}` | planned |
-| TC-MST-07-A03 | POST an existing name | 400 `Category already exists` | planned |
-| TC-MST-07-A04 | POST `QA-Sciences` and `qa-sciences` | Both 200 (case-sensitive) | planned |
-| TC-MST-07-A05 | POST name of 100 and 101 characters | 100: 200. 101: 400 `Subject category creation failed` | planned |
-| TC-MST-07-A06 | POST `{}` and `{name:123}` | 422 | planned |
-| TC-MST-07-A07 | POST `{name:""}` and `{name:"   "}` | 422 | planned |
-| TC-MST-07-A08 | With 3 categories: `GET /categories` default, `?skip=0&limit=1`, `?skip=2&limit=1` | Default: 3 items ordered by name, `total_count` 3. Second: 1 item, `has_next` true. Third: 1 item, `has_next` false | planned |
-| TC-MST-07-A09 | `GET /categories?limit=0`, `?limit=1001`, `?skip=-1` | 422 each | planned |
-| TC-MST-07-A10 | `GET /api/v1/subject-categories?limit=2` | Same shape as the main list | planned |
-| TC-MST-07-A11 | `GET /categories/dropdown` | `[{id,name}]` ordered by name; contains a category created moments ago | planned |
-| TC-MST-07-A12 | `GET /categories/{id}` valid and random uuid | 200; 404 `Subject category with id ... not found` | planned |
-| TC-MST-07-A13 | `PUT /categories/{id}` `{name:"QA-Sciences-2"}` | 200 with new name | planned |
-| TC-MST-07-A14 | `PUT` with the unchanged name; with another category's name | 200; 400 `Subject category name '<name>' already exists` | planned |
-| TC-MST-07-A15 | `PUT /categories/{random uuid}` | 404 | planned |
-| TC-MST-07-A16 | `DELETE /categories/{id}` unused | 200 `{message:"Subject category deleted successfully"}`; GET then 404 | planned |
-| TC-MST-07-A17 | `DELETE` a category used by a subject (F08) | 400 detail contains `being used by 1 subject(s)`; category intact | planned |
-| TC-MST-07-A18 | `DELETE /categories/{random uuid}` | 404 | planned |
-| TC-MST-07-A19 | `GET /masters/subjects/categories` | 200 plain array of `{id, name}` | planned |
-| TC-MST-07-A20 | Read matrix: list, dropdown, get as Admin, Staff, Teacher | 200 | planned |
-| TC-MST-07-A21 | Read matrix: the same calls as Student and Parent | 403 each (no grant) | planned |
-| TC-MST-07-A22 | Write matrix: POST, PUT, DELETE as Staff and Teacher | 403 each; Admin 2xx | planned |
-| TC-MST-07-A23 | No Authorization header on all endpoints including the alias | 401 | planned |
-| TC-MST-07-A24 | Tenant isolation: category created in tenant A | Absent from tenant B list and dropdown; B can create the same name; GET with B token 404 | planned |
-| TC-MST-07-A25 | 31 POSTs within a minute (limiter enabled) | The 31st returns 429 | planned |
-| TC-MST-07-E01 | [web] Admin opens Masters > Subject Categories | Card with Name column, 5 rows per page, "Add Subject Categories" button | planned |
-| TC-MST-07-E02 | [web] Add Subject Categories with `QA-Languages` | Toast "Subject category created successfully!"; row appears | planned |
-| TC-MST-07-E03 | [web] Add a duplicate name | Toast "Failed to create subject category: Category already exists" | planned |
-| TC-MST-07-E04 | [web] Inline edit name, green check | Toast "Subject category updated successfully!" | planned |
-| TC-MST-07-E05 | [web] Delete an unused category via "Delete Row?" | Toast "Subject category deleted successfully!"; row gone | planned |
-| TC-MST-07-E06 | [web] Delete a category used by a subject | Toast "Failed to delete subject category: Cannot delete category ..." | planned |
-| TC-MST-07-E07 | [web] Search, sort Name, change Rows per page | Filter, order and paging behave as in F01 | planned |
-| TC-MST-07-E08 | [web] Export to CSV | `subject_categories_data.csv` downloads with header `Name` | planned |
-| TC-MST-07-E09 | [web] Teacher opens the page | No add, edit or delete controls; rows visible | planned |
-| TC-MST-07-E10 | [mobile] Add category `QA-Humanities`, then edit, then delete | Toasts "Category Created", "Category Updated", "Category Deleted" | planned |
-| TC-MST-07-E11 | [mobile] Add with empty name | Toast "Error - Category name is required" | planned |
-| TC-MST-07-E12 | [mobile] Student session | No Masters tab; typing the route shows no data (403) | planned |
+| TC-MST-07-A01 | Admin `POST /categories` `{name:"QA-Sciences"}` | 200 `{id,name}` | passing |
+| TC-MST-07-A02 | Admin `POST /api/v1/subject-categories` `{name:"QA-Arts"}` | 201 `{id,name}` | passing |
+| TC-MST-07-A03 | POST an existing name | 400 `Category already exists` | passing |
+| TC-MST-07-A04 | POST `QA-Sciences` and `qa-sciences` | Both 200 (case-sensitive) | passing |
+| TC-MST-07-A05 | POST name of 100 and 101 characters | 100: 200. 101: 400 `Subject category creation failed` | passing |
+| TC-MST-07-A06 | POST `{}` and `{name:123}` | 422 | passing |
+| TC-MST-07-A07 | POST `{name:""}` and `{name:"   "}` | 422 | passing |
+| TC-MST-07-A08 | With 3 categories: `GET /categories` default, `?skip=0&limit=1`, `?skip=2&limit=1` | Default: 3 items ordered by name, `total_count` 3. Second: 1 item, `has_next` true. Third: 1 item, `has_next` false | passing |
+| TC-MST-07-A09 | `GET /categories?limit=0`, `?limit=1001`, `?skip=-1` | 422 each | passing |
+| TC-MST-07-A10 | `GET /api/v1/subject-categories?limit=2` | Same shape as the main list | passing |
+| TC-MST-07-A11 | `GET /categories/dropdown` | `[{id,name}]` ordered by name; contains a category created moments ago | passing |
+| TC-MST-07-A12 | `GET /categories/{id}` valid and random uuid | 200; 404 `Subject category with id ... not found` | passing |
+| TC-MST-07-A13 | `PUT /categories/{id}` `{name:"QA-Sciences-2"}` | 200 with new name | passing |
+| TC-MST-07-A14 | `PUT` with the unchanged name; with another category's name | 200; 400 `Subject category name '<name>' already exists` | passing |
+| TC-MST-07-A15 | `PUT /categories/{random uuid}` | 404 | passing |
+| TC-MST-07-A16 | `DELETE /categories/{id}` unused | 200 `{message:"Subject category deleted successfully"}`; GET then 404 | passing |
+| TC-MST-07-A17 | `DELETE` a category used by a subject (F08) | 400 detail contains `being used by 1 subject(s)`; category intact | passing |
+| TC-MST-07-A18 | `DELETE /categories/{random uuid}` | 404 | passing |
+| TC-MST-07-A19 | `GET /masters/subjects/categories` | 200 plain array of `{id, name}` | passing |
+| TC-MST-07-A20 | Read matrix: list, dropdown, get as Admin, Staff, Teacher | 200 | passing |
+| TC-MST-07-A21 | Read matrix: the same calls as Student and Parent | 403 each (no grant) | passing |
+| TC-MST-07-A22 | Write matrix: POST, PUT, DELETE as Staff and Teacher | 403 each; Admin 2xx | passing |
+| TC-MST-07-A23 | No Authorization header on all endpoints including the alias | 401 | passing |
+| TC-MST-07-A24 | Tenant isolation: category created in tenant A | Absent from tenant B list and dropdown; B can create the same name; GET with B token 404 | passing |
+| TC-MST-07-A25 | 31 POSTs within a minute (limiter enabled) | The 31st returns 429 | skipped: The test API runs with rate limiting disabled, so the 429 cannot be produced |
+
+UI test cases (manual and automated, tenant `qa_manual`):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-MST-07-E01 | P2 | Web | Admin | Seeded categories Languages, Core Academics, Co-Curricular | 1. Sign in as Admin (qa_manual).<br>2. Open Masters > Subject Categories. | Card "Subject Categories" with column Name, the three seeded rows, "Rows per page" 5, buttons "Filters", "Export", "Add Subject Categories" | planned |
+| TC-MST-07-E02 | P1 | Web | Admin | No category "QA Languages" | 1. Click "Add Subject Categories".<br>2. Enter "QA Languages" in "Category Name".<br>3. Click "Add Subject Categories". | Toast "Subject category created successfully!"; row appears | planned |
+| TC-MST-07-E03 | P2 | Web | Admin | Seeded category "Languages" | 1. Click "Add Subject Categories".<br>2. Enter "Languages", submit. | Toast "Failed to create subject category: Category already exists" | planned |
+| TC-MST-07-E04 | P2 | Web | Admin | TC-MST-07-E02 done | 1. Click the Edit icon on "QA Languages".<br>2. Change the name to "QA Languages 2", press the green check. | Toast "Subject category updated successfully!"; row renamed | planned |
+| TC-MST-07-E05 | P2 | Web | Admin | TC-MST-07-E04 done, category unused | 1. Click the trash icon on "QA Languages 2".<br>2. In "Delete Row?" click "Delete". | Toast "Subject category deleted successfully!"; row gone | planned |
+| TC-MST-07-E06 | P2 | Web | Admin | Seeded "Languages" used by English, Hindi, Telugu | 1. Click the trash icon on "Languages".<br>2. Click "Delete". | Toast "Failed to delete subject category: Cannot delete category 'Languages' because it is being used by 3 subject(s)..."; row remains | planned |
+| TC-MST-07-E07 | P3 | Web | Admin | Seeded categories | 1. Type "Core" in "Search...".<br>2. Click the "Name" header twice.<br>3. Change "Rows per page" to 10. | Filter (current page only), sort order and paging behave as in F01 | planned |
+| TC-MST-07-E08 | P3 | Web | Admin | Seeded categories | 1. Click "Export" > "Export to CSV". | `subject_categories_data.csv` downloads with header `Name` | planned |
+| TC-MST-07-E09 | P2 | Web | Teacher | Seeded categories | 1. Sign in as Teacher.<br>2. Open Masters > Subject Categories. | Rows and "Export" visible; no add button, no Edit or trash icons | planned |
+| TC-MST-07-E10 | P1 | Mobile | Admin | No category "QA Humanities" | 1. Open Home > Masters > Subject Categories, tap "Add Subject Categories".<br>2. Enter "QA Humanities", tap "Add Subject Categories".<br>3. Edit it to "QA Humanities 2" and save.<br>4. Delete it and confirm in "Delete Subject Category". | Toasts "Category Created", "Category Updated", "Category Deleted"; the count updates each time | planned |
+| TC-MST-07-E11 | P3 | Mobile | Admin | None | 1. Tap "Add Subject Categories".<br>2. Leave "Category Name *" empty and save. | Toast "Error - Category name is required" | planned |
+| TC-MST-07-E12 | P2 | Mobile | Student | Seeded student Advik Mehta (login 002) | 1. Sign in as the student.<br>2. Open `/masters/subjectcategories` by URL. | No Masters card on Home; the screen shows "Error", "Failed to load subject categories data" and "Retry" (403) | planned |
 
 ---
 
@@ -707,20 +744,20 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 
 **Purpose.** An admin defines the subjects taught in an academic year with a name, an optional short code and a required category.
 
-**Roles and permissions.** Create: `subjects:create`. Edit: `subjects:update`. Delete (deactivate): `subjects:delete`. Lists, paginated list, dropdown, by-year and by-category reads: `subjects:list`. Single read: `subjects:read`. Admin all; Staff, Teacher, Student and Parent hold read and list. The inline category "+" needs `subject_categories:create`. Menu: Masters > Subjects (web `/masters/subjects`), Masters tab > Subjects (mobile).
+**Roles and permissions.** Create: `subjects:create`. Edit: `subjects:update`. Delete (deactivate): `subjects:delete`. Lists, paginated list, dropdown, by-year and by-category reads: `subjects:list`. Single read: `subjects:read`. Admin all; Staff, Teacher, Student and Parent hold read and list. The inline category "+" needs `subject_categories:create`. Menu: Masters > Subjects (web `/masters/subjects`), Home > Masters > Subjects (mobile).
 
 **Preconditions.** An academic year (F01) and at least one subject category (F07).
 
 **Steps, web.**
-1. Masters > Subjects. Card "Subjects": columns S.No., Name, Category, Short Code, Active, Actions; column selector, "Export" and "Add Subject". Search "Search...", sortable columns, "Previous"/"Next", "Rows per page" (default 5; paging is client-side over the full list; each page is shown sorted by category name). The list is not filtered by year on web.
+1. Masters > Subjects. Card "Subjects": columns S.No., Name, Category, Short Code, Active, Actions; column selector "Filters", "Export" and "Add Subject". Search "Search...", sortable columns, "Previous"/"Next", "Rows per page" (default 5; paging is client-side over the full list; each page is shown sorted by category name). The list is not filtered by year on web.
 2. Add: "Add Subject" opens "Add New Subject": Subject Name (required), Category (required; a category dropdown "Select Category" with a "+" button, tooltip "Create new category", that opens a popover "Create New Category" with "Category Name", "Cancel" and "Create"; the new category is auto-selected), Short Code, Active (default checked). Submit "Add Subject". The subject is created in the selected working year. Toast "Subject created successfully!". Failure toast "Failed to create subject: <reason>".
 3. Edit inline: Edit icon, change Name, Category (dropdown plus "+"), Short Code, Active; green check. Toast "Subject updated successfully!".
 4. Delete: trash icon, "Delete Row?", Delete. Toast "Subject deleted successfully!" (the subject is deactivated and stays listed as inactive).
 5. Export to CSV, Excel or Download Data.
 
 **Steps, mobile.**
-1. Masters tab > Subjects. Header "Subjects", "Export", "Add Subject"; "Filters" (column toggles, "Select All"); search "Search subjects...". The list is scoped to the working year (`academic_year_id`) and shows name, code, category, a "Practical" line when the stored flag is set, and Active/Inactive badge.
-2. Add or Edit: modal with "Subject Name *" ("Enter subject name"), "Category" (dropdown "Select Category" plus an add button that opens a category modal with "Category Name *" "Enter category name"), "Short Code" ("Enter short code (optional)"), "Active", "Cancel" and the save button. Empty name: toast "Error - Subject name is required". Toasts "Subject Created", "Subject Updated", "Subject Deleted" and "Category Created".
+1. Home > Masters > Subjects. Header "Subjects" with "n subjects", "Export", "Add Subject"; "Filters" (column toggles, "Select All"); search "Search subjects...". The list is scoped to the working year (`academic_year_id`) and shows name, code, category, a "Practical" line when the stored flag is set, and Active/Inactive badge.
+2. Add or Edit: modal "Add New Subject" with "Subject Name *" ("Enter subject name"), "Category" (dropdown "Select Category" plus an "Add" button that opens a category modal with "Category Name *" "Enter category name"), "Short Code" ("Enter short code (optional)"), "Active", "Cancel" and the save button ("Add Subject" when adding). Empty name: toast "Error - Subject name is required". Toasts "Subject Created", "Subject Updated", "Subject Deleted" and "Category Created"; failures "Create Failed", "Update Failed", "Delete Failed" with the reason.
 3. Delete icon: confirm "Delete Subject" ("Are you sure you want to delete "<name>"?"). The mobile form does not require a category before submit; the API then rejects it.
 
 **Expected results.** A created subject carries its category object, year and active flag; a deleted subject has `is_active:false` and drops out of default lists, dropdowns and the timetable subject picker.
@@ -772,48 +809,53 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 | TC-MST-08-U08 | [web] `fetchSubjects` with backend item `{short_code:"MAT", category:{id,name}, category_id}` | `code:"MAT"`, `subject_category:{id,name}`, `subject_category_id` set | passing |
 | TC-MST-08-U09 | [web] `createSubject` payload from `{subject_category_id:"c1"}` | Request body has `category_id:"c1"` and no `subject_category_id` | passing |
 | TC-MST-08-U10 | [web] `useSubjectsPaginated` with 12 items, page 1, size 5 | Items 6 to 10, `hasMore` true; page 2 returns items 11 to 12, `hasMore` false | passing |
-| TC-MST-08-A01 | Admin `POST /masters/subjects/` `{name:"QA-Maths", short_code:"QMA", category_id, academic_year_id}` | 200; body has `category:{id,name}`, `is_active:true` | planned |
-| TC-MST-08-A02 | POST the same name in the same year | 422 `detail.error_code` `BUSINESS_RULE_ERROR` | planned |
-| TC-MST-08-A03 | POST a different name with the same `short_code` in the same year | 422 `BUSINESS_RULE_ERROR` | planned |
-| TC-MST-08-A04 | POST the same name in a second academic year | 200 (name is unique per academic year) | planned |
-| TC-MST-08-A05 | POST name `"   "` | 400 `VALIDATION_ERROR` | planned |
-| TC-MST-08-A06 | POST name of 50, 51 and 101 characters | 50: 200. 51 and 101: 422 | planned |
-| TC-MST-08-A07 | POST `short_code` of 10, 11 and 21 characters | 10: 200. 11 and 21: 422 | planned |
-| TC-MST-08-A08 | POST without `category_id`; with a random `category_id`; with a random `academic_year_id` | 422; 500 `DATABASE_ERROR`; 500 `DATABASE_ERROR` | planned |
-| TC-MST-08-A09 | `GET /` default with one active and one deactivated subject created by the test | Plain array (not an object) containing the active subject and not the deactivated one | planned |
-| TC-MST-08-A10 | `GET /?active_only=false&academic_year_id=<year>` | Both subjects of that year; none from other years | planned |
-| TC-MST-08-A11 | `GET /paginated?skip=0&limit=1` then `skip=1&limit=1` with 2 subjects | `total_count` 2, `has_next` true then false | planned |
-| TC-MST-08-A12 | `GET /paginated?limit=1001`, `?limit=0`, `?skip=-1` | 400 `VALIDATION_ERROR` each | planned |
-| TC-MST-08-A13 | `GET /dropdown`, `GET /by-academic-year/{year}` | `[{id,name}]` ordered by name; active subjects of that year only | planned |
-| TC-MST-08-A14 | `GET /categories/{cat}/subjects` and `/subjects/dropdown` | Active subjects of the category (full objects; `{id,name}`) | planned |
-| TC-MST-08-A15 | `GET /{id}` valid and random uuid | 200 with category; 404 `NOT_FOUND_ERROR` | planned |
-| TC-MST-08-A16 | `PUT /{id}` `{name:"QA-Maths-2", is_active:false}` | 200; name and flag changed; category retained | planned |
-| TC-MST-08-A17 | `PUT /{id}` with another subject's name | 400 `Subject update failed.` | planned |
-| TC-MST-08-A18 | `PUT /{random uuid}` | 400 `Subject update failed.` | planned |
-| TC-MST-08-A19 | `DELETE /{id}` twice | 204 both times; `GET /{id}` shows `is_active:false`; absent from `GET /` and `/dropdown` | planned |
-| TC-MST-08-A20 | `DELETE /{random uuid}` | 400 `Subject deactivation failed.` | planned |
-| TC-MST-08-A21 | `GET /categories` | 200 plain array of `{id, name}` | planned |
-| TC-MST-08-A22 | Read matrix: `GET /`, `/paginated`, `/dropdown`, `/{id}` as all five roles | 200 for all five | planned |
-| TC-MST-08-A23 | Write matrix: POST, PUT, DELETE as Staff, Teacher, Student, Parent | 403 each; Admin 2xx | planned |
-| TC-MST-08-A24 | No Authorization header on every endpoint | 401 | planned |
-| TC-MST-08-A25 | Tenant isolation: subject created in tenant A | Absent from tenant B `GET /`, `/dropdown`; `GET /{id}` with B token 404; B may create the same name | planned |
-| TC-MST-08-A26 | Create then immediately `GET /dropdown`; update a subject name then `GET /dropdown` within 5 minutes | New subject present; renamed subject still shows the old name (no invalidation on update) | planned |
-| TC-MST-08-A27 | 31 POSTs within a minute (limiter enabled) | The 31st returns 429 | planned |
-| TC-MST-08-E01 | [web] Admin opens Masters > Subjects with seeded subjects | Table with Name, Category, Short Code, Active; rows ordered by category name | planned |
-| TC-MST-08-E02 | [web] Add Subject: name `QA-Physics`, category from the dropdown, code `QPH` | Toast "Subject created successfully!"; row appears | planned |
-| TC-MST-08-E03 | [web] In the add dialog click "+" next to Category, create `QA-Electives` | Popover closes, toast "Subject category created successfully!", `QA-Electives` is selected in the dropdown | planned |
-| TC-MST-08-E04 | [web] Submit Add Subject without selecting a category (the custom category field has no HTML required attribute) | Request is rejected with 422; toast starts "Failed to create subject:"; no row added | planned |
-| TC-MST-08-E05 | [web] Add a subject whose name already exists | Toast "Failed to create subject: <duplicate message>" | planned |
-| TC-MST-08-E06 | [web] Inline edit name and short code, green check | Toast "Subject updated successfully!" | planned |
-| TC-MST-08-E07 | [web] Delete a subject | "Delete Row?" then toast "Subject deleted successfully!"; row stays with inactive badge | planned |
-| TC-MST-08-E08 | [web] Search `QA-Phys`, sort Name, Rows per page 10 | Filter, order and paging behave as in F01 | planned |
-| TC-MST-08-E09 | [web] Teacher and Student open the page | Teacher: list only, no "+"/Add/Edit/Delete. Student: no Masters menu | planned |
-| TC-MST-08-E10 | [mobile] Add Subject `QA-Chem` with category and code | Toast "Subject Created"; card shows `Code: ...` and `Category: ...` | planned |
-| TC-MST-08-E11 | [mobile] Add Subject with empty name | Toast "Error - Subject name is required" | planned |
-| TC-MST-08-E12 | [mobile] Add Subject without choosing a category | Toast "Create Failed" (API rejects the empty category id) | planned |
-| TC-MST-08-E13 | [mobile] Add category from the add button inside the subject form | Toast "Category Created"; category appears in the dropdown | planned |
-| TC-MST-08-E14 | [mobile] Edit then delete a subject | Toasts "Subject Updated" then "Subject Deleted"; list scoped to the working year | planned |
-| TC-MST-08-E15 | [mobile] Search `Chem` and open Filters to hide Category | Filtered cards; Category line hidden | planned |
+| TC-MST-08-A01 | Admin `POST /masters/subjects/` `{name:"QA-Maths", short_code:"QMA", category_id, academic_year_id}` | 200; body has `category:{id,name}`, `is_active:true` | passing |
+| TC-MST-08-A02 | POST the same name in the same year | 422 `detail.error_code` `BUSINESS_RULE_ERROR` | passing |
+| TC-MST-08-A03 | POST a different name with the same `short_code` in the same year | 422 `BUSINESS_RULE_ERROR` | passing |
+| TC-MST-08-A04 | POST the same name in a second academic year | 200 (name is unique per academic year) | passing |
+| TC-MST-08-A05 | POST name `"   "` | 400 `VALIDATION_ERROR` | passing |
+| TC-MST-08-A06 | POST name of 50, 51 and 101 characters | 50: 200. 51 and 101: 422 | passing |
+| TC-MST-08-A07 | POST `short_code` of 10, 11 and 21 characters | 10: 200. 11 and 21: 422 | passing |
+| TC-MST-08-A08 | POST without `category_id`; with a random `category_id`; with a random `academic_year_id` | 422; 500 `DATABASE_ERROR`; 500 `DATABASE_ERROR` | passing |
+| TC-MST-08-A09 | `GET /` default with one active and one deactivated subject created by the test | Plain array (not an object) containing the active subject and not the deactivated one | passing |
+| TC-MST-08-A10 | `GET /?active_only=false&academic_year_id=<year>` | Both subjects of that year; none from other years | passing |
+| TC-MST-08-A11 | `GET /paginated?skip=0&limit=1` then `skip=1&limit=1` with 2 subjects | `total_count` 2, `has_next` true then false | passing |
+| TC-MST-08-A12 | `GET /paginated?limit=1001`, `?limit=0`, `?skip=-1` | 400 `VALIDATION_ERROR` each | passing |
+| TC-MST-08-A13 | `GET /dropdown`, `GET /by-academic-year/{year}` | `[{id,name}]` ordered by name; active subjects of that year only | passing |
+| TC-MST-08-A14 | `GET /categories/{cat}/subjects` and `/subjects/dropdown` | Active subjects of the category (full objects; `{id,name}`) | passing |
+| TC-MST-08-A15 | `GET /{id}` valid and random uuid | 200 with category; 404 `NOT_FOUND_ERROR` | passing |
+| TC-MST-08-A16 | `PUT /{id}` `{name:"QA-Maths-2", is_active:false}` | 200; name and flag changed; category retained | passing |
+| TC-MST-08-A17 | `PUT /{id}` with another subject's name | 400 `Subject update failed.` | passing |
+| TC-MST-08-A18 | `PUT /{random uuid}` | 404 | passing |
+| TC-MST-08-A19 | `DELETE /{id}` twice | 204 both times; `GET /{id}` shows `is_active:false`; absent from `GET /` and `/dropdown` | passing |
+| TC-MST-08-A20 | `DELETE /{random uuid}` | 404 | passing |
+| TC-MST-08-A21 | `GET /categories` | 200 plain array of `{id, name}` | passing |
+| TC-MST-08-A22 | Read matrix: `GET /`, `/paginated`, `/dropdown`, `/{id}` as all five roles | 200 for all five | passing |
+| TC-MST-08-A23 | Write matrix: POST, PUT, DELETE as Staff, Teacher, Student, Parent | 403 each; Admin 2xx | passing |
+| TC-MST-08-A24 | No Authorization header on every endpoint | 401 | passing |
+| TC-MST-08-A25 | Tenant isolation: subject created in tenant A | Absent from tenant B `GET /`, `/dropdown`; `GET /{id}` with B token 404; B may create the same name | passing |
+| TC-MST-08-A26 | Create then immediately `GET /dropdown`; update a subject name then `GET /dropdown` within 5 minutes | New subject present; renamed subject still shows the old name (no invalidation on update) | passing |
+| TC-MST-08-A27 | 31 POSTs within a minute (limiter enabled) | The 31st returns 429 | skipped: The test API runs with rate limiting disabled, so the 429 cannot be produced |
+
+UI test cases (manual and automated, tenant `qa_manual`):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-MST-08-E01 | P2 | Web | Admin | Seeded 10 subjects | 1. Sign in as Admin (qa_manual).<br>2. Open Masters > Subjects. | Table with Name, Category, Short Code, Active; seeded rows such as English (Languages, ENG); rows of a page grouped by category name | planned |
+| TC-MST-08-E02 | P1 | Web | Admin | No subject "QA Physics" in 2026-2027 | 1. Click "Add Subject".<br>2. Enter Subject Name "QA Physics", choose Category "Co-Curricular", Short Code "QPH".<br>3. Click "Add Subject". | Toast "Subject created successfully!"; row appears Active. Note: subjects are only deactivated, so the row stays (inactive) after cleanup | planned |
+| TC-MST-08-E03 | P2 | Web | Admin | No category "QA Electives" | 1. Click "Add Subject".<br>2. Click "+" (tooltip "Create new category").<br>3. In "Create New Category" enter "QA Electives", click "Create". | Toast "Subject category created successfully!"; popover closes; "QA Electives" is selected. Cleanup: delete the category if no subject uses it | planned |
+| TC-MST-08-E04 | P3 | Web | Admin | None | 1. Click "Add Subject".<br>2. Enter "QA NoCat", leave "Select Category".<br>3. Click "Add Subject". | Request rejected (422); toast starts "Failed to create subject:"; no row added | planned |
+| TC-MST-08-E05 | P2 | Web | Admin | Seeded "Mathematics" | 1. Click "Add Subject".<br>2. Enter "Mathematics", category "Core Academics", code "QMX".<br>3. Click "Add Subject". | Toast "Failed to create subject: ..." with the duplicate-name reason; no row added | planned |
+| TC-MST-08-E06 | P2 | Web | Admin | TC-MST-08-E02 done | 1. Click the Edit icon on "QA Physics".<br>2. Change name to "QA Physics 2" and code to "QPH2".<br>3. Press the green check. | Toast "Subject updated successfully!"; row updated | planned |
+| TC-MST-08-E07 | P2 | Web | Admin | TC-MST-08-E02 done | 1. Click the trash icon on the QA subject.<br>2. Click "Delete" in "Delete Row?". | Toast "Subject deleted successfully!"; the row stays with badge Inactive | planned |
+| TC-MST-08-E08 | P3 | Web | Admin | Seeded subjects | 1. Type "Math" in "Search...".<br>2. Click the "Name" header.<br>3. Set "Rows per page" to 10. | Filter, sort and paging behave as in F01 | planned |
+| TC-MST-08-E09 | P2 | Web | Teacher | Seeded subjects; seeded student Advik Mehta | 1. Sign in as Teacher, open Masters > Subjects.<br>2. Sign in as the student and check the sidebar. | Teacher: list and "Export" only, no "Add Subject", no Edit or trash icons. Student: no Masters entry | planned |
+| TC-MST-08-E10 | P1 | Mobile | Admin | No subject "QA Chem" | 1. Open Home > Masters > Subjects, tap "Add Subject".<br>2. Enter "QA Chem", choose "Core Academics", Short Code "QCH".<br>3. Tap "Add Subject". | Toast "Subject Created"; card shows "Code: QCH" and "Category: Core Academics" | planned |
+| TC-MST-08-E11 | P3 | Mobile | Admin | None | 1. Tap "Add Subject".<br>2. Leave "Subject Name *" empty and save. | Toast "Error - Subject name is required" | planned |
+| TC-MST-08-E12 | P3 | Mobile | Admin | None | 1. Tap "Add Subject".<br>2. Enter "QA NoCat M", leave "Select Category", save. | Toast "Create Failed" (API rejects the missing category) | planned |
+| TC-MST-08-E13 | P2 | Mobile | Admin | No category "QA Arts" | 1. Tap "Add Subject".<br>2. Tap the "Add" button next to Category.<br>3. Enter "QA Arts" in "Category Name *" and save. | Toast "Category Created"; "QA Arts" is offered in the Category dropdown. Cleanup: delete it on Subject Categories | planned |
+| TC-MST-08-E14 | P2 | Mobile | Admin | TC-MST-08-E10 done | 1. Tap Edit on "QA Chem", change the code to "QCH2", save.<br>2. Tap Delete on it and confirm "Delete". | Toasts "Subject Updated" then "Subject Deleted"; the card shows Inactive; the list holds only 2026-2027 subjects | planned |
+| TC-MST-08-E15 | P3 | Mobile | Admin | Seeded subjects | 1. Type "Science" in "Search subjects...".<br>2. Open "Filters" and untick Category. | Only General Science and Computer Science remain; the "Category:" line is hidden | planned |
 
 ---
 
@@ -821,20 +863,20 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 
 **Purpose.** A mapping says that a class and section study a subject in an academic year, with an order and an "exclude from marks" flag. This feature covers listing, inline edit, delete, the read endpoints other modules use, and the single-row create endpoint. Bulk creation from the UI is F10.
 
-**Roles and permissions.** Create: `class_subject_mappings:create`. Edit: `class_subject_mappings:update`. Delete: `class_subject_mappings:delete`. Paged list and dropdown: `class_subject_mappings:list`. Single read, `by-class` and `by-classes`: `class_subject_mappings:read`. Admin all; Staff and Teacher read and list; Student and Parent none. Menu: Masters > Class Subject Mappings (web `/masters/classsubjectmappings`), Masters tab > Class Subject Mappings (mobile).
+**Roles and permissions.** Create: `class_subject_mappings:create`. Edit: `class_subject_mappings:update`. Delete: `class_subject_mappings:delete`. Paged list and dropdown: `class_subject_mappings:list`. Single read, `by-class` and `by-classes`: `class_subject_mappings:read`. Admin all; Staff and Teacher read and list; Student and Parent none. Menu: Masters > Class Subject Mappings (web `/masters/classsubjectmappings`), Home > Masters > Class Subject Mappings (mobile).
 
 **Preconditions.** Academic year, class with sections, subjects (F01, F03, F08).
 
 **Steps, web.**
-1. Masters > Class Subject Mappings. Card "Class-Subject Mappings" lists mappings of the working year (including inactive) with columns Class, Section ("All" when the mapping has no section), Subject, Exclude from Marks (Yes or No), Order, Active, S.No. and Actions. Buttons: column selector, "Export", "Add Class-Subject Mappings" (F10). Search "Search...", sortable headers, server paging ("Previous", "Next", "Rows per page", default 5).
+1. Masters > Class Subject Mappings. Card "Class-Subject Mappings" lists mappings of the working year (including inactive) with columns Class, Section ("All" when the mapping has no section), Subject, Exclude from Marks (Yes or No), Order, Active, S.No. and Actions. Buttons: column selector "Filters", "Export", "Add Class-Subject Mappings" (F10). Search "Search..." (filters only the rows of the current page), sortable headers, server paging ("Previous", "Next", "Rows per page", default 5).
 2. Edit inline: Edit icon; Exclude from Marks (checkbox), Order (text box) and Active (checkbox) are editable; Class, Section and Subject are read-only. Green check saves. Toast "Class-subject mapping updated successfully!" or "Failed to update mapping: <reason>".
 3. Delete: trash icon, "Delete Row?", Delete. Toast "Class-subject mapping deleted successfully!". The row is removed (hard delete).
 4. Export to CSV, Excel or Download Data.
 
 **Steps, mobile.**
-1. Masters tab > Class Subject Mappings. Header "Class Subject Mappings", subtitle "Map subjects to classes and manage settings". Cards show the subject name, "Class: ...", "Section: ...", badges Active or Inactive, "Excl. Marks" and "Order: n". Search "Search by class, section or subject..."; "Filters" opens "Show Fields" with "Select All"; "Export" opens "Export As".
-2. Edit icon opens "Edit Mapping": Order ("e.g. 1"), "Exclude from Marks", "Active", buttons "Cancel" and "Save Changes". Failure toast "Update Failed".
-3. Delete icon opens a confirm; success toast "Removed - Subject mapping has been removed." Failure toast "Remove Failed".
+1. Home > Masters > Class Subject Mappings. Header "Class Subject Mappings", subtitle "Map subjects to classes and manage settings", button "Add Subject Mapping" and "n mappings" (mappings of the working year). Cards show the subject name, "Class: ...", "Section: ...", badges Active or Inactive, "Excl. Marks" and "Order: n". Search "Search by class, section or subject..."; the "Filters" icon opens "Show Fields" with "Select All"; the "Export" icon opens "Export As" (Export to CSV, Export to Excel, Download Data).
+2. Edit icon opens "Edit Mapping": Order ("e.g. 1"), "Exclude from Marks", "Active", buttons "Cancel" and "Save Changes". Success toast "Mapping updated successfully"; failure toast "Update Failed".
+3. Delete icon opens the confirm "Remove Mapping" ("Remove "<subject>" from the class?", button "Remove"); success toast "Removed - Subject mapping has been removed." Failure toast "Remove Failed".
 
 **Expected results.** Edits change only the three editable flags; deleted rows are gone; consumers read the active mappings: the timetable subject picker (TTC) and exam subject configuration (`by-classes`).
 
@@ -848,8 +890,8 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 
 **Rules and validations.**
 1. `ClassSubjectMapRead` carries `class_name`, `section_name`, `subject_name`, `academic_year_name`; `section_name` is null for class-level rows.
-2. There is no database unique constraint on (class, section, subject, year), and the single `POST /` does not check duplicates, that the section belongs to the class, or that the subject belongs to the year. A null `section_id` creates a class-level row that the timetable picker treats as "all sections".
-3. `GET /dropdown` fails with 500 when any matching active mapping has a null section (the response requires `section_name`).
+2. Unique indexes on (class, section, subject, year), and on (class, subject, year) where the section is null (migration 0007), reject a duplicate single `POST /` with 409. The single create does not check that the section belongs to the class or that the subject belongs to the year. A null `section_id` creates a class-level row that the timetable picker treats as "all sections".
+3. `GET /dropdown` returns class-level rows with `section_name: null` (module doc rule 10).
 4. Without `section_id`, `by-class` and `by-classes` return one row per section mapping, so a subject repeats; consumers must de-duplicate by `subject_id`.
 5. List and read filters default to `active_only=true`; management screens pass `active_only=false`.
 6. Update accepts any subset of fields, including ids; an invalid foreign key returns 400.
@@ -879,43 +921,48 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 | TC-MST-09-U05 | [backend] `get_class_subject_mappings_by_classes([])` | Returns `{}` without querying | passing |
 | TC-MST-09-U06 | [web] `fetchClassSubjectMappings` with `{items,total_count}` and with a plain array | `{items,total}` using `total_count`; array length as total | passing |
 | TC-MST-09-U07 | [mobile] Mapping filter `math` over class, section and subject names | Rows whose any of the three names contains `math` | blocked: needs the mapping filter exported from mobile/app/masters/classsubjectmappings.tsx |
-| TC-MST-09-A01 | Admin `POST /` with class, section, subject, year, `order:1`, `exclude_marks:true` | 201 body with `class_name`, `section_name`, `subject_name`, `academic_year_name`, flags as sent | planned |
-| TC-MST-09-A02 | POST without `section_id` | 201 with `section_id:null`, `section_name:null` | planned |
-| TC-MST-09-A03 | POST the identical mapping twice | Both 201 (no unique constraint; documents Known gap) | planned |
-| TC-MST-09-A04 | POST with a random `subject_id`; with a missing `class_id` | 400 `Class-subject mapping creation failed.`; 422 | planned |
-| TC-MST-09-A05 | `GET /` default with 3 mappings (1 inactive) | `{items,total_count,has_next}`; only active rows; ordered by class then section then order | planned |
-| TC-MST-09-A06 | `GET /?active_only=false&class_id=&section_id=&academic_year_id=` | Filters combine; inactive included | planned |
-| TC-MST-09-A07 | `GET /?limit=0`, `?limit=1001`, `?skip=-1` | 422 each | planned |
-| TC-MST-09-A08 | `GET /?skip=0&limit=2` then `skip=2&limit=2` with 3 rows | `total_count` 3; `has_next` true then false | planned |
-| TC-MST-09-A09 | `GET /by-class/{class}` with 2 sections mapped to the same subject | Two rows for that subject (repeat); sorted by `order` with nulls first | planned |
-| TC-MST-09-A10 | `GET /by-class/{class}?section_id=<s>&academic_year_id=<y>&active_only=false` | Only that section's rows including inactive | planned |
-| TC-MST-09-A11 | `GET /by-classes?class_ids=<c1>&class_ids=<c2>` where c2 has no mapping | Object with both keys; c2 is `[]` | planned |
-| TC-MST-09-A12 | `GET /by-classes` without `class_ids` | 422 | planned |
-| TC-MST-09-A13 | `GET /dropdown` with all mappings sectioned | `[{id,class_name,section_name,subject_name,exclude_marks,order}]` of active rows | planned |
-| TC-MST-09-A14 | `GET /dropdown` after creating a mapping with null section (A02) | 500 (documents the defect) | planned |
-| TC-MST-09-A15 | `GET /{id}` valid and random uuid | 200; 404 `Class-subject mapping not found` | planned |
-| TC-MST-09-A16 | `PUT /{id}` `{exclude_marks:false, order:5, is_active:false}` | 200 with those values; names unchanged | planned |
-| TC-MST-09-A17 | `PUT /{id}` with `subject_id` set to a random uuid | 400 `Update failed` | planned |
-| TC-MST-09-A18 | `PUT /{random uuid}` and `DELETE /{random uuid}` | 404 each | planned |
-| TC-MST-09-A19 | `DELETE /{id}` | 204; `GET /{id}` then 404 | planned |
-| TC-MST-09-A20 | Read matrix: `GET /`, `/by-class/{c}`, `/by-classes`, `/dropdown`, `/{id}` as Admin, Staff, Teacher | 200 | planned |
-| TC-MST-09-A21 | Same reads as Student and Parent | 403 each | planned |
-| TC-MST-09-A22 | Write matrix: POST, PUT, DELETE as Staff, Teacher, Student, Parent | 403 each; Admin 2xx | planned |
-| TC-MST-09-A23 | No Authorization header on every endpoint | 401 | planned |
-| TC-MST-09-A24 | Tenant isolation: tenant B calls `GET /`, `/by-class/{A's class}`, `/{A's id}` | Empty lists; `by-classes` keys with empty lists; `GET /{id}` 404 | planned |
-| TC-MST-09-A25 | 31 single POSTs within a minute (limiter enabled) | The 31st returns 429 | planned |
-| TC-MST-09-E01 | [web] Admin opens Class Subject Mappings after F10 setup | Rows with Class, Section ("All" for null), Subject, Exclude from Marks, Order, Active | planned |
-| TC-MST-09-E02 | [web] Search a subject name; sort Class; change Rows per page | Filter, order and paging as in F01 (server paged) | planned |
-| TC-MST-09-E03 | [web] Inline edit: tick Exclude from Marks, set Order `3`, green check | Toast "Class-subject mapping updated successfully!"; row shows Yes and 3 | planned |
-| TC-MST-09-E04 | [web] Inline edit: clear Order and save | Toast "Failed to update mapping: ..." (422) | planned |
-| TC-MST-09-E05 | [web] Untick Active on a row | Row shows the inactive badge; subject no longer offered in the timetable picker | planned |
-| TC-MST-09-E06 | [web] Delete a row | "Delete Row?" then toast "Class-subject mapping deleted successfully!"; row gone | planned |
-| TC-MST-09-E07 | [web] Teacher opens the page | List only; no add, edit or delete controls | planned |
-| TC-MST-09-E08 | [mobile] Admin opens the screen; search a class name | Cards filter by class, section or subject | planned |
-| TC-MST-09-E09 | [mobile] Edit icon: Order `2`, tick Exclude from Marks, Save Changes | Card shows "Order: 2" and "Excl. Marks" | planned |
-| TC-MST-09-E10 | [mobile] Delete icon, confirm | Toast "Removed - Subject mapping has been removed."; card gone | planned |
-| TC-MST-09-E11 | [mobile] Filters > deselect Section | Section line hidden on every card | planned |
-| TC-MST-09-E12 | [mobile] Student and Parent | No Masters tab | planned |
+| TC-MST-09-A01 | Admin `POST /` with class, section, subject, year, `order:1`, `exclude_marks:true` | 201 body with `class_name`, `section_name`, `subject_name`, `academic_year_name`, flags as sent | passing |
+| TC-MST-09-A02 | POST without `section_id` | 201 with `section_id:null`, `section_name:null` | passing |
+| TC-MST-09-A03 | POST the identical mapping twice | First 201; second 409 | passing |
+| TC-MST-09-A04 | POST with a random `subject_id`; with a missing `class_id` | 400 `Class-subject mapping creation failed.`; 422 | passing |
+| TC-MST-09-A05 | `GET /` default with 3 mappings (1 inactive) | `{items,total_count,has_next}`; only active rows; ordered by class then section then order | passing |
+| TC-MST-09-A06 | `GET /?active_only=false&class_id=&section_id=&academic_year_id=` | Filters combine; inactive included | passing |
+| TC-MST-09-A07 | `GET /?limit=0`, `?limit=1001`, `?skip=-1` | 422 each | passing |
+| TC-MST-09-A08 | `GET /?skip=0&limit=2` then `skip=2&limit=2` with 3 rows | `total_count` 3; `has_next` true then false | passing |
+| TC-MST-09-A09 | `GET /by-class/{class}` with 2 sections mapped to the same subject | Two rows for that subject (repeat); sorted by `order` with nulls first | passing |
+| TC-MST-09-A10 | `GET /by-class/{class}?section_id=<s>&academic_year_id=<y>&active_only=false` | Only that section's rows including inactive | passing |
+| TC-MST-09-A11 | `GET /by-classes?class_ids=<c1>&class_ids=<c2>` where c2 has no mapping | Object with both keys; c2 is `[]` | passing |
+| TC-MST-09-A12 | `GET /by-classes` without `class_ids` | 422 | passing |
+| TC-MST-09-A13 | `GET /dropdown` with all mappings sectioned | `[{id,class_name,section_name,subject_name,exclude_marks,order}]` of active rows | passing |
+| TC-MST-09-A14 | `GET /dropdown` after creating a mapping with null section (A02) | 200 | passing |
+| TC-MST-09-A15 | `GET /{id}` valid and random uuid | 200; 404 `Class-subject mapping not found` | passing |
+| TC-MST-09-A16 | `PUT /{id}` `{exclude_marks:false, order:5, is_active:false}` | 200 with those values; names unchanged | passing |
+| TC-MST-09-A17 | `PUT /{id}` with `subject_id` set to a random uuid | 400 `Update failed` | passing |
+| TC-MST-09-A18 | `PUT /{random uuid}` and `DELETE /{random uuid}` | 404 each | passing |
+| TC-MST-09-A19 | `DELETE /{id}` | 204; `GET /{id}` then 404 | passing |
+| TC-MST-09-A20 | Read matrix: `GET /`, `/by-class/{c}`, `/by-classes`, `/dropdown`, `/{id}` as Admin, Staff, Teacher | 200 | passing |
+| TC-MST-09-A21 | Same reads as Student and Parent | 403 each | passing |
+| TC-MST-09-A22 | Write matrix: POST, PUT, DELETE as Staff, Teacher, Student, Parent | 403 each; Admin 2xx | passing |
+| TC-MST-09-A23 | No Authorization header on every endpoint | 401 | passing |
+| TC-MST-09-A24 | Tenant isolation: tenant B calls `GET /`, `/by-class/{A's class}`, `/{A's id}` | Empty lists; `by-classes` keys with empty lists; `GET /{id}` 404 | passing |
+| TC-MST-09-A25 | 31 single POSTs within a minute (limiter enabled) | The 31st returns 429 | skipped: The test API runs with rate limiting disabled, so the 429 cannot be produced |
+
+UI test cases (manual and automated, tenant `qa_manual`):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-MST-09-E01 | P1 | Web | Admin | Seeded mappings for 2026-2027 | 1. Sign in as Admin (qa_manual).<br>2. Open Masters > Class Subject Mappings. | Card "Class-Subject Mappings" with Class, Section, Subject, Exclude from Marks, Order, Active; seeded rows such as Class 1 / 1-A / English / No / 1 / Active | planned |
+| TC-MST-09-E02 | P3 | Web | Admin | Seeded mappings | 1. Type "English" in "Search...".<br>2. Click the "Class" header.<br>3. Set "Rows per page" to 20. | Filter (current page only), sort and server paging behave as in F01 | planned |
+| TC-MST-09-E03 | P2 | Web | Admin | TC-MST-10-E01 done (QA C9 mappings) | 1. Search the QA class mapping row, click its Edit icon.<br>2. Tick "Exclude from Marks", set Order "3".<br>3. Press the green check. | Toast "Class-subject mapping updated successfully!"; row shows Yes and 3 | planned |
+| TC-MST-09-E04 | P3 | Web | Admin | TC-MST-10-E01 done | 1. Edit a QA mapping row.<br>2. Clear "Order" and press the green check. | Toast "Failed to update mapping: ..." (422); row unchanged | planned |
+| TC-MST-09-E05 | P2 | Web | Admin | TC-MST-10-E01 done | 1. Edit a QA mapping row, untick "Active", save.<br>2. Open Timetable, choose the QA class and a section, open the subject picker. | Row shows Inactive; that subject is not offered for the QA class | planned |
+| TC-MST-09-E06 | P2 | Web | Admin | TC-MST-10-E01 done | 1. Click the trash icon on each QA mapping row.<br>2. Click "Delete" in "Delete Row?". | Toast "Class-subject mapping deleted successfully!"; rows gone (hard delete) | planned |
+| TC-MST-09-E07 | P2 | Web | Teacher | Seeded mappings | 1. Sign in as Teacher.<br>2. Open Masters > Class Subject Mappings. | List and "Export" only; no "Add Class-Subject Mappings", no Edit or trash icons | planned |
+| TC-MST-09-E08 | P1 | Mobile | Admin | Seeded mappings | 1. Open Home > Masters > Class Subject Mappings.<br>2. Type "Class 3" in "Search by class, section or subject...". | Subtitle "Map subjects to classes and manage settings", "n mappings"; only Class 3 cards remain (subject, "Class: Class 3", "Section: 3-A" or "3-B", Active, "Order: n") | planned |
+| TC-MST-09-E09 | P2 | Mobile | Admin | TC-MST-10-E09 done (QA class mappings) | 1. Tap Edit on a QA mapping card.<br>2. In "Edit Mapping" set Order "2", turn on "Exclude from Marks".<br>3. Tap "Save Changes". | Toast "Mapping updated successfully"; card shows "Order: 2" and "Excl. Marks" | planned |
+| TC-MST-09-E10 | P2 | Mobile | Admin | TC-MST-10-E09 done | 1. Tap Delete on a QA mapping card.<br>2. In "Remove Mapping" tap "Remove". | Toast "Removed - Subject mapping has been removed."; card gone | planned |
+| TC-MST-09-E11 | P3 | Mobile | Admin | Seeded mappings | 1. Tap the "Filters" icon.<br>2. In "Show Fields" untick Section. | The "Section:" line is hidden on every card | planned |
+| TC-MST-09-E12 | P2 | Mobile | Student | Seeded student Advik Mehta (login 002) | 1. Sign in as the student.<br>2. Check Home; open `/masters/classsubjectmappings` by URL. | No Masters card; the screen loads no mappings (403) | planned |
 
 ---
 
@@ -929,15 +976,15 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 
 **Steps, web.**
 1. On Class Subject Mappings click "Add Class-Subject Mappings". Dialog "Add Class-Subject Mappings".
-2. "Class": choose from "Select Class" (active classes). A "Sections" multi-select appears ("Select one or more sections"). Choosing "All Sections" replaces any other selection. A blue note shows "Mappings will be created for N selected section(s)"; for All Sections an amber warning "This will apply mappings to all N section(s) in <class>".
+2. "Class": choose from "Select Class" (active classes). A "Sections" multi-select appears ("Select one or more sections", first option "All Sections"). Choosing "All Sections" replaces any other selection. A blue note shows "Mappings will be created for 2 selected sections" ("1 selected section" for one); for All Sections an amber warning "This will apply mappings to all 2 sections in <class>".
 3. "Subjects": multi-select "Select multiple subjects..." (already chosen subjects are removed from the list; the options are all subjects returned by the API). A table "Selected Subjects Settings" lists each subject with Order (number, minimum 1, auto-numbered), Exclude Marks (checkbox), Active (checkbox, default on) and a Remove (trash) button.
-4. Submit "Add N Mappings" ("Add 1 Mapping" for one; "Adding..." while pending; disabled until a class, at least one section and at least one subject are chosen and a working year exists). One bulk request is sent per selected section, or a single request without `section_id` for All Sections. The toast shows the API message (for example "Successfully processed class-subject mappings: 3 created, 0 updated, 0 deactivated"); the dialog closes after the last request.
+4. Buttons "Cancel" and "Add N Mappings" ("Add 0 Mappings" when nothing is chosen, "Add 1 Mapping" for one; "Adding..." while pending; disabled until a class, at least one section and at least one subject are chosen and a working year exists). One bulk request is sent per selected section, or a single request without `section_id` for All Sections. The toast shows the API message (for example "Successfully processed class-subject mappings: 3 created, 0 updated, 0 deactivated"); the dialog closes after the last request. Closing with unsaved choices asks "Discard changes?".
 
 **Steps, mobile.**
-1. Click "Add Subject Mapping". Modal "Add Subject Mappings": "Select a Class" (a class picker), "Select Sections" with "Done" (empty selection means all sections), a list of the subjects not yet mapped to that class (text "All subjects mapped" when none), and per selected subject Order (placeholder "Auto"), "Exclude from Marks" and "Active". Buttons "Cancel" and the add button.
-2. No class: toast "Select a Class - Please select a class before adding subjects." Success toast "Subjects Added - N subject(s) mapped to class." or "... mapped to N sections."
+1. Tap "Add Subject Mapping". Sheet "Add Subject Mappings" (subtitle "<class> . n selected"): a class selector "Select Class" (empty state "Select a Class - Choose a class above to see its sections and available subjects."); after a class is chosen a section selector that reads "All Sections" by default and opens "Select Sections" with "Done" (empty selection means all sections; it then reads the section name or "n sections selected"); a list of the subjects not yet mapped to that class ("All subjects mapped - All available subjects are already mapped to this class." when none), and per selected subject Order (placeholder "Auto"), "Exclude from Marks" and "Active". The add button "Add (n)" appears only when the class has unmapped subjects and is disabled until a subject is ticked.
+2. Success toast "Subjects Added - N subject(s) mapped to class." or "... mapped to N sections."; failure "Add Failed". The "Select a Class - Please select a class before adding subjects." toast exists in code but cannot be reached, because the add button is hidden until a class is chosen.
 
-**Expected results.** For each processed section the sent subjects exist as active mappings with the given order and flags; any previously active mapping of that class, section and year whose subject was not sent is set inactive.
+**Expected results.** For each processed section the sent subjects exist as mappings with the given order and flags; mappings of that class, section and year whose subject was not sent are left unchanged.
 
 **API endpoints.**
 - `POST /api/v1/masters/class-subject-mappings/bulk` `{class_id, section_id?, academic_year_id, subjects:[{subject_id, order?, exclude_marks=false, is_active=true}]}` -> 201 `{success, message, created_count, updated_count, deactivated_count, sections_processed, mappings:[ClassSubjectMapRead]}`.
@@ -978,33 +1025,39 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 | TC-MST-10-U09 | [web] Modal subject selection of 3 subjects then removing the 2nd | Orders become 1 and 2; `isFormValid` false until class, section and subject chosen | blocked: needs the selection logic exported from web/src/components/masters/classsubjectmappings/AddBulkClassSubjectMappingsModal.tsx |
 | TC-MST-10-U10 | [web] Selecting "All Sections" with sections A and B selected | Selection becomes only "All Sections"; submit sends `section_id` undefined once | blocked: needs the All Sections logic exported from web/src/components/masters/classsubjectmappings/AddBulkClassSubjectMappingsModal.tsx |
 | TC-MST-10-U11 | [mobile] `handleBulkAdd` with empty section selection and 2 subjects | One request with `section_id` undefined and 2 subject items (order numbers from the inputs) | blocked: needs handleBulkAdd payload builder exported from mobile/app/masters/classsubjectmappings.tsx |
-| TC-MST-10-A01 | Admin `POST /bulk` with class, section A, year, subjects S1 (order 1) and S2 (order 2, exclude_marks true) | 201; `created_count` 2, `updated_count` 0, `deactivated_count` 0, `sections_processed` 1; `mappings` has 2 items with names | planned |
-| TC-MST-10-A02 | POST again with S1 order 5 and S3 | `updated_count` 1 (S1), `created_count` 1 (S3), `deactivated_count` 0; S2 stays `is_active:true` | planned |
-| TC-MST-10-A03 | POST with `subjects:[]` | 201; nothing changes; `mappings:[]` | planned |
-| TC-MST-10-A04 | POST with `section_id` null on a class with sections A, B active and C inactive | `sections_processed` 2; mappings only for A and B; C gets none | planned |
-| TC-MST-10-A05 | POST with null section on a class with no active section | 404 `No active sections found for this class` | planned |
-| TC-MST-10-A06 | POST with a section of another class | 404 `Section not found or does not belong to the specified class` | planned |
-| TC-MST-10-A07 | POST with a random `class_id`; with a random `academic_year_id` | 404 `Class not found`; 404 `Academic year not found` | planned |
-| TC-MST-10-A08 | POST with an unknown subject id plus one valid subject | 201; `created_count` 1; unknown id skipped | planned |
-| TC-MST-10-A09 | POST with the same new subject twice | `created_count` 2; two rows for that subject (documents the defect) | planned |
-| TC-MST-10-A10 | POST missing `class_id`, `academic_year_id`, `subjects`; invalid uuid in `subject_id` | 422 each | planned |
-| TC-MST-10-A11 | `by-class` after A01 and A02 | Active rows reflect the latest request (S1, S3); order values as sent | planned |
-| TC-MST-10-A12 | Role matrix: POST as Staff, Teacher, Student, Parent | 403 each; Admin 201 | planned |
-| TC-MST-10-A13 | No Authorization header | 401 | planned |
-| TC-MST-10-A14 | Tenant isolation: tenant B posts with tenant A's class id | 404 `Class not found`; no rows created in A | planned |
-| TC-MST-10-A15 | 11 POSTs within a minute (limiter enabled) | The 11th returns 429 | planned |
-| TC-MST-10-E01 | [web] Add Class-Subject Mappings: class `QA-C1`, All Sections, subjects Maths and Science (orders 1, 2) | Info warning shows the section count; toast with "Successfully processed class-subject mappings"; rows for every section appear in the table | planned |
-| TC-MST-10-E02 | [web] Select two sections only | Blue note "Mappings will be created for 2 selected section(s)"; two requests; rows only for those sections | planned |
-| TC-MST-10-E03 | [web] Choose "All Sections" while A and B are selected | Selection collapses to "All Sections" | planned |
-| TC-MST-10-E04 | [web] Submit button state | Disabled until class, a section and at least one subject are chosen | planned |
-| TC-MST-10-E05 | [web] Remove a subject from the settings table; set an Order and untick Active | Orders renumber after removal; the posted values appear in the table after submit | planned |
-| TC-MST-10-E06 | [web] Re-open the dialog and add only History to a section that already has Maths | After submit both Maths and History are active | planned |
-| TC-MST-10-E07 | [web] Cancel with unsaved selections | "Discard changes?" guard appears | planned |
-| TC-MST-10-E08 | [web] Teacher opens the page | No "Add Class-Subject Mappings" button | planned |
-| TC-MST-10-E09 | [mobile] Add Subject Mapping: pick class, leave sections empty, pick two subjects, Add | Toast "Subjects Added - 2 subject(s) mapped to class."; cards appear for every section | planned |
-| TC-MST-10-E10 | [mobile] Add without selecting a class | Toast "Select a Class - Please select a class before adding subjects." | planned |
-| TC-MST-10-E11 | [mobile] Class whose subjects are all mapped | Modal shows "All subjects mapped" | planned |
-| TC-MST-10-E12 | [mobile] Select sections A and B via "Select Sections" > Done, add one subject | Toast "... mapped to 2 sections."; two cards | planned |
+| TC-MST-10-A01 | Admin `POST /bulk` with class, section A, year, subjects S1 (order 1) and S2 (order 2, exclude_marks true) | 201; `created_count` 2, `updated_count` 0, `deactivated_count` 0, `sections_processed` 1; `mappings` has 2 items with names | passing |
+| TC-MST-10-A02 | POST again with S1 order 5 and S3 | `updated_count` 1 (S1), `created_count` 1 (S3), `deactivated_count` 0; S2 stays `is_active:true` | passing |
+| TC-MST-10-A03 | POST with `subjects:[]` | 201; nothing changes; `mappings:[]` | passing |
+| TC-MST-10-A04 | POST with `section_id` null on a class with sections A, B active and C inactive | `sections_processed` 2; mappings only for A and B; C gets none | passing |
+| TC-MST-10-A05 | POST with null section on a class with no active section | 404 `No active sections found for this class` | passing |
+| TC-MST-10-A06 | POST with a section of another class | 404 `Section not found or does not belong to the specified class` | passing |
+| TC-MST-10-A07 | POST with a random `class_id`; with a random `academic_year_id` | 404 `Class not found`; 404 `Academic year not found` | passing |
+| TC-MST-10-A08 | POST with an unknown subject id plus one valid subject | 201; `created_count` 1; unknown id skipped | passing |
+| TC-MST-10-A09 | POST with the same new subject twice | `created_count` 2; two rows for that subject (documents the defect) | passing |
+| TC-MST-10-A10 | POST missing `class_id`, `academic_year_id`, `subjects`; invalid uuid in `subject_id` | 422 each | passing |
+| TC-MST-10-A11 | `by-class` after A01 and A02 | Active rows reflect the latest request (S1, S3); order values as sent | passing |
+| TC-MST-10-A12 | Role matrix: POST as Staff, Teacher, Student, Parent | 403 each; Admin 201 | passing |
+| TC-MST-10-A13 | No Authorization header | 401 | passing |
+| TC-MST-10-A14 | Tenant isolation: tenant B posts with tenant A's class id | 404 `Class not found`; no rows created in A | passing |
+| TC-MST-10-A15 | 11 POSTs within a minute (limiter enabled) | The 11th returns 429 | skipped: The test API runs with rate limiting disabled, so the 429 cannot be produced |
+
+UI test cases (manual and automated, tenant `qa_manual`):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-MST-10-E01 | P1 | Web | Admin | TC-MST-03-E06 done (QA C9 with sections A, B, C, no mappings) | 1. On Class Subject Mappings click "Add Class-Subject Mappings".<br>2. Select Class "QA C9", Sections "All Sections".<br>3. Select Subjects "Mathematics" and "English".<br>4. Click "Add 2 Mappings". | Amber note "This will apply mappings to all 3 sections in QA C9"; toast "Successfully processed class-subject mappings ..." (3 sections); rows for A, B and C appear with orders 1 and 2 | planned |
+| TC-MST-10-E02 | P2 | Web | Admin | QA C9 without mappings (or after TC-MST-09-E06) | 1. Open the dialog, select "QA C9".<br>2. Select sections "A" and "B".<br>3. Select "Hindi", click "Add 1 Mapping". | Blue note "Mappings will be created for 2 selected sections"; two requests; rows only for A and B | planned |
+| TC-MST-10-E03 | P3 | Web | Admin | QA C9 | 1. Open the dialog, select "QA C9", sections "A" and "B".<br>2. Select "All Sections". | The selection collapses to "All Sections" only | planned |
+| TC-MST-10-E04 | P3 | Web | Admin | QA C9 | 1. Open the dialog and watch the submit button while choosing class, section and subject in turn. | "Add 0 Mappings" is disabled until a class, a section and at least one subject are chosen | planned |
+| TC-MST-10-E05 | P3 | Web | Admin | QA C9 | 1. Select class, "All Sections" and subjects "English", "Hindi", "Telugu".<br>2. Remove "Hindi" with its trash button.<br>3. Untick "Active" for Telugu.<br>4. Click "Add 2 Mappings". | Orders renumber to 1 and 2 after the removal; after submit Telugu rows show Inactive | planned |
+| TC-MST-10-E06 | P2 | Web | Admin | TC-MST-10-E01 done (Mathematics and English on QA C9) | 1. Open the dialog, select "QA C9", section "A".<br>2. Select only "Social Studies", submit. | Section A now has Mathematics, English and Social Studies all active (bulk add does not deactivate others) | planned |
+| TC-MST-10-E07 | P3 | Web | Admin | None | 1. Open the dialog and select a class.<br>2. Click "Cancel". | "Discard changes?" guard appears; confirming closes the dialog with nothing saved | planned |
+| TC-MST-10-E08 | P2 | Web | Teacher | Seeded mappings | 1. Sign in as Teacher.<br>2. Open Masters > Class Subject Mappings. | No "Add Class-Subject Mappings" button | planned |
+| TC-MST-10-E09 | P1 | Mobile | Admin | TC-MST-03-E13 done (QA C8 with sections A, B, no mappings) | 1. Tap "Add Subject Mapping".<br>2. Tap "Select Class", pick "QA C8"; leave the section selector on "All Sections".<br>3. Tick "Mathematics" and "English".<br>4. Tap "Add (2)". | Toast "Subjects Added - 2 subject(s) mapped to 2 sections."; cards appear for A and B | planned |
+| TC-MST-10-E10 | P3 | Mobile | Admin | None | 1. Tap "Add Subject Mapping" without choosing a class. | The sheet shows "Select a Class" and no add button | obsolete: the add button is hidden until a class is chosen, so the "Select a Class" toast cannot be reached; see TC-MST-10-E13 |
+| TC-MST-10-E11 | P3 | Mobile | Admin | Seeded "Class 1" (8 of 10 subjects mapped) | 1. Tap "Add Subject Mapping", pick "Class 1". | Only General Science and Social Studies are listed. For a class with every subject mapped the sheet shows "All subjects mapped" | planned |
+| TC-MST-10-E12 | P2 | Mobile | Admin | QA C8 with sections A and B, "Hindi" unmapped | 1. Tap "Add Subject Mapping", pick "QA C8".<br>2. Open the section selector, select A and B in "Select Sections", tap "Done".<br>3. Tick "Hindi", tap "Add (1)". | Selector reads "2 sections selected"; toast "Subjects Added - 1 subject(s) mapped to 2 sections."; two new cards | planned |
+| TC-MST-10-E13 | P3 | Mobile | Admin | None | 1. Tap "Add Subject Mapping".<br>2. Look for an add button before choosing a class. | Empty state "Select a Class - Choose a class above to see its sections and available subjects."; no add button until a class with unmapped subjects is chosen | planned |
 
 ---
 
@@ -1012,19 +1065,19 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 
 **Purpose.** An admin or staff member views, searches, edits and deletes parent and guardian profiles and sees which students each parent is linked to. Parent profiles are normally created through student admission (Students module).
 
-**Roles and permissions.** Create: `parent_management:create`. List, search and salary-range list: `parent_management:list` (the salary dropdown needs only a valid login). Single read: `parent_management:read`. Edit: `parent_management:update`. Delete: `parent_management:delete`. Admin all; Staff create, read, update and list (no delete); Teacher, Student and Parent none. Menu: Masters > Parents (web `/masters/parents`), Masters tab > Parents (mobile, hub fallback list only when the backend menu has not loaded).
+**Roles and permissions.** Create: `parent_management:create`. List, search and salary-range list: `parent_management:list` (the salary dropdown needs only a valid login). Single read: `parent_management:read`. Edit: `parent_management:update`. Delete: `parent_management:delete`. Admin all; Staff create, read, update and list (no delete); Teacher, Student and Parent none. Menu: Masters > Parents (web `/masters/parents`), Home > Masters > Parents (mobile `/masters/parents`; the seeded menu has a Parents card).
 
 **Preconditions.** Parent rows exist (from admission or a database fixture); each parent row needs a linked user account.
 
 **Steps, web.**
-1. Masters > Parents. Page header "Parent Management" with a "Parent Portal Access" note and the table "Parent Profiles". Columns S.No., Name (gender under the name), Contact (email and phone), Relationship (Father, Mother or Guardian badge), Occupation, Students ("n student(s)") and Actions (Edit Parent, Delete Parent; shown only with update or delete permission). Search "Search parents..." (name, email, phone, occupation, relationship) and sort on Name, Relationship and Occupation. There is no paging (first 100 parents). Empty state "No parent profiles found." with "Create First Parent Profile" for roles with create.
-2. "Add Parent" (create permission): dialog "Create Parent Profile" with Full Name *, Email, Phone, Occupation, Aadhar Number, Gender, Relationship to Student * (Father, Mother, Guardian); Save. Email or phone is required on create (it becomes the parent's login); the API creates the parent user with the default first-login password.
-3. Edit Parent: dialog "Edit Parent Profile", same fields, Save. Empty optional fields are not sent. Toast "Parent profile updated successfully". Validation toast "Parent name is required".
-4. Delete Parent: dialog "Delete Parent Profile" ("... will remove all student associations."), "Delete". Toast "Parent profile deleted successfully".
+1. Masters > Parents. Page header "Parent Management" ("Manage parent profiles and their relationships with students") with a "Parent Portal Access" note and the table "Parent Profiles". Columns S.No., Name (gender under the name), Contact (email and phone), Relationship (Father, Mother or Guardian badge), Occupation ("-" when empty), Students ("1 student" or "n students") and Actions (icons "Edit Parent", "Delete Parent"; shown only with update or delete permission). Search "Search parents..." (name, email, phone, occupation, relationship) and sort on Name, Relationship and Occupation. There is no paging (first 100 parents). Empty state "No parent profiles found." with "Create First Parent Profile" for roles with create.
+2. "Add Parent" (create permission): dialog "Create Parent Profile" with Full Name * ("Enter parent's full name"), Email ("Enter email address"), Phone ("Enter phone number"), Occupation ("Enter occupation/profession"), Aadhar Number ("Enter 12-digit Aadhar number"), Gender ("Select gender"), Relationship to Student * (default Father; Father, Mother, Guardian); buttons "Cancel" and "Save". Empty name: toast "Parent name is required"; no email and no phone: toast "Email or phone is required to create the parent login" (the value becomes the parent's login; the API creates the parent user with the default first-login password). Success toast "Parent profile created successfully"; failure "Failed to create parent profile: <reason>".
+3. Edit Parent: dialog "Edit Parent Profile", same fields prefilled, "Save". Empty optional fields are not sent. Toast "Parent profile updated successfully". Validation toast "Parent name is required".
+4. Delete Parent: dialog "Delete Parent Profile" ("Are you sure you want to delete the profile for "<name>"? This action cannot be undone and will remove all student associations."), "Cancel" and "Delete". Toast "Parent profile deleted successfully".
 
 **Steps, mobile.**
-1. Masters tab > Parents. Cards with initials, name, relationship badge, phone, email, occupation and the linked student names ("No linked students"). Search "Search by name, email or phone...". Header add icon (label "Add") and empty-state button "Add Parent".
-2. Modal fields: Full Name ("Parent's full name"), Relationship to Student * (Father, Mother, Guardian), Gender, Email, Phone, Occupation, Aadhar Number ("12-digit Aadhar number"), Annual Income (Below 1 lakh, 1 to 3 lakhs, 3 to 5 lakhs, 5 to 10 lakhs, Above 10 lakhs). Save button "Add Parent" or "Save Changes". Validation toasts "Validation - Enter a valid email address" and "Validation - Aadhar number must be 12 digits". Toasts "Parent Added", "Parent Updated", "Parent Deleted". Delete confirm "Delete Parent".
+1. Home > Masters > Parents. Header "Parents" with "n registered parents". Cards with initials, S.No., name, relationship badge, phone, email, occupation and the linked student names ("No linked students"). Search "Search by name, email or phone...". Header add icon (label "Add"), Edit and Delete icons per card, and empty-state button "Add Parent".
+2. Modal "Add Parent" fields: Full Name ("Parent's full name"), Relationship to Student * (default Father; Father, Mother, Guardian), Gender ("Select gender"), Email ("email@example.com"), Phone ("Phone number"), Occupation ("e.g. Engineer"), Aadhar Number ("12-digit Aadhar number"), Annual Income ("Select income range": Below 1 lakh, 1 to 3 lakhs, 3 to 5 lakhs, 5 to 10 lakhs, Above 10 lakhs). Save button "Add Parent" or "Save Changes". Validation toasts "Validation - Enter a valid email address", "Validation - Aadhar number must be 12 digits" and, on add, "Validation - Email or phone is required to create the parent login". Toasts "Parent Added - The parent profile was created", "Parent Updated - The parent profile was saved", "Parent Deleted - The parent profile was removed"; failures "Create Failed", "Update Failed", "Delete Failed" with the reason. Delete confirm "Delete Parent".
 
 **Expected results.** Lists show parents ordered by name with their linked students. Edit changes only sent fields. Delete removes the parent and its student links but not the students.
 
@@ -1071,43 +1124,49 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 | TC-MST-11-U08 | [backend] `search_parents(email="a", relation_to_student="Father")` with a fake session | Generated filter is an AND of the two conditions | passing |
 | TC-MST-11-U09 | [web] `ParentsTable` search `eng` over name, email, phone, occupation, relation | Case-insensitive match across the five fields; sort on Relationship ascending | blocked: needs search and sort helpers exported from web/src/components/masters/parents/ParentsTable.tsx |
 | TC-MST-11-U10 | [mobile] `buildPayload` with only relation and phone filled | Payload `{relation_to_student, phone}`; no empty strings | blocked: needs buildPayload exported from mobile/app/masters/parents.tsx |
-| TC-MST-11-A01 | Admin `POST /parents/` with a valid body (email or phone) | 201 `ParentOut`; a Parent-role user exists with `is_first_login` true | planned |
-| TC-MST-11-A02 | POST with invalid `relation_to_student`, `aadhar_number` of 11 digits, `email` `"x"` | 422 each (validation precedes the database) | planned |
-| TC-MST-11-A03 | `GET /` default with 3 parent fixtures | Shape `{items,total_count,has_next,skip,limit}`; ordered by name; each item has `students` | planned |
-| TC-MST-11-A04 | `GET /?skip=0&limit=2` then `skip=2&limit=2` | `has_next` true then false | planned |
-| TC-MST-11-A05 | `GET /?limit=0`, `?limit=1001`, `?skip=-1` | 422 each | planned |
-| TC-MST-11-A06 | `GET /search?search_query=ravi` | Parents whose name, email or phone contains `ravi`, case-insensitive | planned |
-| TC-MST-11-A07 | `GET /search?relation_to_student=Mother` | Only mothers (exact match) | planned |
-| TC-MST-11-A08 | `GET /search?email=a@x.com&relation_to_student=Father` | Parents matching email AND relation | planned |
-| TC-MST-11-A09 | `GET /search?limit=100` and `?limit=101` | 200; 422 | planned |
-| TC-MST-11-A10 | `GET /{id}` valid with linked student; random uuid | 200 with `students`; 404 `Parent not found` | planned |
-| TC-MST-11-A11 | `PATCH /{id}` `{occupation:"Engineer", salary_range:"3l_5l"}` | 200; fields changed; others unchanged | planned |
-| TC-MST-11-A12 | `PATCH` with `gender:"M"`, `email:""`, `relation_to_student:"Uncle"`, `salary_range:"x"` | 422 each | planned |
-| TC-MST-11-A13 | `PATCH` with `aadhar_number` of 13 characters | 500 detail starts `Error updating parent` | planned |
-| TC-MST-11-A14 | `PATCH /{random uuid}` | 404 | planned |
-| TC-MST-11-A15 | `DELETE /{id}` of a parent linked to a student | 204; links removed; the student still exists | planned |
-| TC-MST-11-A16 | `DELETE /{random uuid}` | 404 | planned |
-| TC-MST-11-A17 | `GET /salary-ranges/dropdown` as every role | 200 for all five roles; 5 items with `value`, `label`, `display` in the order below_1l, 1l_3l, 3l_5l, 5l_10l, above_10l | planned |
-| TC-MST-11-A18 | Role matrix: list, search, get, patch as Admin and Staff | 200 | planned |
-| TC-MST-11-A19 | Role matrix: `DELETE` as Staff | 403; Admin 204 | planned |
-| TC-MST-11-A20 | Role matrix: all endpoints except salary dropdown as Teacher, Student, Parent | 403 each | planned |
-| TC-MST-11-A21 | No Authorization header on every endpoint including the salary dropdown | 401 | planned |
-| TC-MST-11-A22 | Tenant isolation: tenant B on `GET /`, `/search`, `/{A's id}`, `PATCH`, `DELETE` | Empty lists; 404; row unchanged | planned |
-| TC-MST-11-E01 | [web] Admin opens Masters > Parents with 3 parent fixtures | Header "Parent Management"; rows show name, gender, contact, relation badge, occupation, "n student(s)" | planned |
-| TC-MST-11-E02 | [web] Search a phone number; sort Name | Filtered list; ordering toggles | planned |
-| TC-MST-11-E03 | [web] Add Parent with name, relationship and email, Save | Toast "Parent profile created successfully"; row appears | planned |
-| TC-MST-11-E04 | [web] Add Parent with empty name | Toast "Parent name is required" | planned |
-| TC-MST-11-E05 | [web] Edit Parent for a parent that has an email; change Occupation; Save | Toast "Parent profile updated successfully"; occupation changed | planned |
-| TC-MST-11-E06 | [web] Edit Parent for a parent with no email | Saves without error (empty email is not sent) | planned |
-| TC-MST-11-E07 | [web] Delete Parent, confirm | Toast "Parent profile deleted successfully"; row gone | planned |
-| TC-MST-11-E08 | [web] Staff session | "Add Parent", Edit icon visible; delete icon hidden | planned |
-| TC-MST-11-E09 | [web] Teacher session | Masters page reachable; list calls return 403 (no data) | planned |
-| TC-MST-11-E10 | [mobile] Admin opens Parents; search by email | Matching cards with linked student names or "No linked students" | planned |
-| TC-MST-11-E11 | [mobile] Add Parent with email `bad` | Toast "Validation - Enter a valid email address" | planned |
-| TC-MST-11-E12 | [mobile] Add Parent with Aadhar of 11 digits | Toast "Validation - Aadhar number must be 12 digits" | planned |
-| TC-MST-11-E13 | [mobile] Add Parent with valid data and an email or phone | Toast "Parent Added"; card appears | planned |
-| TC-MST-11-E14 | [mobile] Edit a parent: set Annual Income "3 to 5 lakhs", Save Changes | Toast "Parent Updated"; reopening shows the selected range | planned |
-| TC-MST-11-E15 | [mobile] Delete a parent, confirm | Toast "Parent Deleted" | planned |
+| TC-MST-11-A01 | Admin `POST /parents/` with a valid body (email or phone) | 201 `ParentOut`; a Parent-role user exists with `is_first_login` true | passing |
+| TC-MST-11-A02 | POST with invalid `relation_to_student`, `aadhar_number` of 11 digits, `email` `"x"` | 422 each (validation precedes the database) | passing |
+| TC-MST-11-A03 | `GET /` default with 3 parent fixtures | Shape `{items,total_count,has_next,skip,limit}`; ordered by name; each item has `students` | passing |
+| TC-MST-11-A04 | `GET /?skip=0&limit=2` then `skip=2&limit=2` | `has_next` true then false | passing |
+| TC-MST-11-A05 | `GET /?limit=0`, `?limit=1001`, `?skip=-1` | 422 each | passing |
+| TC-MST-11-A06 | `GET /search?search_query=ravi` | Parents whose name, email or phone contains `ravi`, case-insensitive | passing |
+| TC-MST-11-A07 | `GET /search?relation_to_student=Mother` | Only mothers (exact match) | passing |
+| TC-MST-11-A08 | `GET /search?email=a@x.com&relation_to_student=Father` | Parents matching email AND relation | passing |
+| TC-MST-11-A09 | `GET /search?limit=100` and `?limit=101` | 200; 422 | passing |
+| TC-MST-11-A10 | `GET /{id}` valid with linked student; random uuid | 200 with `students`; 404 `Parent not found` | passing |
+| TC-MST-11-A11 | `PATCH /{id}` `{occupation:"Engineer", salary_range:"3l_5l"}` | 200; fields changed; others unchanged | passing |
+| TC-MST-11-A12 | `PATCH` with `gender:"M"`, `email:""`, `relation_to_student:"Uncle"`, `salary_range:"x"` | 422 each | passing |
+| TC-MST-11-A13 | `PATCH` with `aadhar_number` of 13 characters | 500 detail starts `Error updating parent` | passing |
+| TC-MST-11-A14 | `PATCH /{random uuid}` | 404 | passing |
+| TC-MST-11-A15 | `DELETE /{id}` of a parent linked to a student | 204; links removed; the student still exists | passing |
+| TC-MST-11-A16 | `DELETE /{random uuid}` | 404 | passing |
+| TC-MST-11-A17 | `GET /salary-ranges/dropdown` as every role | 200 for all five roles; 5 items with `value`, `label`, `display` in the order below_1l, 1l_3l, 3l_5l, 5l_10l, above_10l | passing |
+| TC-MST-11-A18 | Role matrix: list, search, get, patch as Admin and Staff | 200 | passing |
+| TC-MST-11-A19 | Role matrix: `DELETE` as Staff | 403; Admin 204 | passing |
+| TC-MST-11-A20 | Role matrix: all endpoints except salary dropdown as Teacher, Student, Parent | 403 each | passing |
+| TC-MST-11-A21 | No Authorization header on every endpoint including the salary dropdown | 401 | passing |
+| TC-MST-11-A22 | Tenant isolation: tenant B on `GET /`, `/search`, `/{A's id}`, `PATCH`, `DELETE` | Empty lists; 404; row unchanged | passing |
+
+UI test cases (manual and automated, tenant `qa_manual`):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-MST-11-E01 | P1 | Web | Admin | Seeded parent profiles (father and mother of each seeded student) | 1. Sign in as Admin (qa_manual).<br>2. Open Masters > Parents. | Header "Parent Management", table "Parent Profiles"; rows such as "Venkat Raju" (Male, venkat.raju@example.com, Father, Bank Officer, "2 students") | planned |
+| TC-MST-11-E02 | P2 | Web | Admin | Seeded parents | 1. Type "9000100012" in "Search parents...".<br>2. Clear it and click the "Name" header twice. | Only Venkat Raju remains; the name order toggles | planned |
+| TC-MST-11-E03 | P2 | Web | Admin | No user "qa.parent1@example.com" | 1. Click "Add Parent".<br>2. Enter Full Name "QA Parent One", Email "qa.parent1@example.com", Relationship "Father".<br>3. Click "Save". | Toast "Parent profile created successfully"; row appears with "0 students" (a Parent login is created) | planned |
+| TC-MST-11-E04 | P3 | Web | Admin | None | 1. Click "Add Parent".<br>2. Leave Full Name empty, enter an email.<br>3. Click "Save". | Toast "Parent name is required"; dialog stays | planned |
+| TC-MST-11-E05 | P2 | Web | Admin | TC-MST-11-E03 done | 1. Click "Edit Parent" on "QA Parent One".<br>2. Set Occupation "Engineer".<br>3. Click "Save". | Toast "Parent profile updated successfully"; Occupation shows Engineer | planned |
+| TC-MST-11-E06 | P3 | Web | Admin | A parent "QA Parent Two" created with phone only (Add Parent with Phone "9000999001", no email) | 1. Click "Edit Parent" on "QA Parent Two".<br>2. Change Occupation, click "Save". | Saves without error (the empty email is not sent) | planned |
+| TC-MST-11-E07 | P2 | Web | Admin | TC-MST-11-E03 done | 1. Click "Delete Parent" on "QA Parent One".<br>2. Click "Delete". | Dialog "Delete Parent Profile" names the parent; toast "Parent profile deleted successfully"; row gone | planned |
+| TC-MST-11-E08 | P2 | Web | Staff | Seeded parents | 1. Sign in as Staff.<br>2. Open Masters > Parents. | "Add Parent" and "Edit Parent" visible; no "Delete Parent" icon | planned |
+| TC-MST-11-E09 | P2 | Web | Teacher | Seeded parents | 1. Sign in as Teacher.<br>2. Open Masters > Parents. | Page opens, list calls return 403, table shows "No parent profiles found." with no Add button | planned |
+| TC-MST-11-E10 | P1 | Mobile | Admin | Seeded parents | 1. Open Home > Masters > Parents.<br>2. Type "venkat.raju" in "Search by name, email or phone...". | "n registered parents"; the Venkat Raju card shows Father, phone, email, Bank Officer and Harsha and Tanvi as linked students | planned |
+| TC-MST-11-E11 | P3 | Mobile | Admin | None | 1. Tap the Add icon.<br>2. Enter Full Name "QA M Parent", Email "bad".<br>3. Tap "Add Parent". | Toast "Validation - Enter a valid email address" | planned |
+| TC-MST-11-E12 | P3 | Mobile | Admin | None | 1. Tap the Add icon.<br>2. Enter a valid email and Aadhar "12345678901".<br>3. Tap "Add Parent". | Toast "Validation - Aadhar number must be 12 digits" | planned |
+| TC-MST-11-E13 | P2 | Mobile | Admin | No user "qa.mparent@example.com" | 1. Tap the Add icon.<br>2. Enter Full Name "QA M Parent", Relationship "Mother", Email "qa.mparent@example.com".<br>3. Tap "Add Parent". | Toast "Parent Added - The parent profile was created"; card appears with "No linked students" | planned |
+| TC-MST-11-E14 | P2 | Mobile | Admin | TC-MST-11-E13 done | 1. Tap Edit on "QA M Parent".<br>2. Set Annual Income "3 to 5 lakhs", tap "Save Changes".<br>3. Reopen Edit. | Toast "Parent Updated - The parent profile was saved"; the range is still selected | planned |
+| TC-MST-11-E15 | P2 | Mobile | Admin | TC-MST-11-E13 done | 1. Tap Delete on "QA M Parent".<br>2. Confirm in "Delete Parent". | Toast "Parent Deleted - The parent profile was removed"; card gone | planned |
+| TC-MST-11-E16 | P3 | Mobile | Admin | None | 1. Tap the Add icon.<br>2. Enter only Full Name "QA M Parent 3" (no email, no phone), tap "Add Parent". | Toast "Validation - Email or phone is required to create the parent login" | planned |
 
 ---
 
@@ -1119,9 +1178,9 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 
 **Preconditions.** Location data seeded once per deployment by `POST /api/v1/auth/seed/location-data` (public, idempotent), or created through the API.
 
-**Steps, web.** There is no management screen. The admission form (Students module) calls the three dropdown endpoints; choosing a state loads its districts, choosing a district loads its mandals, and changing a parent clears the children.
+**Steps, web.** There is no management screen. The admission form (Students > Admission, address step) has "State (Optional)", "District (Optional)" (placeholder "-- Select District --") and "Mandal (Optional)" ("-- Select Mandal --") and calls the three dropdown endpoints; choosing a state loads its districts, choosing a district loads its mandals, and changing a parent clears the children. With no seeded states the State list is empty.
 
-**Steps, mobile.** The admission form uses the same cascade. A separate screen `app/masters/locations.tsx` (title "Locations") exists but calls a flat `/masters/locations/` that the API does not have (see Known gaps). It is reachable by route and, only when the backend menu has not loaded, from the Masters hub fallback list; the QA catalog has no Locations menu entry.
+**Steps, mobile.** The admission form uses the same cascade. A separate screen `app/masters/locations.tsx` (title "Locations") exists but calls a flat `/masters/locations/` that the API does not have (see Known gaps): it shows "0 locations" and "No Locations Found - Add your first location to get started". It is reachable by route and, only when the backend menu has not loaded, from the Masters hub fallback list; the seeded menu has no Locations entry.
 
 **Expected results.** Dropdown endpoints return active rows ordered by name; a state with districts or a district with mandals cannot be deleted.
 
@@ -1162,35 +1221,40 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 | TC-MST-12-U04 | [backend] `get_all_states` `has_next` for (skip 0, limit 100, 150 rows) | True | passing |
 | TC-MST-12-U05 | [backend] Call `invalidate_cache("states_dropdown")` after caching a states dropdown | Cached value remains (unknown cache type, no-op) | passing |
 | TC-MST-12-U06 | [web] State cascade handler with state changed from S1 to S2 | District and mandal values reset to empty | blocked: needs the state cascade handler exported (inline in the web location form components) |
-| TC-MST-12-A01 | Admin `POST /states` `{name:"QA-State", code:"QS"}` | 201 `{id,name,code,is_active:true}` | planned |
-| TC-MST-12-A02 | POST a duplicate state name; rename another state to it | 400 `State name 'QA-State' already exists` each | planned |
-| TC-MST-12-A03 | `GET /states` default and `?active_only=true&limit=1` | `{items,total_count,has_next}` ordered by name; second only active, 1 item | planned |
-| TC-MST-12-A04 | `GET /states?limit=0`, `?limit=1001`, `?skip=-1` | 422 each | planned |
-| TC-MST-12-A05 | `GET /states/dropdown` with one active, one inactive state | Active only `{id,name,code}`; `?active_only=false` both | planned |
-| TC-MST-12-A06 | `GET /states/{id}`, random uuid | 200; 404 `State with id ... not found` | planned |
-| TC-MST-12-A07 | `PUT /states/{id}` `{name:"QA-State-2", is_active:false}` | 200 with changes | planned |
-| TC-MST-12-A08 | `DELETE /states/{id}` with no districts; with districts | 200 `{message:"State deleted successfully"}`; 400 `... has 1 district(s)` | planned |
-| TC-MST-12-A09 | `POST /districts` `{state_id, name:"QA-District"}`; with a random `state_id` | 201; 404 `State with id ... not found` | planned |
-| TC-MST-12-A10 | `GET /states/{id}/districts`, `/districts/dropdown`; with a random state id | Lists (dropdown items include `state_id`); 404 for the list and `[]` for the dropdown | planned |
-| TC-MST-12-A11 | `GET /districts/{id}`, `PUT /districts/{id}` re-parent to another state, `PUT` re-parent to a random state | 200; 200 with new `state_id`; 404 | planned |
-| TC-MST-12-A12 | `DELETE /districts/{id}` with mandals; without | 400 `... has N mandal(s)`; 200 `{message:"District deleted successfully"}` | planned |
-| TC-MST-12-A13 | `POST /mandals` `{district_id, name:"QA-Mandal"}`; random `district_id` | 201; 404 | planned |
-| TC-MST-12-A14 | `GET /districts/{id}/mandals`, `/mandals/dropdown`; random district | Lists (dropdown items include `district_id`); 404 and `[]` | planned |
-| TC-MST-12-A15 | `GET`, `PUT`, `DELETE /mandals/{id}` valid and random uuid | 200 and 200 `{message:"Mandal deleted successfully"}`; 404 each | planned |
-| TC-MST-12-A16 | Read matrix: states list, all dropdowns, all gets as Admin, Staff, Teacher | 200 | planned |
-| TC-MST-12-A17 | Same reads as Student and Parent | 403 each | planned |
-| TC-MST-12-A18 | Write matrix: POST, PUT, DELETE on states, districts, mandals as Staff, Teacher, Student, Parent | 403 each; Admin 2xx | planned |
-| TC-MST-12-A19 | No Authorization header on every endpoint | 401 | planned |
-| TC-MST-12-A20 | Shared data: state created via tenant A | Visible in tenant B `GET /states` and dropdown (no tenant scoping) | planned |
-| TC-MST-12-A21 | Create a state then call the states dropdown after an earlier call within 5 minutes | New state missing until the TTL expires (invalidation is a no-op; documents current behaviour) | planned |
-| TC-MST-12-A22 | `POST /auth/seed/location-data` without a token, twice, on an empty location table | 201 both times; first run reports `total_states` 5, the repeat reports `total_states` 0 | planned |
-| TC-MST-12-A23 | 31 POSTs within a minute (limiter enabled) | The 31st returns 429 | planned |
-| TC-MST-12-E01 | [web] Student admission form: choose a state | District dropdown loads that state's districts; mandal dropdown stays empty | planned |
-| TC-MST-12-E02 | [web] Choose a district, then change the state | District and mandal clear | planned |
-| TC-MST-12-E03 | [mobile] Admission form cascade | Same behaviour as web | planned |
-| TC-MST-12-E04 | [mobile] Open `/masters/locations` as Admin | Screen "Locations" loads with "No Locations Found" (the flat list call returns 404) | planned |
-| TC-MST-12-E05 | [mobile] Add Location with name `QA-Loc`, save | Toast "Create Failed" (flat create call does not exist; documents the defect) | planned |
-| TC-MST-12-E06 | [mobile] Add Location with empty name | Toast "Validation - Location name is required" | planned |
+| TC-MST-12-A01 | Admin `POST /states` `{name:"QA-State", code:"QS"}` | 201 `{id,name,code,is_active:true}` | passing |
+| TC-MST-12-A02 | POST a duplicate state name; rename another state to it | 400 `State name 'QA-State' already exists` each | passing |
+| TC-MST-12-A03 | `GET /states` default and `?active_only=true&limit=1` | `{items,total_count,has_next}` ordered by name; second only active, 1 item | passing |
+| TC-MST-12-A04 | `GET /states?limit=0`, `?limit=1001`, `?skip=-1` | 422 each | passing |
+| TC-MST-12-A05 | `GET /states/dropdown` with one active, one inactive state | Active only `{id,name,code}`; `?active_only=false` both | passing |
+| TC-MST-12-A06 | `GET /states/{id}`, random uuid | 200; 404 `State with id ... not found` | passing |
+| TC-MST-12-A07 | `PUT /states/{id}` `{name:"QA-State-2", is_active:false}` | 200 with changes | passing |
+| TC-MST-12-A08 | `DELETE /states/{id}` with no districts; with districts | 200 `{message:"State deleted successfully"}`; 400 `... has 1 district(s)` | passing |
+| TC-MST-12-A09 | `POST /districts` `{state_id, name:"QA-District"}`; with a random `state_id` | 201; 404 `State with id ... not found` | passing |
+| TC-MST-12-A10 | `GET /states/{id}/districts`, `/districts/dropdown`; with a random state id | Lists (dropdown items include `state_id`); 404 for the list and `[]` for the dropdown | passing |
+| TC-MST-12-A11 | `GET /districts/{id}`, `PUT /districts/{id}` re-parent to another state, `PUT` re-parent to a random state | 200; 200 with new `state_id`; 404 | passing |
+| TC-MST-12-A12 | `DELETE /districts/{id}` with mandals; without | 400 `... has N mandal(s)`; 200 `{message:"District deleted successfully"}` | passing |
+| TC-MST-12-A13 | `POST /mandals` `{district_id, name:"QA-Mandal"}`; random `district_id` | 201; 404 | passing |
+| TC-MST-12-A14 | `GET /districts/{id}/mandals`, `/mandals/dropdown`; random district | Lists (dropdown items include `district_id`); 404 and `[]` | passing |
+| TC-MST-12-A15 | `GET`, `PUT`, `DELETE /mandals/{id}` valid and random uuid | 200 and 200 `{message:"Mandal deleted successfully"}`; 404 each | passing |
+| TC-MST-12-A16 | Read matrix: states list, all dropdowns, all gets as Admin, Staff, Teacher | 200 | passing |
+| TC-MST-12-A17 | Same reads as Student and Parent | 403 each | passing |
+| TC-MST-12-A18 | Write matrix: POST, PUT, DELETE on states, districts, mandals as Staff, Teacher, Student, Parent | 403 each; Admin 2xx | passing |
+| TC-MST-12-A19 | No Authorization header on every endpoint | 401 | passing |
+| TC-MST-12-A20 | Shared data: state created via tenant A | Visible in tenant B `GET /states` and dropdown (no tenant scoping) | passing |
+| TC-MST-12-A21 | Create a state then call the states dropdown after an earlier call within 5 minutes | New state missing until the TTL expires (invalidation is a no-op; documents current behaviour) | passing |
+| TC-MST-12-A22 | `POST /auth/seed/location-data` without a token, twice, on an empty location table | 201 both times; first run reports `total_states` 5, the repeat reports `total_states` 0 | skipped: The seed writes five states with districts and mandals into the shared location tables used by every tenant an... |
+| TC-MST-12-A23 | 31 POSTs within a minute (limiter enabled) | The 31st returns 429 | skipped: The test API runs with rate limiting disabled, so the 429 cannot be produced |
+
+UI test cases (manual and automated, tenant `qa_manual`):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-MST-12-E01 | P1 | Web | Admin | Location seed run once (`POST /api/v1/auth/seed/location-data`); qa_manual has no states before that | 1. Open Students > Admission and start a new admission.<br>2. On the address step open "State (Optional)" and choose "Telangana".<br>3. Open "District (Optional)". | District lists Telangana districts only; "Mandal (Optional)" stays empty until a district is chosen | planned |
+| TC-MST-12-E02 | P2 | Web | Admin | Location seed run | 1. Choose a state, a district and a mandal.<br>2. Change the state to "Karnataka". | District and mandal clear | planned |
+| TC-MST-12-E03 | P2 | Mobile | Admin | Location seed run | 1. Open the mobile admission form address fields.<br>2. Choose state, district, mandal; change the state. | Same cascade and clearing as web | planned |
+| TC-MST-12-E04 | P3 | Mobile | Admin | None | 1. Open `/masters/locations` by URL. | Screen "Locations" with "0 locations" and "No Locations Found - Add your first location to get started" (the flat list call returns 404) | blocked: mobile Locations screen calls a missing endpoint (Known gaps 14); this step only records it |
+| TC-MST-12-E05 | P3 | Mobile | Admin | None | 1. On `/masters/locations` add a location "QA Loc" and save. | Location is created and listed | blocked: the flat create endpoint does not exist, the save shows "Create Failed" (Known gaps 14) |
+| TC-MST-12-E06 | P3 | Mobile | Admin | None | 1. On `/masters/locations` open add, leave the name empty, save. | Toast "Validation - Location name is required" | planned |
 
 ---
 
@@ -1202,7 +1266,7 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 
 **Preconditions.** The tenant seed has been run (`POST /api/v1/auth/seed/caste-data`) or castes were created through the API; an empty dropdown means the seed was never run.
 
-**Steps, web.** No management screen. The admission form loads `GET /masters/castes/dropdown`, then `GET /masters/castes/{id}/sub-castes/dropdown` when a caste is chosen; changing the caste clears the sub-caste.
+**Steps, web.** No management screen. The admission form (Students > Admission, student step, fields "Caste (Optional)" and "Sub Caste (Optional)") loads `GET /masters/castes/dropdown`, then `GET /masters/castes/{id}/sub-castes/dropdown` when a caste is chosen; changing the caste clears the sub-caste.
 
 **Steps, mobile.** The admission form uses `castesApi.getCastesDropdown` and `getSubCastesDropdown` with the same cascade. There is no mobile management screen.
 
@@ -1241,31 +1305,36 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 | TC-MST-13-U03 | [backend] `delete_caste` with 2 fake students; then 0 students and 3 sub-castes | 400 `... being used by 2 student(s)`; 400 `... has 3 sub-caste(s)` | passing |
 | TC-MST-13-U04 | [backend] Seed data structure | 5 castes and 18 sub-castes; code for `General` is `GEN`, for `SC` is `SC` | passing |
 | TC-MST-13-U05 | [web] Caste cascade handler when caste changes | Sub-caste value resets to empty | blocked: needs the caste cascade handler exported (inline in the web admission form components) |
-| TC-MST-13-A01 | Admin `POST /api/v1/auth/seed/caste-data` on a tenant without castes | 201; `castes_created` lists 5 names; `sub_castes_created` has 18 entries | planned |
-| TC-MST-13-A02 | Run the seed a second time | 201; both lists empty | planned |
-| TC-MST-13-A03 | Seed as Staff, Teacher, Student, Parent; without a token | 403 `Only administrators can seed data` for each role; 401 without a token | planned |
-| TC-MST-13-A04 | Admin `POST /` `{name:"QA-Caste", code:"QC"}` | 201 `{id,name,code,is_active:true}` | planned |
-| TC-MST-13-A05 | POST a duplicate caste name; rename another caste to it | 400 `Caste name 'QA-Caste' already exists` each | planned |
-| TC-MST-13-A06 | `GET /` default, `?active_only=true`, `?limit=0`, `?limit=1001` | Paged object; active filter honoured; 422 for the bounds | planned |
-| TC-MST-13-A07 | `GET /dropdown` with one inactive caste | Active castes `{id,name,code}`; `?active_only=false` includes it | planned |
-| TC-MST-13-A08 | `GET /{id}`, `PUT /{id}`, random uuid | 200; 200 updated; 404 `Caste with id ... not found` | planned |
-| TC-MST-13-A09 | `POST /sub-castes` `{caste_id, name:"QA-Sub"}`; random `caste_id` | 201; 404 | planned |
-| TC-MST-13-A10 | POST two sub-castes with the same name under one caste | Both 201 (no duplicate check) | planned |
-| TC-MST-13-A11 | `GET /{caste}/sub-castes` and `/sub-castes/dropdown` | All rows (`active_only=false` default) and active `{id,name,code,caste_id}` | planned |
-| TC-MST-13-A12 | `GET /sub-castes/{id}`, `PUT /sub-castes/{id}` re-parent to another caste and to a random caste | 200; 200; 404 | planned |
-| TC-MST-13-A13 | `DELETE /{caste}` with sub-castes; after deleting them | 400 `... has N sub-caste(s)`; 200 `{message:"Caste deleted successfully"}` | planned |
-| TC-MST-13-A14 | `DELETE /{caste}` for a caste used by a student (fixture) | 400 `... being used by 1 student(s)`; caste intact | planned |
-| TC-MST-13-A15 | `DELETE /sub-castes/{id}` unused; random uuid | 200 `{message:"Sub-caste deleted successfully"}`; 404 | planned |
-| TC-MST-13-A16 | Read matrix: list, dropdowns, gets as Admin, Staff, Teacher | 200 | planned |
-| TC-MST-13-A17 | Same reads as Student and Parent | 403 each | planned |
-| TC-MST-13-A18 | Write matrix: POST, PUT, DELETE for castes and sub-castes as Staff, Teacher, Student, Parent | 403 each; Admin 2xx | planned |
-| TC-MST-13-A19 | No Authorization header on every endpoint | 401 | planned |
-| TC-MST-13-A20 | Tenant isolation: castes seeded in tenant A | Absent from tenant B `GET /`, `/dropdown`; B can create `General` | planned |
-| TC-MST-13-A21 | Create a caste after an earlier dropdown call within 5 minutes | Caste missing from the dropdown until the TTL expires (documents the no-op invalidation) | planned |
-| TC-MST-13-E01 | [web] Admission form with seeded castes: open Caste | Lists General, OBC, SC, ST, EWS | planned |
-| TC-MST-13-E02 | [web] Choose SC then open Sub-caste | Lists Adi Andhra, Adi Dravida, Mala, Madiga, Chamar, Pasi; changing the caste clears the sub-caste | planned |
-| TC-MST-13-E03 | [web] Admission form on a tenant without the seed | Caste dropdown is empty | planned |
-| TC-MST-13-E04 | [mobile] Admission form caste and sub-caste cascade | Same lists and clearing as web | planned |
+| TC-MST-13-A01 | Admin `POST /api/v1/auth/seed/caste-data` on a tenant without castes | 201; `castes_created` lists 5 names; `sub_castes_created` has 18 entries | passing |
+| TC-MST-13-A02 | Run the seed a second time | 201; both lists empty | passing |
+| TC-MST-13-A03 | Seed as Staff, Teacher, Student, Parent; without a token | 403 `Only administrators can seed data` for each role; 401 without a token | passing |
+| TC-MST-13-A04 | Admin `POST /` `{name:"QA-Caste", code:"QC"}` | 201 `{id,name,code,is_active:true}` | passing |
+| TC-MST-13-A05 | POST a duplicate caste name; rename another caste to it | 400 `Caste name 'QA-Caste' already exists` each | passing |
+| TC-MST-13-A06 | `GET /` default, `?active_only=true`, `?limit=0`, `?limit=1001` | Paged object; active filter honoured; 422 for the bounds | passing |
+| TC-MST-13-A07 | `GET /dropdown` with one inactive caste | Active castes `{id,name,code}`; `?active_only=false` includes it | passing |
+| TC-MST-13-A08 | `GET /{id}`, `PUT /{id}`, random uuid | 200; 200 updated; 404 `Caste with id ... not found` | passing |
+| TC-MST-13-A09 | `POST /sub-castes` `{caste_id, name:"QA-Sub"}`; random `caste_id` | 201; 404 | passing |
+| TC-MST-13-A10 | POST two sub-castes with the same name under one caste | Both 201 (no duplicate check) | passing |
+| TC-MST-13-A11 | `GET /{caste}/sub-castes` and `/sub-castes/dropdown` | All rows (`active_only=false` default) and active `{id,name,code,caste_id}` | passing |
+| TC-MST-13-A12 | `GET /sub-castes/{id}`, `PUT /sub-castes/{id}` re-parent to another caste and to a random caste | 200; 200; 404 | passing |
+| TC-MST-13-A13 | `DELETE /{caste}` with sub-castes; after deleting them | 400 `... has N sub-caste(s)`; 200 `{message:"Caste deleted successfully"}` | passing |
+| TC-MST-13-A14 | `DELETE /{caste}` for a caste used by a student (fixture) | 400 `... being used by 1 student(s)`; caste intact | passing |
+| TC-MST-13-A15 | `DELETE /sub-castes/{id}` unused; random uuid | 200 `{message:"Sub-caste deleted successfully"}`; 404 | passing |
+| TC-MST-13-A16 | Read matrix: list, dropdowns, gets as Admin, Staff, Teacher | 200 | passing |
+| TC-MST-13-A17 | Same reads as Student and Parent | 403 each | passing |
+| TC-MST-13-A18 | Write matrix: POST, PUT, DELETE for castes and sub-castes as Staff, Teacher, Student, Parent | 403 each; Admin 2xx | passing |
+| TC-MST-13-A19 | No Authorization header on every endpoint | 401 | passing |
+| TC-MST-13-A20 | Tenant isolation: castes seeded in tenant A | Absent from tenant B `GET /`, `/dropdown`; B can create `General` | passing |
+| TC-MST-13-A21 | Create a caste after an earlier dropdown call within 5 minutes | Caste missing from the dropdown until the TTL expires (documents the no-op invalidation) | passing |
+
+UI test cases (manual and automated, tenant `qa_manual`):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-MST-13-E01 | P1 | Web | Admin | Caste seed run as Admin in qa_manual (`POST /api/v1/auth/seed/caste-data`) | 1. Open Students > Admission and start a new admission.<br>2. Open "Caste (Optional)". | Lists General, OBC, SC, ST, EWS | planned |
+| TC-MST-13-E02 | P2 | Web | Admin | Caste seed run | 1. Choose "SC" and open "Sub Caste (Optional)".<br>2. Choose a sub-caste, then change the caste to "ST". | SC lists Adi Andhra, Adi Dravida, Mala, Madiga, Chamar, Pasi; changing the caste clears the sub-caste | planned |
+| TC-MST-13-E03 | P3 | Web | Admin | qa_manual before the caste seed (the current state) | 1. Open a new admission and open "Caste (Optional)". | The list is empty | planned |
+| TC-MST-13-E04 | P2 | Mobile | Admin | Caste seed run | 1. Open the mobile admission form.<br>2. Choose a caste, then a sub-caste, then change the caste. | Same lists and clearing as web | planned |
 
 ---
 
@@ -1273,18 +1342,18 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 
 **Purpose.** An admin records the school's name, contacts, address, board, academic-year label, logo and principal signature. There is exactly one settings row per tenant.
 
-**Roles and permissions.** Read: `school_settings:read`. Save and upload: `school_settings:update`. Only Admin holds both. Menu: web `/settings/school` under Administration > School Settings in the seeded catalog, or "School Registration" under Masters when the client injects it (not injected for the Teacher and Student roles, nor when the backend menu already has `/settings/school`); mobile Admin tab > School Settings (`/admin/school-settings`, gated on `school_settings:read`).
+**Roles and permissions.** Read: `school_settings:read`. Save and upload: `school_settings:update`. Only Admin holds both. Menu: web sidebar Administration > School Settings (`/settings/school`) in the seeded catalog, or "School Registration" under Masters when the client injects it (not injected for the Teacher and Student roles, nor when the backend menu already has `/settings/school`, as in the seeded catalog). The seeded menu gives Administration > School Settings to Staff and Teacher too, so they can open the page but every call returns 403. Mobile: Home > Administration > School Settings (`/admin/school-settings`, gated on `school_settings:read`; for roles without it the card reads "No access - contact admin" and the route shows "Access Denied").
 
 **Preconditions.** Admin session. Until the first save `GET /school-settings` returns 404, which both clients treat as "not configured".
 
 **Steps, web.**
-1. Open the page. Header "School Settings" with subtitle "Manage school registration and identity information" and an amber badge "Not configured yet" while no row exists.
-2. "Basic Information": School Name, Contact No. (10 digits), Alt. Contact No. (10 digits), School Email, School Board (select "Select Board" with CBSE, ICSE, State Board, IGCSE, IB, Custom; choosing Custom shows "Custom Board Name"), Academic Year (placeholder 2026-27), Installation Date. "Address": Street Address, City, District, State, PIN Code (6 digits), Country (default India).
+1. Open Administration > School Settings. Header "School Settings" with subtitle "Manage school registration and identity information" and an amber badge "Not configured yet" while no row exists.
+2. "Basic Information": School Name ("e.g. Greenfield High School"), Contact No. ("9900099000", 10 digits), Alt. Contact No. ("9999900000", 10 digits), School Email ("school@example.com"), School Board (select "Select Board" with CBSE, ICSE, State Board, IGCSE, IB, Custom; choosing Custom shows "Custom Board Name" with "Enter board name"), Academic Year (placeholder "2026-27"), Installation Date. "Address": Street Address, City, District, State, PIN Code (6 digits), Country (prefilled "India").
 3. Click "Save Settings" ("Saving..."). Toast "School settings saved successfully" or "Failed to save school settings". Field errors: "Must be exactly 10 digits", "Invalid email address", "Must be exactly 6 digits".
-4. "School Logo" and "Principal Signature" boxes: "Upload" opens a file picker (jpg, jpeg, png, webp, maximum 2 MB). Toasts "School logo uploaded successfully" / "Failed to upload school logo" and "Principal signature uploaded successfully" / "Failed to upload signature". The preview shows the stored image.
+4. "School Logo" and "Principal Signature" boxes (hint "JPG, PNG, WebP, Max 2 MB"): "Upload" opens a file picker (jpg, jpeg, png, webp, maximum 2 MB). Toasts "School logo uploaded successfully" / "Failed to upload school logo" and "Principal signature uploaded successfully" / "Failed to upload signature". The preview shows the stored image.
 
 **Steps, mobile.**
-1. Admin tab > School Settings. Screen "School Settings" with "Branding" (School Logo, Principal Signature pickers), "Basic Information" (School Name *, Contact Number, Alternate Contact Number, School Email, School Board, Academic Year, Installation Date "YYYY-MM-DD") and "Address" (Address, City, District, State, Pin Code, Country).
+1. Home > Administration > School Settings. Screen "School Settings" with "Branding" (School Logo, Principal Signature pickers), "Basic Information" (School Name *, Contact Number, Alternate Contact Number, School Email, School Board, Academic Year, Installation Date "YYYY-MM-DD") and "Address" (Address, City, District, State, Pin Code, Country).
 2. "Save Settings" ("Saving..."). Empty name: toast "Error - School name is required". Success "Saved - School settings have been updated."; failure "Save Failed". Image uploads: toasts "Uploaded - School logo has been updated." and "Uploaded - Principal signature has been updated."; failures "Upload Failed".
 
 **Expected results.** The row is created on first save and updated afterwards; the stored image URLs start with `/media/<tenant id>/school/images/` (logo) or `/media/<tenant id>/school/signatures/` (signature) and the images render.
@@ -1306,7 +1375,7 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 - Web and mobile treat 404 on load as null (blank form).
 - Image extension is checked, not the content.
 - `PUT` followed by a read in the same request uses `commit` then `refresh` (against the repo rule) but works.
-- Teacher, Staff, Student and Parent: 403 on all four endpoints (and the menu entry is hidden for Teacher and Student on web).
+- Teacher, Staff, Student and Parent: 403 on all four endpoints. On web the seeded Administration menu still lists School Settings for Staff and Teacher (the page opens with "Not configured yet" and a blank form); Student and Parent have no entry.
 
 **Unit-testable logic.**
 - `SchoolSettingsUpdate` schema (all optional; `installation_date` must be a valid date).
@@ -1326,34 +1395,39 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 | TC-MST-14-U06 | [backend] `_upload_file` field `image_url`, tenant id T, extension `.png` | File at `media/T/school/images/school_image_url.png`; URL `/media/T/school/images/school_image_url.png` | passing |
 | TC-MST-14-U07 | [web] zod schema with contact `12345`, pin `12`, email `a@b` | Errors "Must be exactly 10 digits", "Must be exactly 6 digits", "Invalid email address" | blocked: needs the zod schema exported from web/src/pages/settings/SchoolSettings.tsx |
 | TC-MST-14-U08 | [web] Submit mapping with empty strings and board `Custom` plus custom text `Open Board` | Empty values sent as null; `school_board` sent as `Open Board` | blocked: needs the submit mapping exported from web/src/pages/settings/SchoolSettings.tsx |
-| TC-MST-14-A01 | Admin `GET /school-settings` on a fresh tenant | 404 `School settings not configured yet.` | planned |
-| TC-MST-14-A02 | Admin `PUT` with name, contact, board `CBSE`, pin `503001` | 200 `SchoolSettingsRead` with `id`; follow-up GET returns the same | planned |
-| TC-MST-14-A03 | `PUT` again with only `{school_name:"B"}` | 200; `school_name` "B"; contact, board and pin null (full replace) | planned |
-| TC-MST-14-A04 | `PUT` with a 256-character `school_name` | 500 `An error occurred while saving school settings.` | planned |
-| TC-MST-14-A05 | `PUT {}` | 200; all text fields null | planned |
-| TC-MST-14-A06 | `POST /upload-image` with a 10 KB `logo.png` | 200; `image_url` starts `/media/<tenant id>/school/images/`; the URL serves the bytes | planned |
-| TC-MST-14-A07 | `POST /upload-signature` with a `.webp` file | 200; `principal_signature_url` starts `/media/<tenant id>/school/signatures/` | planned |
-| TC-MST-14-A08 | Upload `notes.pdf`; `logo.gif` | 400 `Only jpg, png, webp files are allowed` each | planned |
-| TC-MST-14-A09 | Upload exactly 2,097,152 bytes and 2,097,153 bytes | 200; 400 `File size must not exceed 2 MB` | planned |
-| TC-MST-14-A10 | Upload without the `photo` part | 422 | planned |
-| TC-MST-14-A11 | Upload on a tenant with no settings row | 200; row created holding only the URL; `school_name` null | planned |
-| TC-MST-14-A12 | Upload a `.png` then a `.jpg` for the logo | Second URL ends `.jpg`; first file still exists on disk (documents leftover) | planned |
-| TC-MST-14-A13 | `PUT` after an upload | `image_url` unchanged | planned |
-| TC-MST-14-A14 | Role matrix: `GET`, `PUT`, both uploads as Staff, Teacher, Student, Parent | 403 each; Admin 200 | planned |
-| TC-MST-14-A15 | No Authorization header on all four endpoints | 401 | planned |
-| TC-MST-14-A16 | Tenant isolation: tenant B `GET` after tenant A saved; both tenants upload a logo | B gets 404 (or its own row); files and URLs are in separate `media/<tenant id>/` folders | planned |
-| TC-MST-14-E01 | [web] Admin opens `/settings/school` on a fresh tenant | Badge "Not configured yet"; Country shows India | planned |
-| TC-MST-14-E02 | [web] Fill name, contact `9900099000`, board CBSE, pin `503001`, Save Settings | Toast "School settings saved successfully"; badge disappears; values persist after reload | planned |
-| TC-MST-14-E03 | [web] Contact `12345`, pin `12`, email `bad` then Save | Inline errors under each field; no request sent | planned |
-| TC-MST-14-E04 | [web] School Board > Custom, type `Open Board`, Save; reload | Select shows Custom with "Custom Board Name" `Open Board` | planned |
-| TC-MST-14-E05 | [web] Upload a 100 KB png as School Logo | Toast "School logo uploaded successfully"; preview shows the image | planned |
-| TC-MST-14-E06 | [web] Upload a 3 MB png as Principal Signature | Toast "Failed to upload signature"; preview unchanged | planned |
-| TC-MST-14-E07 | [web] Upload a pdf | Toast "Failed to upload school logo" (extension rejected by the API; the picker also filters images) | planned |
-| TC-MST-14-E08 | [web] Teacher opens `/settings/school` (reachable through the seeded Administration menu); Student has no entry | Teacher: the form loads with no data (the read returns 403) and Save shows "Failed to save school settings". Student: no menu entry, direct URL behaves the same as Teacher | planned |
-| TC-MST-14-E09 | [mobile] Admin: Admin tab > School Settings, Save with empty School Name | Toast "Error - School name is required" | planned |
-| TC-MST-14-E10 | [mobile] Fill the form and Save Settings | Toast "Saved - School settings have been updated."; values persist after reopening | planned |
-| TC-MST-14-E11 | [mobile] Pick a logo image | Toast "Uploaded - School logo has been updated." and preview | planned |
-| TC-MST-14-E12 | [mobile] Teacher or Student | School Settings card hidden; direct route shows an error state | planned |
+| TC-MST-14-A01 | Admin `GET /school-settings` on a fresh tenant | 404 `School settings not configured yet.` | passing |
+| TC-MST-14-A02 | Admin `PUT` with name, contact, board `CBSE`, pin `503001` | 200 `SchoolSettingsRead` with `id`; follow-up GET returns the same | passing |
+| TC-MST-14-A03 | `PUT` again with only `{school_name:"B"}` | 200; `school_name` "B"; contact, board and pin null (full replace) | passing |
+| TC-MST-14-A04 | `PUT` with a 256-character `school_name` | 500 `An error occurred while saving school settings.` | passing |
+| TC-MST-14-A05 | `PUT {}` | 200; all text fields null | passing |
+| TC-MST-14-A06 | `POST /upload-image` with a 10 KB `logo.png` | 200; `image_url` starts `/media/<tenant id>/school/images/`; the URL serves the bytes | known defect: TEN-MEDIA-CSCHEMA: /media/<tenant>/... |
+| TC-MST-14-A07 | `POST /upload-signature` with a `.webp` file | 200; `principal_signature_url` starts `/media/<tenant id>/school/signatures/` | passing |
+| TC-MST-14-A08 | Upload `notes.pdf`; `logo.gif` | 400 `Only jpg, png, webp files are allowed` each | passing |
+| TC-MST-14-A09 | Upload exactly 2,097,152 bytes and 2,097,153 bytes | 200; 400 `File size must not exceed 2 MB` | passing |
+| TC-MST-14-A10 | Upload without the `photo` part | 422 | passing |
+| TC-MST-14-A11 | Upload on a tenant with no settings row | 200; row created holding only the URL; `school_name` null | skipped: qa_school_b already holds a settings row, so the create-on-upload path cannot be reached |
+| TC-MST-14-A12 | Upload a `.png` then a `.jpg` for the logo | Second URL ends `.jpg`; first file still exists on disk (documents leftover) | known defect: TEN-MEDIA-CSCHEMA: /media/<tenant>/... |
+| TC-MST-14-A13 | `PUT` after an upload | `image_url` unchanged | passing |
+| TC-MST-14-A14 | Role matrix: `GET`, `PUT`, both uploads as Staff, Teacher, Student, Parent | 403 each; Admin 200 | passing |
+| TC-MST-14-A15 | No Authorization header on all four endpoints | 401 | passing |
+| TC-MST-14-A16 | Tenant isolation: tenant B `GET` after tenant A saved; both tenants upload a logo | B gets 404 (or its own row); files and URLs are in separate `media/<tenant id>/` folders | passing |
+
+UI test cases (manual and automated, tenant `qa_manual`):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-MST-14-E01 | P2 | Web | Admin | School settings never saved in qa_manual (`GET /school-settings` is 404, the current state) | 1. Sign in as Admin.<br>2. Open Administration > School Settings. | Badge "Not configured yet"; empty fields; Country shows "India" | planned |
+| TC-MST-14-E02 | P1 | Web | Admin | TC-MST-14-E01 state | 1. Enter School Name "QA School", Contact No. "9900099000", School Board "CBSE", PIN Code "503001".<br>2. Click "Save Settings".<br>3. Reload the page. | Toast "School settings saved successfully"; the badge disappears; values persist | planned |
+| TC-MST-14-E03 | P2 | Web | Admin | None | 1. Enter Contact No. "12345", PIN Code "12", School Email "bad".<br>2. Click "Save Settings". | Inline errors "Must be exactly 10 digits", "Must be exactly 6 digits", "Invalid email address"; no request | planned |
+| TC-MST-14-E04 | P3 | Web | Admin | None | 1. Choose School Board "Custom", type "QA Open Board" in "Custom Board Name".<br>2. Click "Save Settings" and reload. | The select shows Custom with "QA Open Board" | planned |
+| TC-MST-14-E05 | P2 | Web | Admin | A png under 2 MB | 1. Under "School Logo" click "Upload" and choose the png. | Toast "School logo uploaded successfully"; the preview shows the image (may stay blank, Known gaps in the module doc: media URLs need auth) | planned |
+| TC-MST-14-E06 | P3 | Web | Admin | A 3 MB png | 1. Under "Principal Signature" click "Upload" and choose it. | Toast "Failed to upload signature"; preview unchanged | planned |
+| TC-MST-14-E07 | P3 | Web | Admin | A pdf file | 1. Under "School Logo" click "Upload", switch the picker to all files, choose the pdf. | Toast "Failed to upload school logo" | planned |
+| TC-MST-14-E08 | P2 | Web | Teacher | Seeded student Advik Mehta for the second check | 1. Sign in as Teacher, open Administration > School Settings.<br>2. Click "Save Settings".<br>3. Sign in as the student and check the sidebar. | Teacher: form opens with "Not configured yet" and no data (read 403); Save shows "Failed to save school settings". Student: no Administration entry | planned |
+| TC-MST-14-E09 | P3 | Mobile | Admin | None | 1. Open Home > Administration > School Settings.<br>2. Clear "School Name *" and tap "Save Settings". | Toast "Error - School name is required" | planned |
+| TC-MST-14-E10 | P1 | Mobile | Admin | None | 1. Open School Settings.<br>2. Enter School Name "QA School M", Contact Number "9900099001".<br>3. Tap "Save Settings", leave and reopen the screen. | Toast "Saved - School settings have been updated."; values persist | planned |
+| TC-MST-14-E11 | P3 | Mobile | Admin | An image on the device | 1. Tap the "School Logo" picker and choose the image. | Toast "Uploaded - School logo has been updated." and preview | planned |
+| TC-MST-14-E12 | P2 | Mobile | Teacher | None | 1. Sign in as Teacher, open Home > Administration.<br>2. Open `/admin/school-settings` by URL. | The School Settings card reads "No access - contact admin"; the route shows "Access Denied" | planned |
 
 ---
 
@@ -1367,7 +1441,7 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 
 **Steps, web.** Sidebar > Masters opens `/masters`: header "Masters Dashboard" with subtitle "Configure and manage all master data for the school system", section "Masters Sections", one card per Masters child in the backend menu (seeded catalog: Academic Years, Classes and Sections, Subject Categories, Subjects, Class Subject Mappings, Holidays, Parents, Roles and Permissions), each with a description (known names use fixed text, others "Manage <name in lower case>"). Clicking a card with a path navigates to it; cards without a path are dimmed.
 
-**Steps, mobile.** Masters tab shows a banner "Masters Dashboard" and the label "MASTERS SECTIONS" with a two-column grid of cards (icon, name, description, arrow). Cards come from the backend menu; before the menu loads, a fallback list (Academic Years, Classes & Sections, Staff Management, Subject Categories, Subjects, Class Subject Mappings, Parents, Holidays, Timetable Management, Locations, Roles & Permissions) is filtered by `read` or `list` permission on each card's resource. Student and Parent do not get the Masters tab.
+**Steps, mobile.** Home > "Masters" module card opens the hub (`/masters`): a banner "Masters Dashboard" ("Configure and manage all master data for the school system") and the label "MASTERS SECTIONS" with a two-column grid of cards (icon, name, description, arrow). Cards come from the backend menu; before the menu loads, a fallback list (Academic Years, Classes & Sections, Staff Management, Subject Categories, Subjects, Class Subject Mappings, Parents, Holidays, Timetable Management, Locations, Roles & Permissions) is filtered by `read` or `list` permission on each card's resource. With the seeded menu the cards are the same eight as on web. Student and Parent have no Masters card on Home.
 
 **Expected results.** Each role sees only the cards its menu grants; navigation lands on the matching screen. After an edit, a dropdown shows the change at once only when the write invalidates the cache; otherwise within 5 minutes.
 
@@ -1382,7 +1456,7 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 6. Cards on the web hub use `menuItems` from the login response; menu changes need a re-login.
 
 **Error and edge cases.**
-- No Masters node in the menu (Student, Parent): no web hub and no mobile tab; typed URLs open pages whose API calls return 403.
+- No Masters node in the menu (Student, Parent): no web sidebar entry and no mobile Home card; typed URLs open the pages, which show data where the role has a read grant and 403 errors elsewhere.
 - Hub card without a `path` is not clickable.
 - A stale dropdown after a section rename or subject edit clears itself after 5 minutes or on the next invalidating write of the same kind.
 
@@ -1403,20 +1477,25 @@ Seed gaps that affect the UI (see Known gaps): the default Admin grant has `sect
 | TC-MST-15-U06 | [backend] `invalidate_cache("states_dropdown")` | Logs unknown type; nothing removed | passing |
 | TC-MST-15-U07 | [web] Hub description lookup for `Subjects` and for `Classes and Sections` | Fixed text "Define subjects and subject details"; fallback "Manage classes and sections" | blocked: needs descriptionMap exported from web/src/routes/_app/masters/index.tsx |
 | TC-MST-15-U08 | [mobile] Hub source with an empty backend menu and a role with `read` on `academic_years` only | Fallback list contains only "Academic Years" | blocked: needs the fallback list builder exported from mobile/app/(tabs)/masters.tsx |
-| TC-MST-15-A01 | Create an academic year, class, subject, category and holiday, each followed immediately by its dropdown | Each dropdown shows the new row (invalidation works) | planned |
-| TC-MST-15-A02 | Rename a subject (`PUT`) then read `GET /masters/subjects/dropdown` | Old name until TTL (no invalidation) | planned |
-| TC-MST-15-A03 | Deactivate a subject then `GET /masters/subjects/dropdown` | Subject still listed until TTL | planned |
-| TC-MST-15-A04 | Add a section then `GET /by_class_id/{id}/sections`; rename a section then read again | New section present; renamed section stale | planned |
-| TC-MST-15-A05 | Tenant separation: create `QA-X` subject in tenant A, read dropdown in tenant B twice | Never contains `QA-X` | planned |
-| TC-MST-15-A06 | `GET /parents/salary-ranges/dropdown` repeated | Identical fixed list, not affected by cache or tenant | planned |
-| TC-MST-15-A07 | Dropdown items shape: academic years, classes, sections, subjects, categories, holidays | Academic years `{id,title}`; the rest `{id,name}` | planned |
-| TC-MST-15-E01 | [web] Admin opens `/masters` | "Masters Dashboard" with the seeded Masters child cards; descriptions shown | planned |
-| TC-MST-15-E02 | [web] Click the "Subjects" card | Navigates to `/masters/subjects` | planned |
-| TC-MST-15-E03 | [web] Teacher and Staff open `/masters` | Same cards (menu grant) | planned |
-| TC-MST-15-E04 | [web] Student and Parent | No "Masters" sidebar entry | planned |
-| TC-MST-15-E05 | [mobile] Admin opens the Masters tab | Banner "Masters Dashboard", label "MASTERS SECTIONS", card per backend Masters child | planned |
-| TC-MST-15-E06 | [mobile] Tap "Academic Years" card | Opens the Academic Years screen | planned |
-| TC-MST-15-E07 | [mobile] Student and Parent | No Masters tab in the bottom bar | planned |
+| TC-MST-15-A01 | Create an academic year, class, subject, category and holiday, each followed immediately by its dropdown | Each dropdown shows the new row (invalidation works) | passing |
+| TC-MST-15-A02 | Rename a subject (`PUT`) then read `GET /masters/subjects/dropdown` | Old name until TTL (no invalidation) | passing |
+| TC-MST-15-A03 | Deactivate a subject then `GET /masters/subjects/dropdown` | Subject still listed until TTL | passing |
+| TC-MST-15-A04 | Add a section then `GET /by_class_id/{id}/sections`; rename a section then read again | New section present; renamed section stale | passing |
+| TC-MST-15-A05 | Tenant separation: create `QA-X` subject in tenant A, read dropdown in tenant B twice | Never contains `QA-X` | passing |
+| TC-MST-15-A06 | `GET /parents/salary-ranges/dropdown` repeated | Identical fixed list, not affected by cache or tenant | passing |
+| TC-MST-15-A07 | Dropdown items shape: academic years, classes, sections, subjects, categories, holidays | Academic years `{id,title}`; the rest `{id,name}` | passing |
+
+UI test cases (manual and automated, tenant `qa_manual`):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-MST-15-E01 | P1 | Web | Admin | Seeded menu catalog | 1. Sign in as Admin.<br>2. Open `/masters` (sidebar Masters). | "Masters Dashboard", "MASTERS SECTIONS" and cards Academic Years, Classes and Sections, Subject Categories, Subjects, Class Subject Mappings, Holidays, Parents, Roles and Permissions, each with its description | planned |
+| TC-MST-15-E02 | P2 | Web | Admin | None | 1. On `/masters` click the "Subjects" card. | Navigates to `/masters/subjects` | planned |
+| TC-MST-15-E03 | P2 | Web | Teacher | None | 1. Sign in as Teacher, open `/masters`.<br>2. Repeat as Staff. | The same eight cards (menu grant) | planned |
+| TC-MST-15-E04 | P2 | Web | Student | Seeded student Advik Mehta (002) and parent venkat.raju@example.com | 1. Sign in as each and check the sidebar. | No "Masters" sidebar entry | planned |
+| TC-MST-15-E05 | P1 | Mobile | Admin | Seeded menu catalog | 1. Sign in as Admin, tap the "Masters" card on Home. | Banner "Masters Dashboard", label "MASTERS SECTIONS", one card per Masters child (same eight as web) | planned |
+| TC-MST-15-E06 | P2 | Mobile | Admin | None | 1. On the hub tap "Academic Years". | Opens the Academic Years screen | planned |
+| TC-MST-15-E07 | P2 | Mobile | Student | Seeded student Advik Mehta (002) and parent venkat.raju@example.com | 1. Sign in as each and look at Home. | No Masters card (only Students, Exam Management, Fee Management) | planned |
 
 ---
 
@@ -1441,3 +1520,5 @@ Defects and doc/code mismatches found while writing this page (the code behaviou
 15. **Dropdown cache invalidation gaps** for section update and delete, subject update and deactivate, and all caste and location writes.
 16. **Doc update needed for permission aliases.** The module doc states the mobile screens gate on `timetables` and `holidays`; the mobile code uses `timetable_management` and `holiday_management` (correct). The web calendar still gates on `holidays` (see `docs/features/timetable-calendar.md`).
 17. **Create endpoints are rate limited per client IP** (30 per minute, bulk mappings 10), which affects automated suites that create data quickly.
+18. **Web search on server-paged master tables covers the current page only** (Academic Years, Subject Categories, Class Subject Mappings): a row on another page is reported as "0 of 5 results" / "No results found" until "Rows per page" is raised. Observed 2026-10-07.
+19. **Mobile add-mapping "Select a Class" toast is unreachable**: the add button only appears after a class with unmapped subjects is chosen, so the validation in `handleBulkAdd` never fires (TC-MST-10-E10 obsolete).

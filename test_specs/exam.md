@@ -2,7 +2,7 @@
 
 Feature documentation and test specification for the Exam module. Conventions, phases and test case IDs: `docs/testing/strategy.md`. Page layout: `docs/features/README.md`. Module rules and code map: `docs/modules/exam.md`.
 
-_Last verified against code: 2026-10-02_
+_Last verified against code: 2026-10-07_
 
 ## Module overview
 
@@ -16,8 +16,8 @@ The Exam module lets a school define grading rules once (exam grade schemes, sub
 | Principal / superadmin (UI only) | Whatever the role record grants | Web and mobile treat them like Admin for the management screens (role-name check, not a permission) |
 | Teacher | `exams`: read, list. `exam_marks`: create, read, list | Read all exam data, enter marks. Cannot create, edit, compute, publish, override or delete (needs `exams:create/update/delete`) |
 | Staff | `exams`: read, list. `exam_marks`: read, list | Read-only; can load the mark grid but cannot save marks |
-| Student | `exams`: read, list. `exam_marks`: read_own, list_own. `exam_results`: read_own, list_own. `exam_hall_tickets`: read_own, list_own | Own marks (`my-marks`), own published result (`my-result`). Also, through `exams:read`, every other `exams:read` endpoint (see Known gaps KG-3). Cannot call the mark grid (`exam_marks:read` is not granted) |
-| Parent | `exams`: read, list. `exam_marks`: read_related, list_related. `exam_hall_tickets`: read_related, list_related | Linked child's marks and published result (`child-marks`, `child-result`). Same `exams:read` exposure as Student |
+| Student | `exams`: read, list. `exam_marks`: read_own, list_own. `exam_results`: read_own, list_own. `exam_hall_tickets`: read_own, list_own | Own marks (`my-marks`), own published result (`my-result`, unreachable: DEF-EXM-6). The result list, hall ticket eligible and ineligible lists, download-all and the audit log return 403 for the role names Student and Parent; single-student result and hall ticket download are limited to the own record. Other `exams:read` endpoints (class-sections, subject configs, dates, enrolled students) stay readable (KG-3). Cannot call the mark grid (`exam_marks:read` is not granted) |
+| Parent | `exams`: read, list. `exam_marks`: read_related, list_related. `exam_hall_tickets`: read_related, list_related | Linked child's marks and published result (`child-marks`, `child-result`). Same 403 blocks as Student; single-student endpoints are limited to linked children |
 
 `exam_hall_tickets:*_own` and `*_related` are seeded but no endpoint checks them. Tenants created before a permission was added need `POST /auth/seed/all-role-permissions`.
 
@@ -95,7 +95,11 @@ Grade lookup (`grading_service.lookup_grade`), compute rules (`aggregate_service
 
 - Fixture GS1 "QA Standard" exam grade scheme: A+ 90.00-100.00 gpa 4.00 pass; A 80.00-89.99 gpa 3.50 pass; B 70.00-79.99 gpa 3.00 pass; C 60.00-69.99 gpa 2.00 pass; D 35.00-59.99 gpa 1.00 pass; F 0.00-34.99 gpa 0.00 fail.
 - Fixture EX1: exam "QA FA1" for class "QA Class 5" section "A", scheme GS1, subjects Math (components Written max 80, Oral max 20), Science (Written max 100), English (Written max 100), four enrolled students S1..S4.
-- QA tenant `qa_school` on local database `cos360_test` only (never a real tenant).
+- API tests run on the QA tenant `qa_school` (local database `cos360_test`, never a real tenant); it holds only the role logins and API test data.
+- UI test cases (the 8-column tables) run on the seeded manual-test tenant `qa_manual` (`backend/scripts/qa/setup_manual_tenant.py`). Exam data seeded there: exam grade scheme "Standard Percentage Grading" (bands A+ 90-100 down to E 0-34.99 fail), subject scheme "Subject Grading", remark set "Co-Scholastic Grading" (A to D), board patterns State / Primary and State / Pre-Primary, exam settings (Default Board State, Minimum Attendance % 60, no fee minimum), and three exams in 2026-2027: "Unit Test 1 - Class 1B" (published; Class 1 / 1-B; English, Hindi, Telugu, Mathematics, Environmental Studies, Written 25 each; computed results Advik Mehta 78.00 rank 1, Harsha Raju 72.80 rank 2, Nikhil Krishnan 68.00 rank 3; 5 dates in Room 1B), "Unit Test 1 - Class 2A" (published; Arjun Yadav, Rahul Menon) and "Half Yearly Examination 2026" (active; Class 1 to Class 5, sections A and B; Written 80 plus Internal Assessment 20; no marks; hall tickets computed and published, 21 eligible, for example Karthik Reddy 001 HT-2025-0005).
+- UI fixture QA FA1 is created by TC-EXM-06-E01 in `qa_manual`: Class 1 / 1-B, scheme "Standard Percentage Grading", Mathematics (Written 80, Oral 20), English (Written 100), Environmental Studies (Written 100), students Advik Mehta (002), Harsha Raju (004), Nikhil Krishnan (007). Names of UI-created data start with "QA "; clean up after the case.
+- Student and parent UI cases use seeded logins (student login = admission number, for example Advik Mehta 002; parent login = the parent's email). Seeded accounts force a password change at first sign-in. The QA Student and Parent logins are not linked to any student.
+- Quoted UI texts use ASCII: where the UI shows a typographic dash or apostrophe, this page writes a hyphen or a straight quote.
 
 ---
 
@@ -119,8 +123,8 @@ Grade lookup (`grading_service.lookup_grade`), compute rules (`aggregate_service
 6. The page also submits hidden values grace_max_per_subject (default 2), grace_max_subjects (default 3), grace_auto_apply (false), reconduct_max_failed_subjects (default 2).
 
 **Steps, mobile.**
-1. Exam tab > tile "Exam Settings" (admin roles only). Cards "Board Configuration" (Default Board, Custom Board Name), "Hall Ticket Settings" (Minimum Attendance %), "Fee Payment Policy" (Minimum Fee Paid %).
-2. Edit and tap save. Toast "Saved" / "Exam settings updated.". Only four fields are sent (default_board, custom_board_name, hall_ticket_min_attendance, hall_ticket_min_fee_paid_pct), so grace and re-conduct values are reset by the full overwrite (see rules).
+1. Exam tab > tile "Exam Settings" (admin roles only). Opening this or any other admin-only exam screen by URL on a cold load (Expo web address bar, refresh) crashes with "Something went wrong" (KG-20); open it from the hub. Cards "Board Configuration" (Default Board, Custom Board Name), "Hall Ticket Settings" (Minimum Attendance %), "Fee Payment Policy" (Minimum Fee Paid %).
+2. Edit and tap "Save Settings". Toast "Saved" / "Exam settings updated.". Only four fields are sent (default_board, custom_board_name, hall_ticket_min_attendance, hall_ticket_min_fee_paid_pct), so grace and re-conduct values are reset by the full overwrite (see rules).
 
 **Expected results.**
 - Row created or overwritten in `exam_settings` (singleton). `GET` returns the same values; decimals arrive as strings (`"75.00"`).
@@ -169,13 +173,19 @@ Grade lookup (`grading_service.lookup_grade`), compute rules (`aggregate_service
 | TC-EXM-01-A10 | GET and PUT with NOAUTH | 401 each | passing |
 | TC-EXM-01-A11 | Tenant isolation: ADMIN of tenant A saves settings; ADMIN of tenant B GET | Tenant B gets 404 (or its own values); tenant A row never returned | passing |
 | TC-EXM-01-A12 | Token for tenant A with `cschema` header of tenant B on GET and PUT | 403 | passing |
-| TC-EXM-01-E01 | [web] ADMIN opens Exam > Exam Settings with a settings row present, changes "Minimum Attendance %" to 80, "Minimum Fee Paid %" to 50, clicks "Save Settings" | Toast "Exam settings saved successfully"; reload shows 80 and 50 | planned |
-| TC-EXM-01-E02 | [web] ADMIN selects Default Board "Custom" | "Custom Board Name" input appears; saving stores board `Custom` and the name | planned |
-| TC-EXM-01-E03 | [web] ADMIN on a tenant with no settings row opens the page | Page shows the load error instead of the form (documents KG-9; update to success once fixed) | planned |
-| TC-EXM-01-E04 | [web] TEACHER navigates to `/exam/settings` | Redirected to `/exam`; "Settings" quick link absent from dashboard | planned |
-| TC-EXM-01-E05 | [web] ADMIN enters attendance 150 and saves | Inline validation error; no request sent | planned |
-| TC-EXM-01-E06 | [mobile] ADMIN opens Exam tab > "Exam Settings", changes Minimum Attendance % and saves | Toast "Saved" / "Exam settings updated."; value persists after reopen | planned |
-| TC-EXM-01-E07 | [mobile] TEACHER opens the Exam tab | "Exam Settings" tile not shown; opening `/exam/settings` redirects to `/exam/list` | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-EXM-01-E01 | P1 | Web | Admin | Seeded exam settings: Default Board State, Minimum Attendance % 60, Minimum Fee Paid % empty. | 1. Sign in as Admin.<br>2. Open Exam > Exam Settings.<br>3. Enter "Minimum Attendance %" 80.<br>4. Enter "Minimum Fee Paid %" 50.<br>5. Click "Save Settings".<br>6. Reload the page. | Toast "Exam settings saved successfully". After reload the fields show 80 and 50; GET /exam-settings returns "80.00" and "50.00". Clean-up: set 60, clear the fee value and save. | planned |
+| TC-EXM-01-E02 | P2 | Web | Admin | Seeded exam settings (Default Board State). | 1. Sign in as Admin.<br>2. Open Exam > Exam Settings.<br>3. Open "Default Board" and choose "Custom".<br>4. Enter "Custom Board Name" "QA Board".<br>5. Click "Save Settings".<br>6. Reload the page. | "Custom Board Name" appears only while Custom is selected. Toast "Exam settings saved successfully"; after reload Default Board is Custom and the name is "QA Board". Clean-up: choose "State Board" again and save. | planned |
+| TC-EXM-01-E03 | P3 | Web | Admin | A tenant whose exam settings were never saved (qa_manual has a seeded row, so use a freshly provisioned tenant). | 1. Sign in as Admin.<br>2. Open Exam > Exam Settings. | The page shows the load error "Exam settings not configured yet." instead of the form, so the first save cannot be made from web (KG-9). Update to the form once fixed. | planned |
+| TC-EXM-01-E04 | P2 | Web | Teacher | None. | 1. Sign in as Teacher.<br>2. Open /exam/settings in the address bar. | Redirected to /exam. The dashboard has no "Settings" quick link and no "New Exam" button. (The sidebar still lists Exam Settings because it comes from the menu.) | planned |
+| TC-EXM-01-E05 | P3 | Web | Admin | None. | 1. Sign in as Admin.<br>2. Open Exam > Exam Settings.<br>3. Enter "Minimum Attendance %" 150.<br>4. Click "Save Settings". | Inline error under the field ("Number must be less than or equal to 100"); no request is sent and no toast appears. | planned |
+| TC-EXM-01-E06 | P1 | Mobile | Admin | Seeded exam settings (Minimum Attendance % 60). Open the screen from the Exam tab, not by URL (KG-20). | 1. Sign in as Admin.<br>2. Open the Exam tab.<br>3. Tap "Exam Settings".<br>4. Change "Minimum Attendance %" to 80.<br>5. Tap "Save Settings".<br>6. Go back and open "Exam Settings" again. | Toast "Saved" "Exam settings updated."; the screen shows 80 after reopening. Only four fields are sent, so the seeded grace values (2 and 1) are reset to empty (KG-11). Clean-up: set 60 again. | planned |
+| TC-EXM-01-E07 | P3 | Mobile | Teacher | None. | 1. Sign in as Teacher.<br>2. Open the Exam tab. | Tiles shown: Exams, Mark Entry, Hall Tickets, Results. No "Exam Settings" tile. In-app navigation to /exam/settings redirects to /exam/list. | planned |
+| TC-EXM-01-E08 | P3 | Mobile | Admin | Expo web. | 1. Sign in as Admin.<br>2. Type /exam/settings in the browser address bar and press Enter (cold load). | Exam Settings screen loads. Currently the app shows "Something went wrong" with "Attempted to navigate before mounting the Root Layout component" (KG-20). | blocked: KG-20 admin-only exam screens crash on a cold URL load |
 
 API tests implemented in: `backend/tests/api/exam/test_f01_settings.py`
 
@@ -189,13 +199,13 @@ Implemented in: backend/tests/unit/exam/test_settings_boards_grading.py (U01-U05
 
 **Roles and permissions.**
 - Create: `exams:create`. Read: `exams:read`. Update: `exams:update`. Delete: `exams:delete`.
-- Menu: Exam > Board Patterns. The web route has no role guard (the API enforces the permissions above); the mobile screen and tile are admin-role only (mobile redirects non-admins to `/exam/list`).
+- Menu: Exam > Board Patterns (the sidebar lists it for Teacher and Staff too). The web route has no role guard and shows "New Pattern" and "Create First Pattern" to every role, the API then answers 403 (KG-22); the mobile screen and tile are admin-role only (mobile redirects non-admins to `/exam/list`).
 
 **Preconditions.**
 - None.
 
 **Steps, web.**
-1. Exam > Board Patterns (`/exam/board-patterns`). Title "Board Patterns". Empty state "No board patterns yet" with "Create First Pattern".
+1. Exam > Board Patterns (`/exam/board-patterns`). Title "Board Patterns", subtitle "Define exam type patterns per board and education level". Empty state "No board patterns yet" with "Create First Pattern".
 2. Click "New Pattern". Dialog "Create Board Pattern": select "Board" (CBSE, ICSE, State, BTech, Custom), select "Level" (Pre-Primary, Primary, Upper Primary, Secondary, Intermediate, Diploma, BTech, MTech, IIT, Others), "Custom Board Name" (only for Custom).
 3. In "Exam Types" table fill "Type Name", "Nature" (formative, summative, cumulative, custom), "Weightage %", "Count/Yr"; "Add Type" adds a row, the X button removes one. At least one type with a name is required.
 4. Click "Save Pattern". Toast "Board pattern created successfully".
@@ -203,7 +213,7 @@ Implemented in: backend/tests/unit/exam/test_settings_boards_grading.py (U01-U05
 6. Edit icon opens "Edit Board Pattern"; saving sends the whole exam type list (toast "Board pattern updated successfully"). Trash icon opens "Delete Board Pattern?"; confirm toast "Board pattern deleted".
 
 **Steps, mobile.**
-1. Exam tab > "Board Patterns" (admin only). "New Pattern" opens a modal with Board, Level, Custom Board Name (Custom only), Exam Types (Type Name, Nature, Weightage %, Count/Year, "Add Type").
+1. Exam tab > "Board Patterns" (admin only). "New Pattern" opens the modal "New Board Pattern" with Board, Level, Custom Board Name (Custom only), Exam Types (Type Name, Nature, Weightage %, Count/Year, "Add Type").
 2. Save. Validation toast "At least one exam type is required." Toasts "Created", "Updated", "Deleted". Delete asks "Delete Pattern" with the board and level.
 
 **Expected results.**
@@ -249,7 +259,7 @@ Implemented in: backend/tests/unit/exam/test_settings_boards_grading.py (U01-U05
 | TC-EXM-02-A05 | GET list after creating two patterns | 200; both present with nested types | passing |
 | TC-EXM-02-A06 | GET one existing / random uuid | 200 / 404 | passing |
 | TC-EXM-02-A07 | PUT `{"is_active": false}` only | 200; `is_active` false; types unchanged | passing |
-| TC-EXM-02-A08 | PUT with new `exam_types` list of one item | 200; old types gone, one type returned | xfail: DEF-EXM-1 |
+| TC-EXM-02-A08 | PUT with new `exam_types` list of one item | 200; old types gone, one type returned | known defect: DEF-EXM-1: PUT /board-patterns/{id} response returns the stale exam_types (old rows) instead of the replaced list |
 | TC-EXM-02-A09 | PUT changing board/level to an existing pair | 409 | passing |
 | TC-EXM-02-A10 | PUT to unknown id | 404 | passing |
 | TC-EXM-02-A11 | DELETE unused pattern then GET | 204 then 404 | passing |
@@ -261,18 +271,24 @@ Implemented in: backend/tests/unit/exam/test_settings_boards_grading.py (U01-U05
 | TC-EXM-02-A17 | Tenant isolation: pattern created in tenant A; tenant B list and GET by id | List excludes it; GET returns 404 | passing |
 | TC-EXM-02-A18 | Same board and level created in tenant A and tenant B | Both succeed (uniqueness is per tenant) | passing |
 | TC-EXM-02-A19 | Token A with `cschema` of tenant B on POST | 403 | passing |
-| TC-EXM-02-E01 | [web] ADMIN: Exam > Board Patterns > "New Pattern", Board CBSE, Level Primary, one type "FA1" formative weightage 10 count 2, "Save Pattern" | Toast "Board pattern created successfully"; row appears with "1 types" | planned |
-| TC-EXM-02-E02 | [web] Click the row | Expanded table shows FA1, formative, 10, 2, 0 | planned |
-| TC-EXM-02-E03 | [web] Save with the type name empty | Inline "Name required"; nothing saved | planned |
-| TC-EXM-02-E04 | [web] Create a second CBSE/Primary | Error toast with the backend message (409 text) | planned |
-| TC-EXM-02-E05 | [web] Edit icon: add a second type, save | Toast "Board pattern updated successfully"; row shows "2 types" | planned |
-| TC-EXM-02-E06 | [web] Trash icon > Delete on an unused pattern | Toast "Board pattern deleted"; row disappears | planned |
-| TC-EXM-02-E07 | [web] Delete a pattern matching an existing exam's board and level | Error toast; pattern remains | planned |
-| TC-EXM-02-E08 | [web] Type in search box "CBSE" and "zzz" | Filters rows; "No patterns match your search." for zzz | planned |
-| TC-EXM-02-E09 | [mobile] ADMIN: Exam tab > "Board Patterns" > "New Pattern", fill and save | Toast "Created"; card shows the pattern | planned |
-| TC-EXM-02-E10 | [mobile] Save with no exam type name | Toast "At least one exam type is required." | planned |
-| TC-EXM-02-E11 | [mobile] Delete a pattern and confirm "Delete Pattern" | Toast "Deleted" | planned |
-| TC-EXM-02-E12 | [mobile] TEACHER opens `/exam/board-patterns` | Redirected to `/exam/list` | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-EXM-02-E01 | P1 | Web | Admin | Seeded patterns State / Primary and State / Pre-Primary exist; no CBSE / Primary pattern. | 1. Sign in as Admin.<br>2. Open Exam > Board Patterns.<br>3. Click "New Pattern".<br>4. Keep "Board" CBSE and "Level" Primary.<br>5. In the first type row enter "Type Name" "QA FA1", "Nature" formative, "Weightage %" 10, "Count/Yr" 2.<br>6. Click "Save Pattern". | Toast "Board pattern created successfully". Row CBSE, Primary appears with badge "1 types". | planned |
+| TC-EXM-02-E02 | P2 | Web | Admin | TC-EXM-02-E01 done. | 1. Sign in as Admin.<br>2. Open Exam > Board Patterns.<br>3. Click the CBSE / Primary row. | Expanded table with columns Type Name, Nature, Weightage %, Count/Year, Order showing QA FA1, formative, 10, 2, 0. The seeded State / Primary row expands to Unit Test, Half Yearly Examination, Annual Examination. | planned |
+| TC-EXM-02-E03 | P3 | Web | Admin | None. | 1. Sign in as Admin.<br>2. Open Exam > Board Patterns.<br>3. Click "New Pattern".<br>4. Leave "Type Name" empty.<br>5. Click "Save Pattern". | Inline "Name required" on the type row; dialog stays open; nothing saved. | planned |
+| TC-EXM-02-E04 | P3 | Web | Admin | Seeded State / Primary pattern exists. | 1. Sign in as Admin.<br>2. Open Exam > Board Patterns.<br>3. Click "New Pattern".<br>4. Choose "Board" State and "Level" Primary; enter "Type Name" "QA FA2".<br>5. Click "Save Pattern". | Error toast "A BoardExamPattern for board='State' / level='primary' already exists."; no new row. | planned |
+| TC-EXM-02-E05 | P2 | Web | Admin | TC-EXM-02-E01 done. | 1. Sign in as Admin.<br>2. Open Exam > Board Patterns.<br>3. Click the Edit icon on CBSE / Primary.<br>4. Click "Add Type" and enter "QA SA1", summative, 20, 1.<br>5. Click "Save Pattern". | Toast "Board pattern updated successfully"; the row shows "2 types" and the expanded table lists QA FA1 and QA SA1. | planned |
+| TC-EXM-02-E06 | P2 | Web | Admin | TC-EXM-02-E01 done; no exam uses board CBSE with level primary. | 1. Sign in as Admin.<br>2. Open Exam > Board Patterns.<br>3. Click the trash icon on CBSE / Primary.<br>4. Click "Delete" in "Delete Board Pattern?". | Toast "Board pattern deleted"; the row disappears (empty state "No board patterns yet" if it was the only one). | planned |
+| TC-EXM-02-E07 | P3 | Web | Admin | Seeded State / Primary pattern; the seeded exams use board State and level primary. | 1. Sign in as Admin.<br>2. Open Exam > Board Patterns.<br>3. Click the trash icon on State / Primary.<br>4. Click "Delete" in "Delete Board Pattern?". | Error toast ending "is referenced by one or more exams and cannot be deleted."; the pattern remains. | planned |
+| TC-EXM-02-E08 | P3 | Web | Admin | Seeded patterns. | 1. Sign in as Admin.<br>2. Open Exam > Board Patterns.<br>3. Type "State" in "Search board or level...".<br>4. Replace the text with "zzz". | "State" keeps both seeded rows; "zzz" shows "No patterns match your search." | planned |
+| TC-EXM-02-E09 | P2 | Mobile | Admin | No CBSE / Primary pattern exists. | 1. Sign in as Admin.<br>2. Open the Exam tab.<br>3. Tap "Board Patterns".<br>4. Tap "New Pattern".<br>5. Keep Board CBSE, Level Primary; enter Type Name "QA FA1", Weightage % 10, Count/Year 2.<br>6. Tap "Save Pattern". | Toast "Created"; a card for CBSE / Primary is listed. | planned |
+| TC-EXM-02-E10 | P3 | Mobile | Admin | None. | 1. Sign in as Admin.<br>2. Open Exam tab > "Board Patterns".<br>3. Tap "New Pattern".<br>4. Leave Type Name empty.<br>5. Tap "Save Pattern". | Toast "At least one exam type is required."; nothing saved. | planned |
+| TC-EXM-02-E11 | P2 | Mobile | Admin | TC-EXM-02-E09 done. | 1. Sign in as Admin.<br>2. Open Exam tab > "Board Patterns".<br>3. Tap delete on the CBSE / Primary card.<br>4. Confirm "Delete Pattern". | Toast "Deleted"; the card disappears. | planned |
+| TC-EXM-02-E12 | P3 | Mobile | Teacher | None. | 1. Sign in as Teacher.<br>2. Open the Exam tab. | No "Board Patterns" tile. In-app navigation to /exam/board-patterns redirects to /exam/list. | planned |
+| TC-EXM-02-E13 | P3 | Web | Teacher | None. | 1. Sign in as Teacher.<br>2. Open Exam > Board Patterns.<br>3. Click "New Pattern", enter type "QA FA1", click "Save Pattern". | Target: the create controls are hidden for roles without exams:create. Currently "New Pattern" and "Create First Pattern" are shown and saving fails with a permission error toast (KG-22). | blocked: KG-22 create buttons shown to roles without exams:create |
 
 API tests implemented in: `backend/tests/api/exam/test_f02_board_patterns.py`
 
@@ -292,8 +308,8 @@ Implemented in: backend/tests/unit/exam/test_settings_boards_grading.py.
 - None. An exam grade scheme must exist before the web "Create Exam" button is enabled (it is disabled with tooltip "Set up grading schemes before creating an exam").
 
 **Steps, web.**
-1. Exam > Grading, click "Exam Grade Schemes" (`/exam/grading/exam-schemes`). Title "Exam Grade Schemes". Empty state "No grade schemes yet" with "Create First Scheme".
-2. Click "New Scheme". Dialog "Create Exam Grade Scheme": "Scheme Name *", "Description", checkbox "Set as default scheme", and the band editor with columns "From %", "To %", "Grade", "GPA", "Remarks", "Pass?" (checkbox Pass or Fail). "Add Band" adds a row (default 0 to 100), the grip handle reorders by drag, the trash button removes a band.
+1. Exam > Grading, click "Exam Grade Schemes" (`/exam/grading/exam-schemes`). Title "Exam Grade Schemes". Subtitle "Map total percentage ranges to grades (A+, A, B...) with GPA and pass/fail", search "Search schemes...", columns S.No., Name, Default, Bands, Actions. Empty state "No grade schemes yet" with "Create First Scheme".
+2. Click "New Scheme". Dialog "Create Exam Grade Scheme": "Scheme Name *", "Description", checkbox "Set as default scheme", and the band editor with columns "From %", "To %", "Grade", "GPA", "Remarks", "Pass?" (checkbox Pass or Fail). The editor starts empty ("No grade bands defined. Click "Add Band" to get started."). "Add Band" adds a row (default 0 to 100), the grip handle reorders by drag, the trash button removes a band.
 3. Click "Save Scheme". Toast "Exam grade scheme created successfully".
 4. Click a row to expand a read-only band table. Edit icon opens "Edit Exam Grade Scheme" (all bands are replaced on save, toast "Exam grade scheme updated successfully"). Trash opens "Delete Grade Scheme?" (text: deletion is blocked if the scheme is in use by an exam); toast "Grade scheme deleted".
 5. Client rules: name 1-100 characters, at least one band, grade label 1-10 characters, From % <= To %, GPA 0-10, description up to 300.
@@ -383,7 +399,7 @@ Worked examples with fixture GS1:
 | TC-EXM-03-A06 | POST band boundaries 0 and 100 exactly | 201 | passing |
 | TC-EXM-03-A07 | GET list contains the scheme; GET one by id | 200 each, bands present | passing |
 | TC-EXM-03-A08 | GET unknown id | 404 `ExamGradeScheme with id ... not found` | passing |
-| TC-EXM-03-A09 | PUT with new name, two bands | 200; old bands gone; only two bands returned | xfail: DEF-EXM-2 |
+| TC-EXM-03-A09 | PUT with new name, two bands | 200; old bands gone; only two bands returned | known defect: DEF-EXM-2: PUT /grade-schemes/{kind}/{id} response returns the stale band list instead of the replaced bands |
 | TC-EXM-03-A10 | PUT keeping the same name | 200 (no duplicate check when unchanged) | passing |
 | TC-EXM-03-A11 | PUT renaming to another existing scheme's name | 400 | passing |
 | TC-EXM-03-A12 | PUT unknown id | 404 | passing |
@@ -397,20 +413,25 @@ Worked examples with fixture GS1:
 | TC-EXM-03-A20 | Same scheme name created in tenant A and B | Both 201 (name unique per tenant) | passing |
 | TC-EXM-03-A21 | Token A with `cschema` of tenant B on POST | 403 | passing |
 | TC-EXM-03-A22 | Create two schemes both `is_default=true` | Both 201 (no exclusivity) | passing |
-| TC-EXM-03-E01 | [web] ADMIN: Exam > Grading, open "Exam Grade Schemes", "New Scheme", name "QA Standard", add the six GS1 bands, "Save Scheme" | Toast "Exam grade scheme created successfully"; row shows "6 bands" | planned |
-| TC-EXM-03-E02 | [web] Expand the row | Read-only band table with From %, To %, Grade, GPA, Remarks, Pass or Fail badges | planned |
-| TC-EXM-03-E03 | [web] Save with no bands | Inline "At least one grade band required"; no request | planned |
-| TC-EXM-03-E04 | [web] Band with From % 60 and To % 50 | Inline "From percent must be <= to percent" | planned |
-| TC-EXM-03-E05 | [web] Edit icon, change a GPA, "Save Scheme" | Toast "Exam grade scheme updated successfully"; expanded row shows new GPA | planned |
-| TC-EXM-03-E06 | [web] Delete a scheme used by an exam | Error toast; scheme remains | planned |
-| TC-EXM-03-E07 | [web] Delete an unused scheme via "Delete Grade Scheme?" | Toast "Grade scheme deleted" | planned |
-| TC-EXM-03-E08 | [web] Drag a band row to reorder | Row order changes; saved `sort_order` follows the new order | planned |
-| TC-EXM-03-E09 | [web] Open Exam > Grading | Three cards and stat counts match the number of schemes and sets | planned |
-| TC-EXM-03-E10 | [mobile] ADMIN: Exam > Grading > "Exam Grade Schemes" > "New Scheme", fill and save | Toast "Created"; scheme card listed | planned |
-| TC-EXM-03-E11 | [mobile] Save with empty name, then with no bands | Toasts "Name is required." and "At least one grade band required." | planned |
-| TC-EXM-03-E12 | [mobile] Toggle a band's PASS or FAIL control, save | Band shows the new Pass or Fail badge | planned |
-| TC-EXM-03-E13 | [mobile] Delete a scheme (confirm "Delete Scheme") | Toast "Deleted" | planned |
-| TC-EXM-03-E14 | [mobile] TEACHER opens the Exam tab | "Grading" tile absent; direct navigation to `/exam/grade-schemes` redirects to `/exam/list` | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-EXM-03-E01 | P1 | Web | Admin | No exam grade scheme named "QA Standard" exists. | 1. Sign in as Admin.<br>2. Open Exam > Grading.<br>3. Click "Open" on "Exam Grade Schemes".<br>4. Click "New Scheme".<br>5. Enter "Scheme Name" "QA Standard".<br>6. Click "Add Band" six times and fill the rows: A+ 90-100 gpa 4 Pass; A 80-89.99 gpa 3.5; B 70-79.99 gpa 3; C 60-69.99 gpa 2; D 35-59.99 gpa 1; F 0-34.99 gpa 0 with "Pass?" unticked.<br>7. Click "Save Scheme". | Toast "Exam grade scheme created successfully"; row "QA Standard" with "6 bands". This is fixture GS1 used by later cases. | planned |
+| TC-EXM-03-E02 | P2 | Web | Admin | TC-EXM-03-E01 done. | 1. Sign in as Admin.<br>2. Open Exam > Grading > Exam Grade Schemes.<br>3. Click the "QA Standard" row. | Read-only band table with From %, To %, Grade, GPA, Remarks and Pass or Fail badges matching GS1. The seeded "Standard Percentage Grading" row shows 7 bands, A+ to E. | planned |
+| TC-EXM-03-E03 | P3 | Web | Admin | None. | 1. Sign in as Admin.<br>2. Open Exam > Grading > Exam Grade Schemes.<br>3. Click "New Scheme".<br>4. Enter "Scheme Name" "QA Doc Empty" and add no band.<br>5. Click "Save Scheme". | The dialog shows "No grade bands defined." and the inline error "At least one grade band required"; no request is sent. | planned |
+| TC-EXM-03-E04 | P3 | Web | Admin | None. | 1. Sign in as Admin.<br>2. Open Exam > Grading > Exam Grade Schemes.<br>3. Click "New Scheme", enter name "QA Doc Range".<br>4. Click "Add Band", enter "From %" 60 and "To %" 50, Grade "X".<br>5. Click "Save Scheme". | Inline "From percent must be <= to percent"; nothing saved. | planned |
+| TC-EXM-03-E05 | P2 | Web | Admin | TC-EXM-03-E01 done. | 1. Sign in as Admin.<br>2. Open Exam > Grading > Exam Grade Schemes.<br>3. Click the Edit icon on "QA Standard".<br>4. Change the GPA of band B to 3.2.<br>5. Click "Save Scheme".<br>6. Expand the row. | Toast "Exam grade scheme updated successfully"; the expanded row shows GPA 3.20 for B (the list is re-fetched; the PUT response itself is stale, DEF-EXM-2). Restore 3.0 afterwards. | planned |
+| TC-EXM-03-E06 | P3 | Web | Admin | Seeded scheme "Standard Percentage Grading" (used by the seeded exams). | 1. Sign in as Admin.<br>2. Open Exam > Grading > Exam Grade Schemes.<br>3. Click the trash icon on "Standard Percentage Grading".<br>4. Click "Delete" in "Delete Grade Scheme?". | Error toast "ExamGradeScheme <id> is referenced by one or more exams and cannot be deleted."; the scheme remains. | planned |
+| TC-EXM-03-E07 | P2 | Web | Admin | None. | 1. Sign in as Admin.<br>2. Create scheme "QA Doc Temp" with one band 0-100 Pass.<br>3. Click its trash icon.<br>4. Click "Delete" in "Delete Grade Scheme?". | Toast "Grade scheme deleted"; row gone. | planned |
+| TC-EXM-03-E08 | P3 | Web | Admin | None. | 1. Sign in as Admin.<br>2. Open Exam > Grading > Exam Grade Schemes > "New Scheme".<br>3. Enter name "QA Doc Order", add bands A 50-100 and F 0-49.99.<br>4. Drag band F above band A by the grip handle.<br>5. Click "Save Scheme" and expand the row. | The rows swap while dragging; the saved sort order follows the new order. Delete "QA Doc Order" afterwards. | planned |
+| TC-EXM-03-E09 | P2 | Web | Admin | Seeded grading data: 1 exam grade scheme, 1 subject grade scheme ("Subject Grading"), 1 remark set ("Co-Scholastic Grading"), plus any QA items. | 1. Sign in as Admin.<br>2. Open Exam > Grading. | Three stat counts (Exam Grade Schemes, Subject Grade Schemes, Remark Grade Sets) equal the row counts of the three list pages; three "Open" cards. | planned |
+| TC-EXM-03-E10 | P1 | Mobile | Admin | No scheme named "QA Mobile Scheme". | 1. Sign in as Admin.<br>2. Open Exam tab > "Grading".<br>3. Tap "Exam Grade Schemes".<br>4. Tap "New Scheme".<br>5. Enter "Name *" "QA Mobile Scheme"; tap "Add Band" and enter Grade Label "P", From % 0, To % 100, GPA 1.<br>6. Save. | Toast "Created"; a "QA Mobile Scheme" card is listed. Delete it in TC-EXM-03-E13. | planned |
+| TC-EXM-03-E11 | P3 | Mobile | Admin | None. | 1. Sign in as Admin.<br>2. Open Exam tab > "Grading" > "Exam Grade Schemes" > "New Scheme".<br>3. Save with an empty name.<br>4. Enter name "QA Doc Empty", remove all bands, save again. | Toasts "Name is required." and then "At least one grade band required."; nothing saved. | planned |
+| TC-EXM-03-E12 | P3 | Mobile | Admin | TC-EXM-03-E10 done. | 1. Sign in as Admin.<br>2. Open Exam tab > "Grading" > "Exam Grade Schemes".<br>3. Edit "QA Mobile Scheme".<br>4. Toggle the band PASS control to FAIL.<br>5. Save. | Toast "Updated"; the band shows a Fail badge. | planned |
+| TC-EXM-03-E13 | P2 | Mobile | Admin | TC-EXM-03-E10 done. | 1. Sign in as Admin.<br>2. Open Exam tab > "Grading" > "Exam Grade Schemes".<br>3. Tap delete on "QA Mobile Scheme".<br>4. Confirm "Delete Scheme". | Toast "Deleted"; card gone. | planned |
+| TC-EXM-03-E14 | P3 | Mobile | Teacher | None. | 1. Sign in as Teacher.<br>2. Open the Exam tab. | No "Grading" tile. In-app navigation to /exam/grade-schemes redirects to /exam/list. | planned |
 
 API tests implemented in: `backend/tests/api/exam/test_f03_f05_grading.py`
 
@@ -471,18 +492,23 @@ Implemented in: backend/tests/unit/exam/test_settings_boards_grading.py (U01-U16
 | TC-EXM-04-A07 | PUT rename to existing name | 400 | passing |
 | TC-EXM-04-A08 | PUT unknown id | 404 | passing |
 | TC-EXM-04-A09 | DELETE unused scheme | 204; then 404 | passing |
-| TC-EXM-04-A10 | DELETE scheme assigned to a subject config of EX1 | 500 `An error occurred while deleting the subject grade scheme.` (KG-12; target behaviour 409) | xfail: KG-12 |
+| TC-EXM-04-A10 | DELETE scheme assigned to a subject config of EX1 | 500 `An error occurred while deleting the subject grade scheme.` (KG-12; target behaviour 409) | known defect: KG-12: DELETE /grade-schemes/subject/{id} on a scheme assigned to an exam subject config returns 500 instead o... |
 | TC-EXM-04-A11 | DELETE unknown id | 404 | passing |
 | TC-EXM-04-A12 | Create, update, delete as TEACHER, STAFF, STUDENT, PARENT | 403 each | passing |
 | TC-EXM-04-A13 | Read endpoints as all five roles | 200 | passing |
 | TC-EXM-04-A14 | All endpoints with NOAUTH | 401 | passing |
 | TC-EXM-04-A15 | Tenant isolation (tenant B cannot list or GET tenant A's scheme) and `cschema` mismatch | List excludes; GET 404; mismatch 403 | passing |
-| TC-EXM-04-E01 | [web] ADMIN creates "Science Grading" with bands via Exam > Grading > Subject Grade Schemes | Toast "Subject grade scheme created successfully"; row listed | planned |
-| TC-EXM-04-E02 | [web] Edit and delete the scheme | Toasts "Subject grade scheme updated successfully" then "Subject grade scheme deleted" | planned |
-| TC-EXM-04-E03 | [web] Delete a scheme assigned to an exam subject | Error toast (server error); scheme remains | planned |
-| TC-EXM-04-E04 | [web] Scheme appears in the create-exam wizard subject "Grade Scheme" select | Option visible | planned |
-| TC-EXM-04-E05 | [mobile] ADMIN creates a subject scheme (Exam > Grading > Subject Grade Schemes) | Toast "Created" | planned |
-| TC-EXM-04-E06 | [mobile] Save with no bands | Toast "At least one grade band required." | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-EXM-04-E01 | P1 | Web | Admin | No subject grade scheme named "QA Science Grading". | 1. Sign in as Admin.<br>2. Open Exam > Grading > "Subject Grade Schemes" ("Open").<br>3. Click "New Scheme".<br>4. Enter name "QA Science Grading".<br>5. Add bands F 0-32.99 (Pass? unticked) and P 33-100 (Pass? ticked).<br>6. Click "Save Scheme". | Toast "Subject grade scheme created successfully"; row "QA Science Grading" with "2 bands". | planned |
+| TC-EXM-04-E02 | P2 | Web | Admin | TC-EXM-04-E01 done; scheme not assigned to any exam subject. | 1. Sign in as Admin.<br>2. Open Exam > Grading > Subject Grade Schemes.<br>3. Edit "QA Science Grading", change band P GPA to 2, "Save Scheme".<br>4. Click the trash icon on the row and click "Delete" in "Delete Subject Grade Scheme?". | Toast "Subject grade scheme updated successfully", then "Subject grade scheme deleted"; row gone. | planned |
+| TC-EXM-04-E03 | P3 | Web | Admin | Seeded subject scheme "Subject Grading" (assigned to subjects of the seeded exams). | 1. Sign in as Admin.<br>2. Open Exam > Grading > Subject Grade Schemes.<br>3. Click the trash icon on "Subject Grading".<br>4. Click "Delete" in "Delete Subject Grade Scheme?". | Error toast "An error occurred while deleting the subject grade scheme." (KG-12; target a 409 in-use message); the scheme remains. | planned |
+| TC-EXM-04-E04 | P2 | Web | Admin | TC-EXM-04-E01 done. | 1. Sign in as Admin.<br>2. Open Exam > Exams > "Create Exam".<br>3. Fill Section 1 and select one class-section in Section 2.<br>4. In Section 3 open a subject row and open its "Grade Scheme" select. | "QA Science Grading" and the seeded "Subject Grading" are options next to "Default". Click "Cancel" to clear the wizard. | planned |
+| TC-EXM-04-E05 | P2 | Mobile | Admin | None. | 1. Sign in as Admin.<br>2. Open Exam tab > "Grading" > "Subject Grade Schemes".<br>3. Tap "New Scheme", enter name "QA Mobile Subject", one band P 0-100.<br>4. Save. | Toast "Created"; card listed. Delete it afterwards. | planned |
+| TC-EXM-04-E06 | P3 | Mobile | Admin | None. | 1. Sign in as Admin.<br>2. Open Exam tab > "Grading" > "Subject Grade Schemes" > "New Scheme".<br>3. Enter name "QA Doc Empty", remove all bands, save. | Toast "At least one grade band required."; nothing saved. | planned |
 
 API tests implemented in: `backend/tests/api/exam/test_f03_f05_grading.py`
 
@@ -501,7 +527,7 @@ Implemented in: backend/tests/unit/exam/test_settings_boards_grading.py.
 - None.
 
 **Steps, web.**
-1. Exam > Grading > "Remark Grade Sets" (`/exam/grading/remarks`). Empty state "No remark grade sets yet".
+1. Exam > Grading > "Remark Grade Sets" (`/exam/grading/remarks`). Search "Search set name...". Empty state "No remark grade sets yet" with "Create First Set".
 2. "New Set": dialog "Create Remark Grade Set": "Set Name *" (placeholder "Primary Remarks Set"), "Grade Options *" with "Grade Letter" (max 5) and "Label" per row, "Add Option", up and down arrows or drag to reorder, X to remove. A new set starts with one row (A, Excellent).
 3. "Save Set". Toasts "Remark grade set created successfully", "Remark grade set updated successfully", "Remark grade set deleted". Delete confirm "Delete Remark Grade Set?".
 4. Rows show up to four option badges ("A: Excellent") and "+N more"; expand for the table Grade Letter, Label, Order.
@@ -544,22 +570,27 @@ Implemented in: backend/tests/unit/exam/test_settings_boards_grading.py.
 | TC-EXM-05-A04 | POST with empty options | 201 | passing |
 | TC-EXM-05-A05 | GET list and GET one; unknown id | 200; 404 | passing |
 | TC-EXM-05-A06 | PUT rename only | 200; options unchanged | passing |
-| TC-EXM-05-A07 | PUT with new options | 200; old options replaced | xfail: DEF-EXM-3 |
+| TC-EXM-05-A07 | PUT with new options | 200; old options replaced | known defect: DEF-EXM-3: PUT /remark-grades/{id} response returns the stale options instead of the replaced list |
 | TC-EXM-05-A08 | PUT renaming to another set's name | 400 | passing |
 | TC-EXM-05-A09 | DELETE unused set then GET | 204 then 404 | passing |
-| TC-EXM-05-A10 | DELETE set used by a remarks component | 500 (KG-12; target 409) | xfail: KG-12 |
+| TC-EXM-05-A10 | DELETE set used by a remarks component | 500 (KG-12; target 409) | known defect: KG-12: DELETE /remark-grades/{id} on a set used by an exam component returns 500 instead of 409 |
 | TC-EXM-05-A11 | Create, update, delete as TEACHER, STAFF, STUDENT, PARENT | 403 each | passing |
 | TC-EXM-05-A12 | Read endpoints as all five roles | 200 | passing |
 | TC-EXM-05-A13 | All endpoints with NOAUTH | 401 | passing |
 | TC-EXM-05-A14 | Tenant isolation and `cschema` mismatch | Other tenant sees nothing; mismatch 403 | passing |
-| TC-EXM-05-E01 | [web] ADMIN: Exam > Grading > Remark Grade Sets > "New Set", name "Primary Remarks Set", keep A Excellent, add B Good, "Save Set" | Toast "Remark grade set created successfully"; badges "A: Excellent", "B: Good" | planned |
-| TC-EXM-05-E02 | [web] Reorder options with the arrow buttons, save | Expanded table Order column reflects new order | planned |
-| TC-EXM-05-E03 | [web] Save with no options | Inline error "At least one option required" | planned |
-| TC-EXM-05-E04 | [web] Delete a set via "Delete Remark Grade Set?" | Toast "Remark grade set deleted" | planned |
-| TC-EXM-05-E05 | [web] Label of 60 characters then save | Error toast from the backend (422, limit 50) | planned |
-| TC-EXM-05-E06 | [mobile] ADMIN creates a remark set (Exam > Grading > Remark Grade Sets > "New Set") | Toast "Remark set created" | planned |
-| TC-EXM-05-E07 | [mobile] Save with empty name | Toast "Name is required" | planned |
-| TC-EXM-05-E08 | [mobile] Delete a set | Toast "Remark set deleted" | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-EXM-05-E01 | P1 | Web | Admin | Seeded set "Co-Scholastic Grading" (A to D) exists; no set named "QA Primary Remarks". | 1. Sign in as Admin.<br>2. Open Exam > Grading > "Remark Grade Sets" ("Open").<br>3. Click "New Set".<br>4. Enter "Set Name *" "QA Primary Remarks".<br>5. Keep the first option A / Excellent; click "Add Option" and enter B / Good.<br>6. Click "Save Set". | Toast "Remark grade set created successfully"; the new row shows badges "A: Excellent" and "B: Good" next to the seeded "Co-Scholastic Grading" row. | planned |
+| TC-EXM-05-E02 | P3 | Web | Admin | TC-EXM-05-E01 done. | 1. Sign in as Admin.<br>2. Open Exam > Grading > Remark Grade Sets.<br>3. Edit "QA Primary Remarks".<br>4. Move option B above A with the up arrow.<br>5. Click "Save Set" and expand the row. | Toast "Remark grade set updated successfully"; the expanded table (Grade Letter, Label, Order) lists B first. | planned |
+| TC-EXM-05-E03 | P3 | Web | Admin | None. | 1. Sign in as Admin.<br>2. Open Exam > Grading > Remark Grade Sets > "New Set".<br>3. Enter name "QA Doc Empty" and remove the only option row.<br>4. Click "Save Set". | Inline error "At least one option required"; nothing saved. | planned |
+| TC-EXM-05-E04 | P2 | Web | Admin | TC-EXM-05-E01 done; set not used by any exam component. | 1. Sign in as Admin.<br>2. Open Exam > Grading > Remark Grade Sets.<br>3. Click the trash icon on "QA Primary Remarks".<br>4. Click "Delete" in "Delete Remark Grade Set?". | Toast "Remark grade set deleted"; empty state "No remark grade sets yet" if no set remains. | planned |
+| TC-EXM-05-E05 | P3 | Web | Admin | None. | 1. Sign in as Admin.<br>2. Open Exam > Grading > Remark Grade Sets > "New Set".<br>3. Enter name "QA Doc Long" and a label of 60 characters for option A.<br>4. Click "Save Set". | Error toast from the backend (422, label limit 50; web allows 100, KG-12); nothing saved. | planned |
+| TC-EXM-05-E06 | P2 | Mobile | Admin | None. | 1. Sign in as Admin.<br>2. Open Exam tab > "Grading" > "Remark Grade Sets".<br>3. Tap "New Set", enter "Set Name *" "QA Mobile Remarks", option A Excellent.<br>4. Save. | Toast "Remark set created"; card listed. | planned |
+| TC-EXM-05-E07 | P3 | Mobile | Admin | None. | 1. Sign in as Admin.<br>2. Open Exam tab > "Grading" > "Remark Grade Sets" > "New Set".<br>3. Leave the name empty and save. | Toast "Name is required"; nothing saved. | planned |
+| TC-EXM-05-E08 | P2 | Mobile | Admin | TC-EXM-05-E06 done. | 1. Sign in as Admin.<br>2. Open Exam tab > "Grading" > "Remark Grade Sets".<br>3. Tap delete on "QA Mobile Remarks" and confirm "Delete". | Toast "Remark set deleted"; card gone. | planned |
 
 API tests implemented in: `backend/tests/api/exam/test_f03_f05_grading.py`
 
@@ -582,7 +613,7 @@ Implemented in: backend/tests/unit/exam/test_settings_boards_grading.py (U01-U05
 
 **Steps, web.**
 1. Exam > Exams (`/exam/exams`, title "Exam Management", subtitle "Manage all examinations for the academic year"). Click "Create Exam" (disabled with a banner "Setup required: Configure at least one Exam Grade Scheme before creating exams." when no scheme exists). The dashboard (`/exam`) has a "New Exam" button as well.
-2. Page "Create Exam", subtitle "Set up a new examination", five tabs. Section 1 "Exam Details": "Exam Name *", "Board *" (CBSE, ICSE, State, BTech, Custom), "Custom Board Name *" (Custom only), "Nature *" (Formative, Summative, Cumulative, Custom), "Academic Year *" (read-only, taken from the selected year), "Exam Grade Scheme", "Subject Grade Scheme", "Mark Entry Deadline", "Min Attendance %", "Attendance From", "Attendance To". Button "Next: Class & Sections".
+2. Page "Create Exam", subtitle "Set up a new examination", five tabs "1 Exam Details", "2 Class & Sections", "3 Subject Configuration", "4 Exam Dates", "5 Review & Submit"; the footer always shows "Cancel", "Fix N issues before submitting" and "Create Exam". Section 1 "Exam Details": "Exam Name *", "Board *" (CBSE, ICSE, State, BTech, Custom), "Custom Board Name *" (Custom only), "Nature *" (Formative, Summative, Cumulative, Custom), "Academic Year *" (read-only, taken from the selected year), "Exam Grade Scheme", "Subject Grade Scheme", "Mark Entry Deadline", "Min Attendance %", "Attendance From", "Attendance To". Button "Next: Class & Sections".
    - There is no Level control: the form default `primary` is always sent (KG-9). `exam_type` is not shown; it is set equal to the exam name, so a name over 50 characters fails.
 3. Section 2 "Class & Sections": multi-select "Type to search and select class-sections..." (one option per class-section, or per class when it has no sections). Button "Next: Subject Config" (disabled with nothing selected).
 4. Section 3 "Subject Configuration": one tab per selected class-section. Each subject mapped to the class (excluding `exclude_marks`) is an accordion row with "Grade Scheme" (Default or a subject scheme), "Mark Components" table: "Component" (placeholder "Written"), "Type" (Marks or Remarks), "Max Marks" (or a remark-set select "Select set..."), "Min Pass", "In Total" checkbox, "Add Component", trash. Helpers: "Set all max marks:" with "Apply", "Apply same marks to all subjects in this class", "Copy this config to other class(es)". "Grand Total Marks" shows the sum of included marks components. Button "Next: Exam Dates (Optional)".
@@ -592,10 +623,10 @@ Implemented in: backend/tests/unit/exam/test_settings_boards_grading.py (U01-U05
 8. Client rules on submit: every component needs a name; marks components need Max Marks > 0; blank subject configs and configs of deselected class-sections are dropped; at least one configured subject. Wizard state is kept in sessionStorage (`exam-store`).
 
 **Steps, mobile.**
-1. Exam tab > "Create Exam" tile or "New Exam" (admin only; other roles are redirected). Screen "Create Exam" with accordion sections: 1 "Exam Details" (Exam Name, Board, Level, Exam Type, Nature, Academic Year, Grade Scheme, Mark Entry Deadline, Min Attendance %, Attendance From, Attendance To), 2 class-sections, 3 subject components (Grade Scheme, Credit Hours, Component, Type, Max Marks, Min Pass, Remark Set, "Add Component", "Apply same marks to all subjects in this class"), 4 "Add Exam Date" (Class-Section, Subject, Date, Start Time, End Time, Venue), 5 review ("Missing required information" box).
-2. Bottom bar "Cancel" and "Create Exam" ("Creating..."). Missing items toast "Fix Issues" with the first missing item (Exam Name, Academic Year, Exam Type, class-sections, subject configuration).
+1. Exam tab > "Create Exam" tile or "New Exam" (admin only; other roles are redirected). Screen "Create Exam" (link "Back to Exams") with accordion sections: 1 "Exam Details" (Exam Name, Board, Level, Exam Type, Nature, Academic Year, Grade Scheme, Mark Entry Deadline, Min Attendance %, Attendance From, Attendance To), 2 class-sections, 3 subject components (Grade Scheme, Credit Hours, Component, Type, Max Marks, Min Pass, Remark Set, "Add Component", "Apply same marks to all subjects in this class"), 4 "Add Exam Date" (Class-Section, Subject, Date, Start Time, End Time, Venue), 5 review ("Missing required information" box).
+2. Bottom bar "Cancel", "Fix N issues in Review section" and "Create Exam" ("Creating..."). Missing items toast "Fix Issues" with the first missing item (Exam Name, Academic Year, Exam Type, class-sections, subject configuration).
 3. On success toast "Exam Created" and the app navigates to `/exam/<id>` using `res.id`, but the API returns `exam_id`, so the detail screen opens with id `undefined` and shows "Failed to load exam" (KG-8).
-4. Exams list: Exam > Exams (mobile "Exams" tile `/exam/list`) with search, "All Status" and "All Nature" filters, cards with Board, Type, Level, Subjects, Nature, Deadline, status pill, "Edit" and "Delete" for admin on draft. Student and Parent open `/exam/my-marks/<id>` from the list instead of the detail screen.
+4. Exams list: Exam > Exams (mobile "Exams" tile `/exam/list`) with search, "All Status" and "All Nature" filters, cards with Board, Type, Level, Subjects, Nature, Deadline, status pill; admin roles get "Edit" on every card and "Delete" on draft cards. Student and Parent see the list titled "My Exams" (status filter only) and open `/exam/my-marks/<id>` from it instead of the detail screen.
 
 **Expected results.**
 - Rows in `exams` (status `active`), `exam_class_sections`, `exam_subject_config`, `exam_subject_components`, `exam_dates` in one transaction. Either everything is saved or nothing.
@@ -617,7 +648,7 @@ Implemented in: backend/tests/unit/exam/test_settings_boards_grading.py (U01-U05
 - Every subject must be mapped to that (class, section) in `class_subject_map` with `exclude_marks` false, or to (class, null section) (422 `Subject <id> is not mapped to class ... or has exclude_marks=true`).
 - Component rules: marks type needs `max_marks` (422 `max_marks is required when entry_type='marks'`); remarks type needs `remark_grade_set_id` (422). `max_marks` 0 is accepted by the API (web requires > 0). Component `sort_order` is the given value when non-zero, otherwise the component's position in the list.
 - Name unique per academic year: 409 `An exam named '<name>' already exists for this academic year.`
-- A foreign key failure (unknown academic year, grade scheme, remark set, subject grade scheme) returns 409 with the raw database message. Duplicate (class, section, subject) dates inside the payload also return 409.
+- A foreign key failure (unknown academic year, grade scheme, remark set, subject grade scheme) returns 409 `The request conflicts with existing data` (the database message is only logged). Duplicate (class, section, subject) dates inside the payload also return 409.
 - `exam_type`, `board`, `level` are plain strings on the exam; no link to board patterns (F02).
 - Exam dates are not validated against subject configs or class-sections.
 - Total max marks of a class-section = sum of `max_marks` of components with `include_in_total` true and entry type marks. Example EX1: Math 80 + 20, Science 100, English 100 gives 300.
@@ -681,29 +712,35 @@ Implemented in: backend/tests/unit/exam/test_settings_boards_grading.py (U01-U05
 | TC-EXM-06-A25 | Tenant isolation: exam created in tenant A; tenant B lists and GETs by id | List excludes it; GET 404 | passing |
 | TC-EXM-06-A26 | Same `exam_name` and year pattern in tenant A and tenant B | Both 201 | passing |
 | TC-EXM-06-A27 | Token A with `cschema` of tenant B on POST `/exams` | 403 | passing |
-| TC-EXM-06-E01 | [web] ADMIN completes the five tabs for EX1 (one class-section "QA Class 5 - A", subjects Math 80+20, Science 100, English 100) and clicks "Create Exam" | Overlay "Creating exam..."; toast "Exam created successfully"; redirected to `/exam/exams`; exam listed as Active with "3 subjects" | planned |
-| TC-EXM-06-E02 | [web] Section 1: enter exam name of 1 character and click "Next: Class & Sections" | Inline error "Exam name must be at least 2 characters"; stays on tab 1 | planned |
-| TC-EXM-06-E03 | [web] Board "Custom" with empty "Custom Board Name" | Inline "Custom board name is required when board is Custom" | planned |
-| TC-EXM-06-E04 | [web] Section 3: leave Max Marks empty on a marks component, click "Create Exam" | Toast "All marks-type components need a max marks value > 0..." and tab 3 opens | planned |
-| TC-EXM-06-E05 | [web] Review tab with no class-sections selected | Red box lists "Class & Sections - select at least one (Section 2)"; "Create Exam" disabled | planned |
-| TC-EXM-06-E06 | [web] Use "Set all max marks:" 100 then "Apply" | Every subject's first marks component shows 100; "Grand Total Marks" updates | planned |
-| TC-EXM-06-E07 | [web] "Apply same marks to all subjects in this class" | All subjects copy the first subject's components | planned |
-| TC-EXM-06-E08 | [web] Two class-sections selected: "Copy this config to other class(es)" | Toast "Config copied to 1 class-section(s)" | planned |
-| TC-EXM-06-E09 | [web] Add a remarks component with a remark set | Max Marks input replaced by set select; submit succeeds (201) | planned |
-| TC-EXM-06-E10 | [web] Add an exam date for two class-sections at once on tab 4 | Two rows appear; after creation both are listed on the exam's Dates tab | planned |
-| TC-EXM-06-E11 | [web] Reload the page mid-wizard | Previously entered class-sections and subject configs are restored from sessionStorage; "Cancel" then clears them | planned |
-| TC-EXM-06-E12 | [web] Submit with a name already used in the academic year | Error toast "An exam named '...' already exists for this academic year." | planned |
-| TC-EXM-06-E13 | [web] Tenant with no exam grade scheme | "Create Exam" disabled with the "Setup required" banner and link "Go to Grade Schemes" | planned |
-| TC-EXM-06-E14 | [web] TEACHER opens `/exam/exams/create` | Redirected to `/exam/exams`; no "Create Exam" button on the list | planned |
-| TC-EXM-06-E15 | [web] List filters: status "Active", nature "Formative", search "FA1" | Rows narrow accordingly; empty state "No exams match your current filters." when none | planned |
-| TC-EXM-06-E16 | [web] Dashboard `/exam` | Counts for Draft, Active, Locked, Published match the list; tables "Active Exams", "Draft Exams" etc. group by status | planned |
-| TC-EXM-06-E17 | [web] Open an exam row | Detail shows Overview cards (Academic Year, Mark Entry Deadline, Hall Ticket Attendance, Attendance Period, Hall Ticket Status) and "Configured Subjects" grouped by class-section | planned |
-| TC-EXM-06-E18 | [web] Exam name longer than 50 characters | Create fails: `exam_type` (copy of the name) exceeds 50 (documents KG-9) | planned |
-| TC-EXM-06-E19 | [mobile] ADMIN: Exam tab > "Create Exam", fill sections 1-3 for EX1, tap "Create Exam" | Toast "Exam Created"; (KG-8) navigation opens `/exam/undefined` and shows "Failed to load exam" | planned |
-| TC-EXM-06-E20 | [mobile] Tap "Create Exam" with no exam name | Toast "Fix Issues" with "Exam Name (Section 1)" | planned |
-| TC-EXM-06-E21 | [mobile] Exams list: search, "All Status" filter, "All Nature" filter | Cards filter; "Edit" and "Delete" visible for admin, Delete only on draft | planned |
-| TC-EXM-06-E22 | [mobile] STUDENT opens the Exam tab | Sees "My Marks" card and exam cards; no "Create Exam" or management tiles | planned |
-| TC-EXM-06-E23 | [mobile] TEACHER opens `/exam/create` | Redirected away (renders nothing, back to list) | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-EXM-06-E01 | P1 | Web | Admin | Seeded Class 1 / 1-B with students Advik Mehta (002), Harsha Raju (004), Nikhil Krishnan (007) and subjects Mathematics, English, Environmental Studies. Seeded scheme "Standard Percentage Grading". No exam named "QA FA1" in 2026-2027. | 1. Sign in as Admin.<br>2. Open Exam > Exams.<br>3. Click "Create Exam".<br>4. Section 1: "Exam Name *" "QA FA1", "Board *" State, "Nature *" Formative, "Exam Grade Scheme" "Standard Percentage Grading"; click "Next: Class & Sections".<br>5. Section 2: choose Class 1 / 1-B in "Type to search and select class-sections..."; click "Next: Subject Config".<br>6. Section 3: Mathematics components Written max 80 and Oral max 20; English Written 100; Environmental Studies Written 100; leave the other subjects blank; click "Next: Exam Dates (Optional)".<br>7. Click "Review & Submit".<br>8. Click "Create Exam". | Overlay "Creating exam..."; toast "Exam created successfully"; redirected to /exam/exams; "QA FA1" listed as Active with "3 subjects". Later UI cases call this exam QA FA1 (Grand Total 300; students Advik Mehta, Harsha Raju, Nikhil Krishnan). | planned |
+| TC-EXM-06-E02 | P3 | Web | Admin | None. | 1. Sign in as Admin.<br>2. Open Exam > Exams > "Create Exam".<br>3. Enter "Exam Name *" "Q".<br>4. Click "Next: Class & Sections". | Inline "Exam name must be at least 2 characters"; tab 1 stays open. | planned |
+| TC-EXM-06-E03 | P3 | Web | Admin | None. | 1. Sign in as Admin.<br>2. Open Exam > Exams > "Create Exam".<br>3. Enter name "QA Doc Board", choose "Board *" Custom, leave "Custom Board Name *" empty.<br>4. Click "Next: Class & Sections". | Inline "Custom board name is required when board is Custom". | planned |
+| TC-EXM-06-E04 | P3 | Web | Admin | Seeded Class 1 / 1-B with students Advik Mehta (002), Harsha Raju (004), Nikhil Krishnan (007) and subjects Mathematics, English, Environmental Studies. | 1. Sign in as Admin.<br>2. Start "Create Exam" with name "QA Doc Max" and one class-section.<br>3. In Section 3 add a Written component and leave "Max Marks" empty.<br>4. Click "Create Exam". | Toast starting "All marks-type components need a max marks value > 0" and tab 3 opens; nothing created. Click "Cancel". | planned |
+| TC-EXM-06-E05 | P3 | Web | Admin | Wizard empty (click "Cancel" first if needed). | 1. Sign in as Admin.<br>2. Open "Create Exam", enter name "QA Doc Review".<br>3. Open tab "5 Review & Submit". | Red "Missing required information" box lists "Class & Sections - select at least one (Section 2)" and the subject configuration item; "Create Exam" is disabled and the footer reads "Fix N issues before submitting". | planned |
+| TC-EXM-06-E06 | P2 | Web | Admin | Seeded Class 1 / 1-B with students Advik Mehta (002), Harsha Raju (004), Nikhil Krishnan (007) and subjects Mathematics, English, Environmental Studies. | 1. Sign in as Admin.<br>2. Start "Create Exam" with one class-section.<br>3. In Section 3 enter 100 in "Set all max marks:" and click "Apply". | Every subject's first marks component shows 100; "Grand Total Marks" equals 100 times the number of configured subjects. | planned |
+| TC-EXM-06-E07 | P2 | Web | Admin | Seeded Class 1 / 1-B with students Advik Mehta (002), Harsha Raju (004), Nikhil Krishnan (007) and subjects Mathematics, English, Environmental Studies. | 1. Sign in as Admin.<br>2. Start "Create Exam" with Class 1 / 1-B.<br>3. Configure Mathematics with Written 80 and Oral 20.<br>4. Click "Apply same marks to all subjects in this class". | The other Class 1 subjects copy the Mathematics components (Written 80, Oral 20). | planned |
+| TC-EXM-06-E08 | P2 | Web | Admin | Seeded Class 1 / 1-A and Class 1 / 1-B (same subjects). | 1. Sign in as Admin.<br>2. Start "Create Exam" and select both class-sections.<br>3. Configure the first class-section tab.<br>4. Click "Copy this config to other class(es)", select the second and confirm. | Toast "Config copied to 1 class-section(s)"; the second tab shows the same components. | planned |
+| TC-EXM-06-E09 | P2 | Web | Admin | Seeded remark set "Co-Scholastic Grading". Seeded Class 1 / 1-B with students Advik Mehta (002), Harsha Raju (004), Nikhil Krishnan (007) and subjects Mathematics, English, Environmental Studies. | 1. Sign in as Admin.<br>2. Start "Create Exam" "QA Doc Remarks" with Class 1 / 1-B.<br>3. For English add a component "Conduct" with "Type" Remarks.<br>4. Choose "Co-Scholastic Grading" in "Select set...".<br>5. Complete and click "Create Exam". | The Max Marks input is replaced by the set select; the exam is created (toast "Exam created successfully"). Clean-up: Deactivate, then Delete "QA Doc Remarks". | planned |
+| TC-EXM-06-E10 | P2 | Web | Admin | Seeded Class 1 / 1-A and Class 1 / 1-B. | 1. Sign in as Admin.<br>2. Start "Create Exam" "QA Doc Dates" with Class 1 / 1-A and 1-B and Mathematics configured for both.<br>3. In Section 4 tick both class-sections, choose "Subject" Mathematics, a "Date", "Start Time" 09:00, "End Time" 12:00, click "Add".<br>4. Click "Create Exam".<br>5. Open the new exam > "Dates". | Two date rows appear in Section 4; after creation the exam Dates tab lists both. | planned |
+| TC-EXM-06-E11 | P3 | Web | Admin | Seeded Class 1 / 1-B with students Advik Mehta (002), Harsha Raju (004), Nikhil Krishnan (007) and subjects Mathematics, English, Environmental Studies. | 1. Sign in as Admin.<br>2. Start "Create Exam", select Class 1 / 1-B and configure Mathematics.<br>3. Reload the browser page.<br>4. Click "Cancel".<br>5. Open "Create Exam" again. | After reload the class-section and Mathematics config are restored (sessionStorage "exam-store"); after "Cancel" the wizard is empty. | planned |
+| TC-EXM-06-E12 | P3 | Web | Admin | Seeded exam "Half Yearly Examination 2026". | 1. Sign in as Admin.<br>2. Create an exam named "Half Yearly Examination 2026" for Class 1 / 1-B with one subject.<br>3. Click "Create Exam". | Error toast "An exam named 'Half Yearly Examination 2026' already exists for this academic year."; nothing created. | planned |
+| TC-EXM-06-E13 | P3 | Web | Admin | A tenant with no exam grade scheme (qa_manual has one seeded). | 1. Sign in as Admin.<br>2. Open Exam > Exams. | "Create Exam" disabled; banner "Setup required: Configure at least one Exam Grade Scheme before creating exams." with link "Go to Grade Schemes". | planned |
+| TC-EXM-06-E14 | P2 | Web | Teacher | None. | 1. Sign in as Teacher.<br>2. Open Exam > Exams.<br>3. Open /exam/exams/create in the address bar. | No "Create Exam" button and no Actions column on the list; the create URL redirects to /exam/exams. | planned |
+| TC-EXM-06-E15 | P2 | Web | Admin | Seeded exams (two published Unit Tests, one active Half Yearly). | 1. Sign in as Admin.<br>2. Open Exam > Exams.<br>3. Choose "Active" in "All Status".<br>4. Choose "All Status" again and "Formative" in "All Nature".<br>5. Type "Unit Test" in "Search exams...".<br>6. Type "zzz". | Active shows "Half Yearly Examination 2026" (plus QA exams); Formative shows the two Unit Tests; the search keeps the two Unit Tests; "zzz" shows "No exams match your current filters." | planned |
+| TC-EXM-06-E16 | P1 | Web | Admin | Seeded exams. | 1. Sign in as Admin.<br>2. Open Exam (dashboard /exam). | Title "Exam Management", "Academic Year: 2026-2027", quick links All Exams, Mark Entry, Results, Hall Tickets, Settings, button "New Exam"; counts Draft, Active, Locked, Published (at least 1 active and 2 published) match the Exams list; exams are grouped in status tables. | planned |
+| TC-EXM-06-E17 | P1 | Web | Admin | Seeded exam "Unit Test 1 - Class 1B" (published). | 1. Sign in as Admin.<br>2. Open Exam > Exams.<br>3. Click the "Unit Test 1 - Class 1B" row. | Header with Published badge and "State . primary . Unit Test . formative"; tabs Overview, Dates, Marks, Permissions, Audit Log; cards Academic Year, Mark Entry Deadline, Hall Ticket Attendance, Attendance Period, Hall Ticket Status ("Not Published"); "Configured Subjects" lists English, Hindi, Telugu, Mathematics, Environmental Studies under Class 1 - 1-B. | planned |
+| TC-EXM-06-E18 | P3 | Web | Admin | Seeded Class 1 / 1-B with students Advik Mehta (002), Harsha Raju (004), Nikhil Krishnan (007) and subjects Mathematics, English, Environmental Studies. | 1. Sign in as Admin.<br>2. Create an exam whose name is 51 characters long ("QA " plus 48 letters) with one configured subject.<br>3. Click "Create Exam". | Creation fails with a validation error toast because exam_type (a copy of the name) exceeds 50 characters (KG-9). | planned |
+| TC-EXM-06-E19 | P1 | Mobile | Admin | Seeded Class 1 / 1-B with students Advik Mehta (002), Harsha Raju (004), Nikhil Krishnan (007) and subjects Mathematics, English, Environmental Studies. Seeded scheme "Standard Percentage Grading". No exam "QA Mobile FA1". | 1. Sign in as Admin.<br>2. Open the Exam tab and tap "Create Exam".<br>3. Section 1: "Exam Name" "QA Mobile FA1", Board State, Level Primary, "Exam Type" "FA1", Nature Formative, Grade Scheme "Standard Percentage Grading".<br>4. Section 2: select Class 1 / 1-B.<br>5. Section 3: Mathematics Written 80 and Oral 20, English 100, Environmental Studies 100.<br>6. Tap "Create Exam". | Toast "Exam Created"; the exam is stored (visible in Exams). Navigation then opens /exam/undefined with "Failed to load exam" (KG-8). Delete or keep for F09 mobile cases. | planned |
+| TC-EXM-06-E20 | P3 | Mobile | Admin | None. | 1. Sign in as Admin.<br>2. Open Exam tab > "Create Exam".<br>3. Leave Exam Name empty and tap "Create Exam". | Toast "Fix Issues" with "Exam Name (Section 1)"; the footer reads "Fix N issues in Review section". | planned |
+| TC-EXM-06-E21 | P2 | Mobile | Admin | Seeded exams plus at least one draft (for example "Copy of QA FA1" from TC-EXM-09-E05). | 1. Sign in as Admin.<br>2. Open Exam tab > "Exams".<br>3. Type "Unit" in "Search exams...".<br>4. Choose a value in "All Status", then in "All Nature". | Cards filter and the count "<n> exams" updates; every card has "Edit"; "Delete" only on draft cards. | planned |
+| TC-EXM-06-E22 | P2 | Mobile | Student | Seeded student login Advik Mehta (002). | 1. Sign in as Advik Mehta (002).<br>2. Open the Exam tab.<br>3. Tap "Exams". | Hub shows a "MY EXAMS" card "My Marks" and tiles Exams, Hall Tickets, Results only (no Create Exam or admin tiles); the list is titled "My Exams" with only "All Status" and no Edit or Delete. | planned |
+| TC-EXM-06-E23 | P3 | Mobile | Teacher | None. | 1. Sign in as Teacher.<br>2. Open the Exam tab.<br>3. Navigate in-app to /exam/create (for example from a saved link). | No "Create Exam" tile or "New Exam" button; /exam/create redirects to /exam/list. | planned |
+| TC-EXM-06-E24 | P3 | Web | Admin | Seeded exam "Unit Test 1 - Class 1B". | 1. Sign in as Admin.<br>2. Open the "Unit Test 1 - Class 1B" detail URL directly in a new browser tab. | Overview card "Academic Year" shows 2026-2027. Currently it shows a dash when the academic year list was not loaded first (KG-23). | blocked: KG-23 academic year not resolved on direct load |
 
 API tests implemented in: `backend/tests/api/exam/test_f06_create_exam.py`
 
@@ -785,8 +822,8 @@ Implemented in: backend/tests/unit/exam/test_exam_create_status.py (U01-U12); we
 | TC-EXM-07-A05 | POST class-section for unknown exam | 404 | passing |
 | TC-EXM-07-A06 | GET subject-configs for EX1 | 3 configs ordered by class, section, sort order; each with `components` | passing |
 | TC-EXM-07-A07 | GET one config; unknown config id | 200 with components; 404 `ExamSubjectConfig <id> not found` | passing |
-| TC-EXM-07-A08 | PUT config `{"credit_hours": 4, "subject_grade_scheme_id": <subject scheme>}` | 200; fields updated; components unchanged | xfail: DEF-EXM-4 |
-| TC-EXM-07-A09 | PUT config `{"subject_grade_scheme_id": null}` | 200; scheme cleared | xfail: DEF-EXM-4 |
+| TC-EXM-07-A08 | PUT config `{"credit_hours": 4, "subject_grade_scheme_id": <subject scheme>}` | 200; fields updated; components unchanged | known defect: DEF-EXM-4: PUT /exams/{id}/subject-configs/{cid} returns 500 MissingGreenlet whenever a column value changes (... |
+| TC-EXM-07-A09 | PUT config `{"subject_grade_scheme_id": null}` | 200; scheme cleared | known defect: DEF-EXM-4: PUT subject-configs returns 500 MissingGreenlet when clearing an assigned scheme (the change is com... |
 | TC-EXM-07-A10 | PUT config `{"is_active": false}` | 200; no effect on listing (no column) | passing |
 | TC-EXM-07-A11 | PUT unknown config | 404 | passing |
 | TC-EXM-07-A12 | POST template manually with two items (ADMIN) | 201; `items[].components` populated; GET list shows `item_count` 2 | passing |
@@ -798,7 +835,7 @@ Implemented in: backend/tests/unit/exam/test_exam_create_status.py (U01-U12); we
 | TC-EXM-07-A18 | PUT template `{"template_name": "New", "description": "d"}` | 200; fields updated | passing |
 | TC-EXM-07-A19 | PUT template `{"is_active": false}` then GET list and GET one | Not listed; GET one 404 | passing |
 | TC-EXM-07-A20 | DELETE template | 200 `{"detail":"Template deactivated"}`; later GET 404; list excludes it | passing |
-| TC-EXM-07-A21 | Create a template with a deleted template's name | 500 (KG-12; database unique constraint includes inactive rows) | xfail: KG-12 |
+| TC-EXM-07-A21 | Create a template with a deleted template's name | 500 (KG-12; database unique constraint includes inactive rows) | known defect: KG-12: creating a template with the name of a deleted (inactive) template returns 500 (database unique constra... |
 | TC-EXM-07-A22 | POST copy source section A to a target class-section that has no configs and shares all subjects | 200 `{configs_created: 3, skipped_subjects: []}`; GET subject-configs shows the copied configs and components | passing |
 | TC-EXM-07-A23 | POST copy to a target already holding configs | 409 `Target class/section already has subject configs for this exam.` | passing |
 | TC-EXM-07-A24 | POST copy to a class-section not in the exam | 400 | passing |
@@ -815,9 +852,14 @@ Implemented in: backend/tests/unit/exam/test_exam_create_status.py (U01-U12); we
 | TC-EXM-07-A35 | GET templates list as ADMIN, TEACHER, STAFF, STUDENT, PARENT | 200 for all five (`exams:list` is seeded for all) | passing |
 | TC-EXM-07-A36 | All endpoints of this feature with NOAUTH | 401 each | passing |
 | TC-EXM-07-A37 | Tenant isolation: tenant B cannot GET tenant A's template (404) or list it; `cschema` mismatch on POST copy | 404 and empty list; 403 | passing |
-| TC-EXM-07-E01 | [web] Open an exam with two class-sections | "Configured Subjects" card groups subject badges under each "Class - Section" heading | planned |
-| TC-EXM-07-E02 | [web] Open an exam whose subject-configs request fails (simulate 500) | Overview shows "Unable to load the subject list for this exam. Please refresh the page or try again later." | planned |
-| TC-EXM-07-E03 | [mobile] Open an exam detail | "Configured Subjects" lists subjects per class-section | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-EXM-07-E01 | P1 | Web | Admin | Seeded exam "Half Yearly Examination 2026" (10 class-sections: Class 1 to Class 5, sections A and B). | 1. Sign in as Admin.<br>2. Open Exam > Exams.<br>3. Open "Half Yearly Examination 2026". | "Configured Subjects" groups subject badges under one "<Class> - <Section>" heading per class-section (10 headings). | planned |
+| TC-EXM-07-E02 | P3 | Web | Admin | Seeded exam "Unit Test 1 - Class 1B"; ability to block GET /exams/<id>/subject-configs (browser dev-tools request block). | 1. Sign in as Admin.<br>2. Block the subject-configs request.<br>3. Open the "Unit Test 1 - Class 1B" detail page. | Overview shows "Unable to load the subject list for this exam. Please refresh the page or try again later." | planned |
+| TC-EXM-07-E03 | P2 | Mobile | Admin | Seeded exam "Unit Test 1 - Class 1B". | 1. Sign in as Admin.<br>2. Open Exam tab > "Exams".<br>3. Tap "Unit Test 1 - Class 1B". | "Configured Subjects" lists the 5 subjects under Class 1 - 1-B. | planned |
 
 API tests implemented in: `backend/tests/api/exam/test_f07_configs_templates.py`
 
@@ -860,7 +902,7 @@ Implemented in: backend/tests/unit/exam/test_exam_create_status.py.
 - `POST /exams/{exam_id}/dates/send-schedule`: SMS (F19).
 
 **Rules and validations.**
-- The three create endpoints read `current_user.get("id")` but the token carries only `sub`, so they raise an unhandled error and return 500 for every real token (KG-1). Intended behaviour: 201 with `created_by` set to the caller.
+- The three create endpoints take the caller from the `sub` claim and return 201 with `created_by` set to the caller (KG-1 is fixed in code; the xfail API cases below need a rerun).
 - Duplicate (exam, class, section, subject): 409. The unique constraint treats a null section as distinct, so duplicates with a null section may not be stopped (database behaviour, not covered by a service check).
 - Bulk and multi-section are atomic: any conflict rolls back the whole batch.
 - Times are `HH:MM` or `HH:MM:SS`; end before start and past dates are not rejected.
@@ -886,12 +928,12 @@ Implemented in: backend/tests/unit/exam/test_exam_create_status.py.
 | TC-EXM-08-U05 | `update_exam_date` payload `{venue: None, notes: "x"}` (fake session) | venue unchanged, notes updated | passing |
 | TC-EXM-08-U06 | `ExamDateCreate` with `start_time="09:30"` and `"09:30:00"` | Both parse to time 09:30 | passing |
 | TC-EXM-08-U07 | `ExamDateCreate` with `exam_date="2026-13-01"` | Validation error | passing |
-| TC-EXM-08-A01 | POST date with a valid body (ADMIN) | 201 with `created_by` equal to the caller (KG-1: currently 500) | xfail: KG-1 |
+| TC-EXM-08-A01 | POST date with a valid body (ADMIN) | 201 with `created_by` equal to the caller (KG-1: currently 500) | passing |
 | TC-EXM-08-A02 | POST date without `exam_id` in the body | 422 | passing |
-| TC-EXM-08-A03 | POST the same exam, class, section, subject again | 409 | xfail: KG-1 |
-| TC-EXM-08-A04 | POST bulk with 3 dates | 201 list of 3 (KG-1: currently 500) | xfail: KG-1 |
-| TC-EXM-08-A05 | POST bulk where the second item duplicates an existing date | 409; first item also not stored | xfail: KG-1 |
-| TC-EXM-08-A06 | POST multi-section for 2 class-sections | 201 list of 2 with the same date and subject | xfail: KG-1 |
+| TC-EXM-08-A03 | POST the same exam, class, section, subject again | 409 | passing |
+| TC-EXM-08-A04 | POST bulk with 3 dates | 201 list of 3 (KG-1: currently 500) | passing |
+| TC-EXM-08-A05 | POST bulk where the second item duplicates an existing date | 409; first item also not stored | passing |
+| TC-EXM-08-A06 | POST multi-section for 2 class-sections | 201 list of 2 with the same date and subject | passing |
 | TC-EXM-08-A07 | POST bulk with empty `dates`; multi-section with empty `class_sections` | 422 each | passing |
 | TC-EXM-08-A08 | POST date with `venue` of 101 characters | 422 | passing |
 | TC-EXM-08-A09 | GET dates for EX1 | Ordered by `exam_date` then subject; fields incl. `created_by`; `class_id` query ignored | passing |
@@ -907,17 +949,22 @@ Implemented in: backend/tests/unit/exam/test_exam_create_status.py.
 | TC-EXM-08-A19 | Tenant isolation: tenant B GET dates of tenant A's exam id | `[]`; PUT or DELETE on A's date id returns 404 | passing |
 | TC-EXM-08-A20 | Token A with `cschema` B on POST | 403 | passing |
 | TC-EXM-08-A21 | Dates stored before an exam is cloned | Clone does not copy dates: GET dates of the clone returns `[]` | passing |
-| TC-EXM-08-E01 | [web] ADMIN: exam detail > Dates > "Manage Dates" > "Add Date", class, subject, date, times, venue, "Save" | Toast "Exam date added" (KG-1: currently an error toast); row appears | planned |
-| TC-EXM-08-E02 | [web] "Save" with no subject | Button disabled | planned |
-| TC-EXM-08-E03 | [web] Edit a date | Class, Section, Subject controls disabled; change date and "Save"; toast "Exam date updated" | planned |
-| TC-EXM-08-E04 | [web] Trash > "Remove Exam Date?" > Remove | Toast "Exam date removed" | planned |
-| TC-EXM-08-E05 | [web] Search "Hall" | Only rows with matching venue | planned |
-| TC-EXM-08-E06 | [web] TEACHER opens `/exam/exams/{id}/dates` | Redirected to the exam detail; no "Manage Dates" button | planned |
-| TC-EXM-08-E07 | [web] Exam with no dates | Empty state "No exam dates yet" with "Add First Date" | planned |
-| TC-EXM-08-E08 | [mobile] ADMIN: add a date (select exam, "Class-Section *", "Subject *", date) | (KG-8) request returns 422 because `exam_id` is missing; target: toast "Date Added" | planned |
-| TC-EXM-08-E09 | [mobile] ADMIN edits and deletes a date | Toasts "Updated" and "Deleted" | planned |
-| TC-EXM-08-E10 | [mobile] Add with no class-section | Toast "Select a class-section." | planned |
-| TC-EXM-08-E11 | [mobile] TEACHER opens Exam Dates | Title "Exam Dates (View Only)"; no add, edit or delete controls | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-EXM-08-E01 | P1 | Web | Admin | TC-EXM-06-E01 done. | 1. Sign in as Admin.<br>2. Open QA FA1 > tab "Dates".<br>3. Click "Manage Dates".<br>4. Click "Add Date".<br>5. Choose "Class *" Class 1, "Section" 1-B, "Subject *" Mathematics, an "Exam Date *", "Start Time" 09:00, "End Time" 12:00, "Venue" "QA Hall A".<br>6. Click "Save". | Toast "Exam date added"; the row appears with Subject, Class, Section, Date, Start, End, Venue. | planned |
+| TC-EXM-08-E02 | P3 | Web | Admin | TC-EXM-06-E01 done. | 1. Sign in as Admin.<br>2. Open QA FA1 > "Dates" > "Manage Dates" > "Add Date".<br>3. Choose Class and Exam Date but no Subject. | "Save" stays disabled. | planned |
+| TC-EXM-08-E03 | P2 | Web | Admin | TC-EXM-08-E01 done. | 1. Sign in as Admin.<br>2. Open the QA FA1 "Exam Dates" page.<br>3. Click the Edit icon on the Mathematics row.<br>4. Change "Exam Date" and click "Save". | In "Edit Exam Date" Class, Section and Subject are disabled; toast "Exam date updated"; the row shows the new date. | planned |
+| TC-EXM-08-E04 | P2 | Web | Admin | TC-EXM-08-E01 done. | 1. Sign in as Admin.<br>2. Open the "Exam Dates" page.<br>3. Click the trash icon on the row.<br>4. Click "Remove" in "Remove Exam Date?". | Toast "Exam date removed"; row gone. | planned |
+| TC-EXM-08-E05 | P3 | Web | Admin | TC-EXM-08-E01 done. | 1. Sign in as Admin.<br>2. Open the "Exam Dates" page.<br>3. Type "Hall" in "Search by subject, class or venue...".<br>4. Type "zzz". | Only rows whose subject, class or venue match remain; "zzz" leaves none. | planned |
+| TC-EXM-08-E06 | P2 | Web | Teacher | Seeded exam "Unit Test 1 - Class 1B" (5 dates, venue Room 1B). | 1. Sign in as Teacher.<br>2. Open "Unit Test 1 - Class 1B" > tab "Dates".<br>3. Open /exam/exams/<id>/dates in the address bar. | The seeded dates are visible but there is no "Manage Dates" or "Add Dates" button; the URL redirects to the exam detail. | planned |
+| TC-EXM-08-E07 | P3 | Web | Admin | An exam with no dates (QA FA1 before TC-EXM-08-E01). | 1. Sign in as Admin.<br>2. Open the exam > tab "Dates".<br>3. Click "Manage Dates". | The tab shows "No exam dates scheduled yet." with "Add Dates"; the Exam Dates page shows "No exam dates yet" with "Add First Date". | planned |
+| TC-EXM-08-E08 | P2 | Mobile | Admin | TC-EXM-06-E01 done. | 1. Sign in as Admin.<br>2. Open QA FA1 on mobile and tap "Manage Dates" (or the Dates tab).<br>3. Tap add; choose "Class-Section *" Class 1 - 1-B, "Subject *" Mathematics, "Exam Date *".<br>4. Save. | Target: toast "Date Added". Currently the request omits exam_id and the API answers 422 (KG-8). | blocked: KG-8 mobile date create omits exam_id |
+| TC-EXM-08-E09 | P2 | Mobile | Admin | TC-EXM-08-E01 done (date created on web). | 1. Sign in as Admin.<br>2. Open QA FA1 on mobile > Exam Dates.<br>3. Edit the Mathematics date (change the venue) and save.<br>4. Delete the date and confirm "Delete Date". | Toasts "Updated" then "Deleted"; the card disappears. | planned |
+| TC-EXM-08-E10 | P3 | Mobile | Admin | QA FA1 exists. | 1. Sign in as Admin.<br>2. Open QA FA1 > Exam Dates.<br>3. Tap add and save without a class-section. | Toast "Select a class-section."; nothing sent. | planned |
+| TC-EXM-08-E11 | P2 | Mobile | Teacher | Seeded exam "Unit Test 1 - Class 1B" (5 dates). | 1. Sign in as Teacher.<br>2. Open Exam tab > "Exams" > "Unit Test 1 - Class 1B".<br>3. Open the Dates tab and tap "View All Dates". | Screen title "Exam Dates (View Only)"; no add, edit or delete controls. | planned |
 
 API tests implemented in: `backend/tests/api/exam/test_f08_dates.py`
 
@@ -994,7 +1041,7 @@ Implemented in: backend/tests/unit/exam/test_exam_create_status.py.
 | TC-EXM-09-U12 | Mobile `canUnlock` is true only for published and admin role | Truth table matches | blocked: canUnlock is inline in mobile/app/exam/[id].tsx; needs a helper exported |
 | TC-EXM-09-A01 | PUT `/exams/{id}` `{"exam_name": "QA FA1 v2", "term": "Term 1"}` (ADMIN) | 200 with updated name and term; other fields unchanged | passing |
 | TC-EXM-09-A02 | PUT as above on a published exam | 200 (no status check; documents current behaviour) | passing |
-| TC-EXM-09-A03 | PUT `exam_name` equal to another exam's name in the same year | 500 (KG-10; target 409) | xfail: KG-10 |
+| TC-EXM-09-A03 | PUT `exam_name` equal to another exam's name in the same year | 500 (KG-10; target 409) | known defect: KG-10: PUT /exams/{id} with a duplicate exam name returns 500 instead of 409 |
 | TC-EXM-09-A04 | PUT `hall_ticket_min_attendance` 101 and `exam_name` 151 characters | 422 each | passing |
 | TC-EXM-09-A05 | PUT unknown exam | 404 | passing |
 | TC-EXM-09-A06 | PUT body with `board`, `level`, `exam_grade_scheme_id` | 200; those fields unchanged | passing |
@@ -1009,7 +1056,7 @@ Implemented in: backend/tests/unit/exam/test_exam_create_status.py.
 | TC-EXM-09-A15 | POST unlock `{"reason": "Marks fix"}` on a published exam | 200 `{status: "active", reason: "Marks fix"}`; audit row `exam_unlocked` with that reason; computed results still present | passing |
 | TC-EXM-09-A16 | POST unlock on a draft or active exam | 409 | passing |
 | TC-EXM-09-A17 | POST unlock with no body or no `reason` | 422 | passing |
-| TC-EXM-09-A18 | POST unlock with a reason of 301 characters | 500 (column limit; document and fix) | xfail: DEF-EXM-5 |
+| TC-EXM-09-A18 | POST unlock with a reason of 301 characters | 500 (column limit; document and fix) | known defect: DEF-EXM-5: POST /exams/{id}/unlock with a reason over 300 characters returns 500 (column limit) instead of 422 |
 | TC-EXM-09-A19 | DELETE a draft exam with marks and results | 204; GET exam 404; marks, subject results and exam results gone; audit row `exam_deleted` with counts | passing |
 | TC-EXM-09-A20 | DELETE an active exam | 204 (API allows; UI does not) | passing |
 | TC-EXM-09-A21 | DELETE a published exam | 409 with the "cannot be deleted because it is published" message; exam remains | passing |
@@ -1020,22 +1067,27 @@ Implemented in: backend/tests/unit/exam/test_exam_create_status.py.
 | TC-EXM-09-A26 | Tenant isolation: tenant B calls DELETE, activate, clone on tenant A's exam id | 404 each; tenant A exam untouched | passing |
 | TC-EXM-09-A27 | Token A with `cschema` B on DELETE | 403 | passing |
 | TC-EXM-09-A28 | After DELETE, GET `/exams/{id}/audit` | Still returns the `exam_deleted` row | passing |
-| TC-EXM-09-E01 | [web] ADMIN: list Edit icon on an active exam, change name, "Save Changes" | Toast "Exam updated successfully"; list shows the new name | planned |
-| TC-EXM-09-E02 | [web] Exam detail for a published exam | No "Edit", "Activate", "Deactivate" or "Delete" buttons; "Clone" visible | planned |
-| TC-EXM-09-E03 | [web] Draft exam: "Activate" > confirm | Toast "Exam activated"; badge Active; "Deactivate" now shown | planned |
-| TC-EXM-09-E04 | [web] Active exam: "Deactivate" > confirm | Toast "Exam moved back to draft"; redirected to the list; badge Draft | planned |
-| TC-EXM-09-E05 | [web] "Clone", keep the suggested name, "Clone" | Toast "Exam cloned successfully"; navigated to the new exam named "Copy of ..." (not "... (Copy)") | planned |
-| TC-EXM-09-E06 | [web] Draft exam: "Delete" > confirm | Toast "Exam deleted"; returns to list; exam absent | planned |
-| TC-EXM-09-E07 | [web] Active exam in the list | No trash icon (delete only on draft) | planned |
-| TC-EXM-09-E08 | [web] TEACHER opens an exam | No Edit, Clone, Activate, Deactivate, Delete buttons; no Permissions or Audit Log tabs | planned |
-| TC-EXM-09-E09 | [mobile] ADMIN: draft exam > "Activate" > confirm | Toast "Exam Activated"; status pill ACTIVE | planned |
-| TC-EXM-09-E10 | [mobile] Active exam > "Deactivate" > confirm | Toast "Exam Deactivated" | planned |
-| TC-EXM-09-E11 | [mobile] Edit modal: change name, save | Toast "Exam Updated" | planned |
-| TC-EXM-09-E12 | [mobile] Edit with empty name | Toast "Validation" "Exam name is required." | planned |
-| TC-EXM-09-E13 | [mobile] Published exam > "Danger Zone" > "Unlock for Corrections" with a reason > "Unlock Exam" | Toast "Exam Unlocked"; status ACTIVE; Danger Zone no longer shows Unlock | planned |
-| TC-EXM-09-E14 | [mobile] Unlock modal with an empty reason | Button disabled; toast "Reason is required." if forced | planned |
-| TC-EXM-09-E15 | [mobile] Draft exam > "Delete Exam" > confirm | Navigates back; exam gone from list | planned |
-| TC-EXM-09-E16 | [mobile] Clone with a typed name | Toast "Exam Cloned"; opens the clone named "Copy of ..." | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-EXM-09-E01 | P1 | Web | Admin | TC-EXM-06-E01 done. | 1. Sign in as Admin.<br>2. Open Exam > Exams.<br>3. Click the Edit icon on "QA FA1".<br>4. Change "Exam Name" to "QA FA1 v2".<br>5. Click "Save Changes". | Toast "Exam updated successfully"; the list shows "QA FA1 v2". Rename back to "QA FA1" the same way. | planned |
+| TC-EXM-09-E02 | P2 | Web | Admin | Seeded published exam "Unit Test 1 - Class 1B". | 1. Sign in as Admin.<br>2. Open the "Unit Test 1 - Class 1B" detail. | No "Edit", "Activate", "Deactivate" or "Delete" buttons; "Clone" is shown; no unlock control (web has none). | planned |
+| TC-EXM-09-E03 | P1 | Web | Admin | A draft exam "QA Doc Draft" (clone of QA FA1 from TC-EXM-09-E05, or deactivate one). | 1. Sign in as Admin.<br>2. Open the draft exam.<br>3. Click "Activate".<br>4. Click "Activate" in "Activate Exam?". | Toast "Exam activated"; badge Active; "Deactivate" now shown and "Activate" and "Delete" hidden. | planned |
+| TC-EXM-09-E04 | P2 | Web | Admin | An active exam with no published results. | 1. Sign in as Admin.<br>2. Open the active exam.<br>3. Click "Deactivate".<br>4. Click "Deactivate" in "Deactivate Exam?". | Toast "Exam moved back to draft"; redirected to the list; the exam shows Draft. | planned |
+| TC-EXM-09-E05 | P1 | Web | Admin | TC-EXM-06-E01 done; no exam "Copy of QA FA1" exists. | 1. Sign in as Admin.<br>2. Open QA FA1.<br>3. Click "Clone".<br>4. Keep "New Exam Name" ("QA FA1 (Copy)") and click "Clone". | Toast "Exam cloned successfully"; the app opens the new draft named "Copy of QA FA1" (the typed name is ignored, KG-10) with no configured subjects. | planned |
+| TC-EXM-09-E06 | P2 | Web | Admin | TC-EXM-09-E05 done ("Copy of QA FA1" is draft). | 1. Sign in as Admin.<br>2. Open "Copy of QA FA1".<br>3. Click "Delete".<br>4. Click "Delete" in "Delete Exam?". | Toast "Exam deleted"; back on the list; the exam is gone. | planned |
+| TC-EXM-09-E07 | P3 | Web | Admin | Seeded exams plus a draft (TC-EXM-09-E05 done). | 1. Sign in as Admin.<br>2. Open Exam > Exams.<br>3. Look at the Actions column. | Edit icon on every row; trash icon only on draft rows. | planned |
+| TC-EXM-09-E08 | P2 | Web | Teacher | Seeded exam "Half Yearly Examination 2026". | 1. Sign in as Teacher.<br>2. Open Exam > Exams > "Half Yearly Examination 2026". | No Edit, Clone, Activate, Deactivate or Delete buttons; tabs Overview, Dates, Marks only (no Permissions or Audit Log). | planned |
+| TC-EXM-09-E09 | P1 | Mobile | Admin | A draft exam (for example "Copy of QA FA1"). | 1. Sign in as Admin.<br>2. Open Exam tab > "Exams" > the draft exam.<br>3. Tap "Activate".<br>4. Confirm "Activate Exam". | Toast "Exam Activated"; status pill ACTIVE; "Deactivate" now in Actions. | planned |
+| TC-EXM-09-E10 | P2 | Mobile | Admin | An active exam without results. | 1. Sign in as Admin.<br>2. Open the active exam.<br>3. Tap "Deactivate" and confirm "Deactivate Exam". | Toast "Exam Deactivated"; status pill DRAFT. | planned |
+| TC-EXM-09-E11 | P2 | Mobile | Admin | QA FA1 exists. | 1. Sign in as Admin.<br>2. Open QA FA1.<br>3. Tap "Edit".<br>4. Change "Exam Name *" to "QA FA1 v2" and tap "Save Changes". | Modal "Edit Exam" notes "Board, level, nature, and academic year cannot be changed after creation."; toast "Exam Updated"; header shows the new name. Rename back. | planned |
+| TC-EXM-09-E12 | P3 | Mobile | Admin | QA FA1 exists. | 1. Sign in as Admin.<br>2. Open QA FA1 > "Edit".<br>3. Clear "Exam Name *" and tap "Save Changes". | Toast "Validation" "Exam name is required."; nothing saved. | planned |
+| TC-EXM-09-E13 | P2 | Mobile | Admin | QA FA1 published (TC-EXM-16-E08 done). Do not unlock the seeded Unit Tests. | 1. Sign in as Admin.<br>2. Open the published exam.<br>3. In "Danger Zone" tap "Unlock for Corrections".<br>4. Enter "Reason for unlocking *" "QA marks fix".<br>5. Tap "Unlock Exam". | Toast "Exam Unlocked"; status ACTIVE; Danger Zone no longer offers Unlock; audit row exam_unlocked with the reason. | planned |
+| TC-EXM-09-E14 | P3 | Mobile | Admin | QA FA1 published. | 1. Sign in as Admin.<br>2. Open the published exam > "Unlock for Corrections".<br>3. Leave the reason empty. | "Unlock Exam" is disabled; forcing it shows "Reason is required.". | planned |
+| TC-EXM-09-E15 | P2 | Mobile | Admin | A draft exam "QA Doc Draft". | 1. Sign in as Admin.<br>2. Open the draft exam.<br>3. In "Danger Zone" tap "Delete Exam" and confirm "Delete Exam". | Navigates back; the exam is gone from the list. | planned |
+| TC-EXM-09-E16 | P2 | Mobile | Admin | QA FA1 exists; no "Copy of QA FA1". | 1. Sign in as Admin.<br>2. Open QA FA1.<br>3. Tap "Clone".<br>4. Enter "New Exam Name" "QA Typed Name" and tap "Clone Exam". | Modal text "A copy of QA FA1 will be created without marks."; toast "Exam Cloned"; the clone opens and is named "Copy of QA FA1" (KG-10). Delete it afterwards. | planned |
 
 API tests implemented in: `backend/tests/api/exam/test_f09_status.py`
 
@@ -1058,10 +1110,10 @@ Implemented in: backend/tests/unit/exam/test_exam_create_status.py (U01-U10). U1
 1. Exam > Exams > open an exam > tab "Permissions" > "Manage Permissions". Page "Mark Entry Permissions".
 2. The blue banner states "Teachers can always enter marks for their assigned subjects. This panel is for granting access to Clerk/CA staff only." This is not what the backend does (see rules).
 3. Table columns S.No., User, Granted At, Status (Active or Revoked), Actions (trash). The User column shows `user_display_name`, which the API does not return, so rows read "Unnamed user" (KG-9).
-4. "Grant Access to User": type a user id into "Enter User ID", click "Grant Access" (toast "Access granted successfully"). Trash opens "Revoke Access?"; toast "Access revoked".
+4. "Grant Access to User": type a user id into "Enter User ID", click "Grant Access" (toast "Access granted successfully"). The exam detail tab "Permissions" shows "Manage Permissions" and the text "Delegate mark-entry access to Clerk/CA staff for this exam." Trash opens "Revoke Access?"; toast "Access revoked".
 
 **Steps, mobile.**
-1. Exam detail > "Permissions" (or Exam tab flow to `/exam/permissions`). Select the exam chip. "Grant Mark Permission" modal: "Teacher *" (active staff list), "Scope (optional)" (all subjects or one subject config), "Scope Note (optional)". Toasts "Permission Granted", "Updated", "Revoked". Toggle icon pauses or reactivates a permission; the close icon revokes (confirm "Revoke Permission").
+1. Exam detail > "Permissions" (or Exam tab flow to `/exam/permissions`). Empty state "No permissions granted yet" with "Grant First Permission" (the exam detail also has a "Mark Permissions (n)" section with "Grant"). "Grant Mark Permission" modal: "Teacher *" (active staff list), "Scope (optional)" (all subjects or one subject config), "Scope Note (optional)". Toasts "Permission Granted", "Updated", "Revoked". Toggle icon pauses or reactivates a permission; the close icon revokes (confirm "Revoke Permission").
 2. The request omits `exam_id` from the body, so the API answers 422 (KG-8). The scope fields (class, section, subject config, teacher id) are ignored by the backend: a permission is per user and exam only.
 
 **Expected results.**
@@ -1081,7 +1133,7 @@ Implemented in: backend/tests/unit/exam/test_exam_create_status.py (U01-U10). U1
   3. Else: 403 `You do not have mark entry permission for this exam`.
   Therefore as soon as one user is granted, every other user (including the subject teachers) is blocked from those two endpoints for that exam. The Excel template and upload endpoints are not checked.
 - Grant: an active row for the same (exam, user) gives 409; an inactive row is re-activated (same id, new `granted_by`); otherwise a new row. `scope_note` is stored (max 200 in the column).
-- The grant endpoint reads `current_user.get("id")` and always fails with 500 because tokens carry only `sub` (KG-1). Intended: 201 with `granted_by` set to the caller.
+- The grant endpoint takes the caller from the `sub` claim and returns 201 with `granted_by` set to the caller (KG-1 is fixed in code; the xfail API cases below need a rerun).
 - No check that the user or exam exists (foreign key failure becomes 500). The path `exam_id` is used for the lookup but the body `exam_id` is required too.
 - `PUT` and `DELETE` do not verify that the permission belongs to the path exam.
 
@@ -1106,36 +1158,41 @@ Implemented in: backend/tests/unit/exam/test_exam_create_status.py (U01-U10). U1
 | TC-EXM-10-U07 | `grant_permission` with an existing inactive row and a new note | Same row, `is_active` True, `granted_by` updated, note updated | passing |
 | TC-EXM-10-U08 | `grant_permission` with no row | New row with `is_active` True | passing |
 | TC-EXM-10-U09 | `MarkPermissionCreate` without `exam_id`; `MarkPermissionUpdate` without `is_active` | Both invalid | passing |
-| TC-EXM-10-A01 | POST grant `{exam_id, user_id: TEACHER1, scope_note}` (ADMIN) | 201 with `granted_by` the admin id, `is_active` true (KG-1: currently 500) | xfail: KG-1 |
+| TC-EXM-10-A01 | POST grant `{exam_id, user_id: TEACHER1, scope_note}` (ADMIN) | 201 with `granted_by` the admin id, `is_active` true (KG-1: currently 500) | passing |
 | TC-EXM-10-A02 | POST grant without `exam_id` in the body | 422 | passing |
-| TC-EXM-10-A03 | POST grant twice for the same user | Second returns 409 | xfail: KG-1 |
-| TC-EXM-10-A04 | PUT `{"is_active": false}`, then POST grant again | PUT 200; POST re-activates the same row id | xfail: KG-1 |
-| TC-EXM-10-A05 | GET list after grant, revoke | Both active and revoked rows listed, oldest first | xfail: KG-1 |
-| TC-EXM-10-A06 | PUT `{"is_active": false, "scope_note": "x"}` | 200 updated | xfail: KG-1 |
+| TC-EXM-10-A03 | POST grant twice for the same user | Second returns 409 | passing |
+| TC-EXM-10-A04 | PUT `{"is_active": false}`, then POST grant again | PUT 200; POST re-activates the same row id | passing |
+| TC-EXM-10-A05 | GET list after grant, revoke | Both active and revoked rows listed, oldest first | passing |
+| TC-EXM-10-A06 | PUT `{"is_active": false, "scope_note": "x"}` | 200 updated | passing |
 | TC-EXM-10-A07 | PUT without `is_active` | 422 | passing |
 | TC-EXM-10-A08 | PUT unknown permission id | 404 `ExamMarkEntryPermission with id ... not found` | passing |
-| TC-EXM-10-A09 | DELETE then GET list | 204; the row remains with `is_active` false | xfail: KG-1 |
+| TC-EXM-10-A09 | DELETE then GET list | 204; the row remains with `is_active` false | passing |
 | TC-EXM-10-A10 | DELETE unknown permission id | 404 | passing |
-| TC-EXM-10-A11 | Effect: with a grant for TEACHER1 only, TEACHER2 GET marks grid and POST marks | 403 `You do not have mark entry permission for this exam` for both | xfail: KG-1 |
-| TC-EXM-10-A12 | Effect: TEACHER1 (granted) GET grid and POST marks | 200 | xfail: KG-1 |
-| TC-EXM-10-A13 | Effect: revoke the only active grant, TEACHER2 GET grid | 200 (open access restored) | xfail: KG-1 |
-| TC-EXM-10-A14 | Effect: TEACHER2 (not granted) downloads the template and uploads a file | 200 (these endpoints are not delegated-checked; documents KG-6) | xfail: KG-1 |
+| TC-EXM-10-A11 | Effect: with a grant for TEACHER1 only, TEACHER2 GET marks grid and POST marks | 403 `You do not have mark entry permission for this exam` for both | passing |
+| TC-EXM-10-A12 | Effect: TEACHER1 (granted) GET grid and POST marks | 200 | passing |
+| TC-EXM-10-A13 | Effect: revoke the only active grant, TEACHER2 GET grid | 200 (open access restored) | passing |
+| TC-EXM-10-A14 | Effect: TEACHER2 (not granted) downloads the template and uploads a file | 200 (these endpoints are not delegated-checked; documents KG-6) | passing |
 | TC-EXM-10-A15 | POST, PUT as TEACHER, STAFF, STUDENT, PARENT | 403 each | passing |
 | TC-EXM-10-A16 | DELETE as TEACHER, STAFF, STUDENT, PARENT | 403 each | passing |
 | TC-EXM-10-A17 | GET list as all five roles | 200 for all | passing |
 | TC-EXM-10-A18 | All endpoints with NOAUTH | 401 each | passing |
 | TC-EXM-10-A19 | Tenant isolation: tenant B GET list for tenant A's exam id; PUT or DELETE A's permission id | `[]`; 404 | passing |
 | TC-EXM-10-A20 | Token A with `cschema` B on POST | 403 | passing |
-| TC-EXM-10-E01 | [web] ADMIN: exam > "Permissions" tab > "Manage Permissions", paste a user id, "Grant Access" | Toast "Access granted successfully"; row appears (KG-1: currently an error toast) | planned |
-| TC-EXM-10-E02 | [web] Row shows | User column reads "Unnamed user" (KG-9); Status badge Active | planned |
-| TC-EXM-10-E03 | [web] Trash > "Revoke Access?" > Revoke | Toast "Access revoked"; Status shows "Revoked" | planned |
-| TC-EXM-10-E04 | [web] "Grant Access" button with an empty field | Button disabled | planned |
-| TC-EXM-10-E05 | [web] TEACHER opens `/exam/exams/{id}/permissions` | Redirected to the exam detail | planned |
-| TC-EXM-10-E06 | [web] After one grant, a different TEACHER opens the mark grid and saves | Save fails with the 403 message (contradicts the banner text; documents KG-9) | planned |
-| TC-EXM-10-E07 | [mobile] ADMIN: Exam detail > "Permissions" > "Grant Mark Permission", pick a teacher, save | (KG-8) 422 because `exam_id` is missing; target: toast "Permission Granted" | planned |
-| TC-EXM-10-E08 | [mobile] Grant with no teacher selected | Toast "Select a teacher." | planned |
-| TC-EXM-10-E09 | [mobile] Toggle and revoke an existing permission | Toasts "Updated" and "Revoked" | planned |
-| TC-EXM-10-E10 | [mobile] TEACHER opens `/exam/permissions` | Redirected to `/exam/list` | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-EXM-10-E01 | P1 | Web | Admin | TC-EXM-06-E01 done; the user id of the QA Staff login (Administration > Users). | 1. Sign in as Admin.<br>2. Open QA FA1 > tab "Permissions".<br>3. Click "Manage Permissions".<br>4. Paste the Staff user id into "Enter User ID".<br>5. Click "Grant Access". | Toast "Access granted successfully"; a row appears with Granted At and Status Active. | planned |
+| TC-EXM-10-E02 | P3 | Web | Admin | TC-EXM-10-E01 done. | 1. Sign in as Admin.<br>2. Open the "Mark Entry Permissions" page of QA FA1. | User column reads "Unnamed user" (the API returns no display name, KG-9); the banner still says teachers can always enter marks (KG-9). | planned |
+| TC-EXM-10-E03 | P2 | Web | Admin | TC-EXM-10-E01 done. | 1. Sign in as Admin.<br>2. Open the "Mark Entry Permissions" page.<br>3. Click the trash icon on the row.<br>4. Click "Revoke" in "Revoke Access?". | Toast "Access revoked"; Status shows "Revoked" (the row stays). | planned |
+| TC-EXM-10-E04 | P3 | Web | Admin | QA FA1 exists. | 1. Sign in as Admin.<br>2. Open the "Mark Entry Permissions" page.<br>3. Leave "Enter User ID" empty. | "Grant Access" is disabled. | planned |
+| TC-EXM-10-E05 | P2 | Web | Teacher | QA FA1 exists. | 1. Sign in as Teacher.<br>2. Open /exam/exams/<QA FA1 id>/permissions in the address bar. | Redirected to the exam detail; no Permissions tab. | planned |
+| TC-EXM-10-E06 | P2 | Web | Teacher | TC-EXM-10-E01 done (only Staff granted). | 1. Sign in as Teacher.<br>2. Open Exam > Marks > QA FA1 > "Enter Marks".<br>3. Type Written 50 for one student.<br>4. Click "Save Marks". | Error toast "You do not have mark entry permission for this exam"; nothing saved (contradicts the page banner, KG-9). Revoke the grant afterwards (TC-EXM-10-E03). | planned |
+| TC-EXM-10-E07 | P2 | Mobile | Admin | TC-EXM-06-E01 done. | 1. Sign in as Admin.<br>2. Open QA FA1 > "Permissions".<br>3. Tap "Grant First Permission" (or "Grant").<br>4. Choose a "Teacher *" and save. | Target: toast "Permission Granted". Currently the request omits exam_id and the API answers 422 (KG-8). | blocked: KG-8 mobile grant omits exam_id |
+| TC-EXM-10-E08 | P3 | Mobile | Admin | QA FA1 exists. | 1. Sign in as Admin.<br>2. Open QA FA1 > "Permissions" > "Grant First Permission".<br>3. Save without choosing a teacher. | Toast "Select a teacher."; nothing sent. | planned |
+| TC-EXM-10-E09 | P2 | Mobile | Admin | TC-EXM-10-E01 done (grant made on web). | 1. Sign in as Admin.<br>2. Open QA FA1 > "Permissions".<br>3. Tap the toggle icon on the permission.<br>4. Tap the close icon and confirm "Revoke Permission". | Toasts "Updated" then "Revoked". | planned |
+| TC-EXM-10-E10 | P3 | Mobile | Teacher | QA FA1 exists. | 1. Sign in as Teacher.<br>2. Open QA FA1 on mobile. | No "Permissions" button or Mark Permissions section; in-app navigation to /exam/permissions redirects to /exam/list. | planned |
 
 API tests implemented in: `backend/tests/api/exam/test_f10_permissions.py`
 
@@ -1161,14 +1218,14 @@ Implemented in: backend/tests/unit/exam/test_marks_entry.py.
 3. Grid "Mark Entry - <exam>" with subtitle "<class> - <section>": columns "Adm#", "Student Name", then for every subject one column per component "Written[80]" plus "Total[100]", and "Grand Total[300]". Cells are numeric inputs (min 0, max = component max). Typing above the max shows toast "Cannot exceed max marks (80) for Written" and the value is rejected.
 4. Changed students are counted on the "Save Marks" button and a banner says "Unsaved changes for N students. Click Save Marks to save."
 5. Click "Save Marks": one request per subject with only the students that changed, containing every component of that subject (values entered, or existing values). Toast "Marks saved successfully" (or "Some subjects could not be saved", or "No changes to save").
-6. "Template": downloads an `.xlsx` generated in the browser (file "<exam> <class> <section>.xlsx", columns "Adm#", "Student Name", "<Subject> <Component>[max]", "<Subject> Total[max]", "Grand Total[max]"). "Upload Excel" reads such a file in the browser, matches rows by "Adm#" and columns by the "<Subject> <Component>" label, puts valid cells into the grid as unsaved edits (toast "Imported N student rows ... Review and click Save Marks.", skipped cells counted when non-numeric or above max) and does not call the server upload endpoint. "Send Marks" opens the Communication quick-send for the class-section parents (cross-module).
+6. "Template": downloads an `.xlsx` generated in the browser (toast "Excel downloaded"; file "<exam> <class> <section>.xlsx", columns "Adm#", "Student Name", "<Subject> <Component>[max]", "<Subject> Total[max]", "Grand Total[max]"). "Upload Excel" reads such a file in the browser, matches rows by "Adm#" and columns by the "<Subject> <Component>" label, puts valid cells into the grid as unsaved edits (toast "Imported N student rows ... Review and click Save Marks.", skipped cells counted when non-numeric or above max) and does not call the server upload endpoint. "Send Marks" opens the Communication quick-send for the class-section parents (cross-module).
 7. Absent students (existing `is_absent`) show an "ABS" badge in all their cells for that subject; absence cannot be set from the web grid.
 
 **Steps, mobile.**
-1. Exam tab > "Mark Entry" (or exam detail > "Marks", visible for active exams). With no exam preselected, the exam chips list active exams. A summary card per class-section shows subject cards (components with "[max]", total) and "x/y students selected" (modal "Select Students" with "Select all" and "Done").
+1. Exam tab > "Mark Entry" (tile shown with `exam_marks:create`, so not for Staff; or exam detail > "Marks", visible for active exams). With no exam preselected, the exam chips list active exams. A summary card per class-section shows "GRAND TOTAL[max]", subject cards ("Written[80.00] Oral[20.00] Total[100]" and "Enter Marks") and "x/y students selected" with "Change" (modal "Select Students" with "Select all" and "Done").
 2. Tap a subject. Choose a "Component" chip; the list shows each selected student with a numeric input and the subject total. Entering above the component max shows the warning "Exceeds Maximum" "Cannot exceed max marks (80)." and rejects the value.
 3. Save bar "Save Marks (N changed)"; toast "Marks Saved" "Marks saved successfully."; with nothing changed the warning "No Changes" "No marks have been modified.". Only the selected component's changed rows are sent.
-4. "Template" downloads the server template (`GET /marks/template`); "Upload CSV" picks a file and posts it to `/marks/upload`. The upload request sends only `subject_config_id`, so the API answers 422 (class_id and section_id are required) and the screen shows "Upload Failed" (KG-8); the picker also accepts CSV, which the backend rejects with 400.
+4. "Template" downloads the server template (`GET /marks/template`, with `class_id` and `section_id`; on Expo web it saves `marks_template.xlsx`); "Upload CSV" picks a file and posts it to `/marks/upload`. The upload request sends only `subject_config_id`, so the API answers 422 (class_id and section_id are required) and the screen shows "Upload Failed" (KG-8); the picker also accepts CSV, which the backend rejects with 400.
 5. Absent students show an "ABS" badge; there is no absent toggle. A section-less class-section cannot load the grid (the request omits `section_id` and gets 422).
 
 **Expected results.**
@@ -1276,32 +1333,37 @@ Implemented in: backend/tests/unit/exam/test_marks_entry.py.
 | TC-EXM-11-A42 | POST upload with a `.csv` file and with random bytes | 400 `Invalid Excel file: ...` | passing |
 | TC-EXM-11-A43 | POST upload without `class_id` or `section_id` or `subject_config_id` | 422 each | passing |
 | TC-EXM-11-A44 | POST upload as STAFF, STUDENT, PARENT | 403 each | passing |
-| TC-EXM-11-A45 | POST upload as a TEACHER who is not in the delegated permission list while a delegation exists | 200 (upload skips the delegation check; KG-6) | xfail: KG-1 |
+| TC-EXM-11-A45 | POST upload as a TEACHER who is not in the delegated permission list while a delegation exists | 200 (upload skips the delegation check; KG-6) | passing |
 | TC-EXM-11-A46 | All four endpoints with NOAUTH | 401 each | passing |
 | TC-EXM-11-A47 | Tenant isolation: tenant B GET grid with tenant A's exam and config ids | No tenant A students returned (empty roster or empty marks); POST with A's component ids returns 409 or 404, nothing written | passing |
 | TC-EXM-11-A48 | Token A with `cschema` B on POST marks | 403 | passing |
-| TC-EXM-11-E01 | [web] TEACHER: Exam > Marks > exam > summary > "Enter Marks"; type Written 62 and Oral 18 for a student; "Save Marks" | Subject Total shows 80, Grand Total updates; toast "Marks saved successfully"; reload shows the saved values | planned |
-| TC-EXM-11-E02 | [web] Type 81 in a Written[80] cell | Toast "Cannot exceed max marks (80) for Written"; value not entered | planned |
-| TC-EXM-11-E03 | [web] Edit nothing and click "Save Marks" | Button disabled (no dirty students) | planned |
-| TC-EXM-11-E04 | [web] Click "Template" | An `.xlsx` downloads with columns Adm#, Student Name, subject component headers with `[max]`, totals | planned |
-| TC-EXM-11-E05 | [web] Fill the template and "Upload Excel" > Upload | Toast "Imported N student rows ... Review and click Save Marks."; cells appear as unsaved; Save persists them | planned |
-| TC-EXM-11-E06 | [web] Upload a sheet with a cell above the max and a text cell | Toast mentions "2 cell(s) skipped (invalid or over max marks)" | planned |
-| TC-EXM-11-E07 | [web] Upload a sheet without an "Adm#" column | Toast "Couldn't find an "Adm#" column" | planned |
-| TC-EXM-11-E08 | [web] Student with an absent mark | All cells of that subject show "ABS"; the subject total shows ABS | planned |
-| TC-EXM-11-E09 | [web] STAFF opens the grid | Inputs are read-only; "Upload Excel" and "Save Marks" hidden | planned |
-| TC-EXM-11-E10 | [web] Another TEACHER (not delegated) saves marks after F10 delegation | Error toast with "You do not have mark entry permission for this exam" | planned |
-| TC-EXM-11-E11 | [web] Section-less class-section | Grid shows "No students found for this class-section." (documents KG-17) | planned |
-| TC-EXM-11-E12 | [web] Exam list for Marks | Only draft, active, locked exams are listed; a published exam is absent | planned |
-| TC-EXM-11-E13 | [web] Student selection from the summary (two of four students) | Grid shows only those two rows and the header shows "2 selected students" | planned |
-| TC-EXM-11-E14 | [mobile] TEACHER: Exam tab > "Mark Entry" > exam chip > subject > component "Written" > enter 62 for a student > "Save Marks (1 changed)" | Toast "Marks Saved"; value persists after reopening | planned |
-| TC-EXM-11-E15 | [mobile] Enter 81 against max 80 | Warning "Exceeds Maximum" "Cannot exceed max marks (80)."; value rejected | planned |
-| TC-EXM-11-E16 | [mobile] Tap "Save Marks" with no edits | Warning "No Changes" "No marks have been modified." | planned |
-| TC-EXM-11-E17 | [mobile] Open the student picker, deselect two students, "Done" | Counter shows "2/4 selected"; the list shows only the selected students | planned |
-| TC-EXM-11-E18 | [mobile] "Template" | File `marks_template.xlsx` is downloaded or shared | planned |
-| TC-EXM-11-E19 | [mobile] "Upload CSV" with the filled template | (KG-8) request returns 422 for missing class and section; toast "Upload Failed"; target: toast "Upload Complete" with the written count | planned |
-| TC-EXM-11-E20 | [mobile] Absent student | Row shows an "ABS" badge instead of an input | planned |
-| TC-EXM-11-E21 | [mobile] STAFF opens Mark Entry | Subject cards have no enter-marks chevron; no save bar | planned |
-| TC-EXM-11-E22 | [mobile] Exam tab for a STUDENT | "Mark Entry" tile not shown | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-EXM-11-E01 | P1 | Web | Teacher | TC-EXM-06-E01 done; no active mark permission rows on QA FA1. | 1. Sign in as Teacher.<br>2. Open Exam > Marks.<br>3. Click "Enter Marks" on QA FA1.<br>4. On the summary click "Enter Marks".<br>5. For Advik Mehta type Mathematics Written 62 and Oral 18, English 70, Environmental Studies 90.<br>6. Click "Save Marks".<br>7. Reload the page. | Mathematics Total shows 80 and Grand Total 240; the banner "Unsaved changes for 1 student." shows before saving; toast "Marks saved successfully"; values persist after reload. | planned |
+| TC-EXM-11-E02 | P2 | Web | Teacher | Grid of QA FA1 open. | 1. Sign in as Teacher.<br>2. Open the QA FA1 grid.<br>3. Type 81 in a "Written[80]" cell. | Toast "Cannot exceed max marks (80) for Written"; the value is not entered. | planned |
+| TC-EXM-11-E03 | P3 | Web | Teacher | Grid of QA FA1 open, no edits. | 1. Sign in as Teacher.<br>2. Open the QA FA1 grid.<br>3. Look at "Save Marks" without editing. | "Save Marks" is disabled (no changed students). | planned |
+| TC-EXM-11-E04 | P2 | Web | Teacher | Grid of QA FA1 open. | 1. Sign in as Teacher.<br>2. Open the QA FA1 grid.<br>3. Click "Template". | Toast "Excel downloaded"; an .xlsx named "<exam> <class> <section>.xlsx" with columns Adm#, Student Name, "<Subject> <Component>[max]", subject totals and "Grand Total[300]". | planned |
+| TC-EXM-11-E05 | P1 | Web | Teacher | TC-EXM-11-E04 done; template filled with Mathematics Written 70 for Harsha Raju and Nikhil Krishnan. | 1. Sign in as Teacher.<br>2. Open the QA FA1 grid.<br>3. Click "Upload Excel" and choose the filled file.<br>4. Click "Save Marks". | Toast "Imported 2 student rows ... Review and click Save Marks."; cells show as unsaved; after Save toast "Marks saved successfully". | planned |
+| TC-EXM-11-E06 | P3 | Web | Teacher | A QA FA1 template with one cell 81 under Mathematics Written[80] and one cell "abc". | 1. Sign in as Teacher.<br>2. Open the QA FA1 grid.<br>3. Click "Upload Excel" and choose the file. | Toast includes "2 cell(s) skipped (invalid or over max marks)"; valid cells are imported. | planned |
+| TC-EXM-11-E07 | P3 | Web | Teacher | An .xlsx without an "Adm#" column. | 1. Sign in as Teacher.<br>2. Open the QA FA1 grid.<br>3. Click "Upload Excel" and choose the file. | Error toast starting "Couldn't find an "Adm#" column"; nothing imported. | planned |
+| TC-EXM-11-E08 | P3 | Web | Teacher | Harsha Raju has English Written saved with is_absent true on QA FA1 (only POST /exams/<id>/marks can set it, KG-7). | 1. Sign in as Teacher.<br>2. Open the QA FA1 grid. | Every English cell of Harsha Raju shows an "ABS" badge (read-only) and the English total shows ABS. | planned |
+| TC-EXM-11-E09 | P2 | Web | Staff | Seeded exam "Half Yearly Examination 2026". | 1. Sign in as Staff.<br>2. Open Exam > Marks > "Half Yearly Examination 2026" > "Enter Marks". | Inputs are read-only; "Upload Excel" and "Save Marks" are hidden. | planned |
+| TC-EXM-11-E10 | P2 | Web | Teacher | Same as TC-EXM-10-E06 (a grant exists for another user only). | 1. Sign in as Teacher.<br>2. Open the QA FA1 grid, type a mark, click "Save Marks". | Error toast "You do not have mark entry permission for this exam". | planned |
+| TC-EXM-11-E11 | P3 | Web | Teacher | An exam whose class-section has no section (section null). | 1. Sign in as Teacher.<br>2. Open Exam > Marks > that exam > "Enter Marks". | Grid shows "No students found for this class-section." (web queries are disabled for an empty section, KG-17). | planned |
+| TC-EXM-11-E12 | P2 | Web | Teacher | Seeded exams (Half Yearly active, both Unit Tests published) and a draft QA exam. | 1. Sign in as Teacher.<br>2. Open Exam > Marks. | "Half Yearly Examination 2026" and draft QA exams are listed with "Enter Marks"; the published Unit Tests are absent. | planned |
+| TC-EXM-11-E13 | P2 | Web | Teacher | TC-EXM-06-E01 done (3 students). | 1. Sign in as Teacher.<br>2. Open the QA FA1 summary.<br>3. Untick Nikhil Krishnan.<br>4. Click "Enter Marks". | Grid lists only Advik Mehta and Harsha Raju; the subtitle ends ". 2 selected students". | planned |
+| TC-EXM-11-E14 | P1 | Mobile | Teacher | TC-EXM-06-E01 done; no active mark permissions. | 1. Sign in as Teacher.<br>2. Open Exam tab > "Mark Entry".<br>3. Tap the QA FA1 exam chip.<br>4. Tap "Enter Marks" on the Mathematics card.<br>5. Choose the "Written" component chip.<br>6. Enter 62 for Advik Mehta.<br>7. Tap "Save Marks (1 changed)". | Toast "Marks Saved" "Marks saved successfully."; the value is there after reopening. | planned |
+| TC-EXM-11-E15 | P2 | Mobile | Teacher | QA FA1 Mathematics Written selected. | 1. Sign in as Teacher.<br>2. Open QA FA1 Mathematics > Written.<br>3. Enter 81 for Harsha Raju. | Warning "Exceeds Maximum" "Cannot exceed max marks (80)."; value rejected. | planned |
+| TC-EXM-11-E16 | P3 | Mobile | Teacher | QA FA1 Mathematics Written selected, no edits. | 1. Sign in as Teacher.<br>2. Open QA FA1 Mathematics > Written.<br>3. Tap "Save Marks (0 changed)". | Warning "No Changes" "No marks have been modified." | planned |
+| TC-EXM-11-E17 | P2 | Mobile | Teacher | TC-EXM-06-E01 done (3 students). | 1. Sign in as Teacher.<br>2. Open Exam tab > "Mark Entry" > QA FA1.<br>3. Tap "Change" next to "3/3 students selected".<br>4. Untick Nikhil Krishnan and tap "Done". | Counter reads "2/3 students selected"; the component list shows Advik Mehta and Harsha Raju only. | planned |
+| TC-EXM-11-E18 | P3 | Mobile | Teacher | QA FA1 Mathematics selected. | 1. Sign in as Teacher.<br>2. Open QA FA1 Mathematics in Mark Entry.<br>3. Tap "Template". | marks_template.xlsx is downloaded (Expo web) or shared (native) with headers student_id, Roll No, Student Name, "Written (Max: 80.00)", "Oral (Max: 20.00)", Remarks. | planned |
+| TC-EXM-11-E19 | P2 | Mobile | Teacher | TC-EXM-11-E18 done; template filled. | 1. Sign in as Teacher.<br>2. Open QA FA1 Mathematics in Mark Entry.<br>3. Tap "Upload CSV" and pick the filled .xlsx. | Target: toast "Upload Complete" with the written count. Currently the request omits class_id and section_id, the API answers 422 and the screen shows "Upload Failed" (KG-8). | blocked: KG-8 mobile upload omits class_id and section_id |
+| TC-EXM-11-E20 | P3 | Mobile | Teacher | Same absent mark as TC-EXM-11-E08. | 1. Sign in as Teacher.<br>2. Open QA FA1 English > Written in Mark Entry. | Harsha Raju shows an "ABS" badge instead of an input; there is no absent toggle (KG-7). | planned |
+| TC-EXM-11-E21 | P2 | Mobile | Staff | Seeded exam "Half Yearly Examination 2026". | 1. Sign in as Staff.<br>2. Open "Half Yearly Examination 2026" on mobile > "Marks". | Subject cards show components and totals but no "Enter Marks" link; no save bar. The Exam tab has no "Mark Entry" tile for Staff. | planned |
+| TC-EXM-11-E22 | P3 | Mobile | Student | Seeded student login Advik Mehta (002). | 1. Sign in as Advik Mehta (002).<br>2. Open the Exam tab. | No "Mark Entry" tile. | planned |
 
 API tests implemented in: `backend/tests/api/exam/test_f11_marks.py`
 
@@ -1360,15 +1422,20 @@ Implemented in: backend/tests/unit/exam/test_marks_entry.py (U01-U20; U20 drives
 | TC-EXM-12-A01 | GET class-sections and subject-configs for EX1 as TEACHER and STAFF | 200 each; data sufficient to build the summary (one class-section, three configs) | passing |
 | TC-EXM-12-A02 | GET class-sections and subject-configs as STUDENT | 200 (documents exposure; students are not offered this screen) | passing |
 | TC-EXM-12-A03 | Tenant isolation: tenant B requests tenant A's class-sections | 404 | passing |
-| TC-EXM-12-E01 | [web] TEACHER: Exam > Marks > exam | Summary shows the first class-section, all students checked, subject table with Components and Max Marks (Math 100, Science 100, English 100) | planned |
-| TC-EXM-12-E02 | [web] Uncheck two students, click "Enter Marks" | Grid shows only the remaining students | planned |
-| TC-EXM-12-E03 | [web] "Select all" off and on; search "xyz" | Counter goes 0/4 then 4/4; "No students match "xyz"." | planned |
-| TC-EXM-12-E04 | [web] Uncheck all students | "Enter Marks" disabled | planned |
-| TC-EXM-12-E05 | [web] Exam with no class-sections | Message "No class-sections assigned to this exam." | planned |
-| TC-EXM-12-E06 | [web] STAFF opens the summary | No "Enter Marks" button | planned |
-| TC-EXM-12-E07 | [web] Switch the "Class - Section" select | Students list and subjects table reload for the chosen class-section | planned |
-| TC-EXM-12-E08 | [mobile] Exam detail > Mark Entry > "View Summary" | Class-section select, student checklist, subject table | planned |
-| TC-EXM-12-E09 | [mobile] "Enter Marks" from the summary | Opens `/exam/marks` for the exam | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-EXM-12-E01 | P1 | Web | Teacher | TC-EXM-06-E01 done. | 1. Sign in as Teacher.<br>2. Open Exam > Marks.<br>3. Click "Enter Marks" on QA FA1. | Page "Mark Entry" with subtitle "QA FA1 . State . QA FA1"; Class 1 - 1-B selected; Advik Mehta, Harsha Raju and Nikhil Krishnan ticked with counter 3/3; the table lists Mathematics (Written [80], Oral [20], Max 100), English (100), Environmental Studies (100). | planned |
+| TC-EXM-12-E02 | P2 | Web | Teacher | TC-EXM-06-E01 done. | 1. Sign in as Teacher.<br>2. Open the QA FA1 summary.<br>3. Untick Nikhil Krishnan.<br>4. Click "Enter Marks". | The button badge shows 2; the grid lists Advik Mehta and Harsha Raju. | planned |
+| TC-EXM-12-E03 | P3 | Web | Teacher | TC-EXM-06-E01 done. | 1. Sign in as Teacher.<br>2. Open the QA FA1 summary.<br>3. Click "Select all" twice.<br>4. Type "xyz" in "Search name or admission #". | Counter goes 0/3 then 3/3; the search shows "No students match "xyz"." | planned |
+| TC-EXM-12-E04 | P3 | Web | Teacher | TC-EXM-06-E01 done. | 1. Sign in as Teacher.<br>2. Open the QA FA1 summary.<br>3. Untick all students. | "Enter Marks" is disabled. | planned |
+| TC-EXM-12-E05 | P3 | Web | Admin | An exam with no class-sections ("Copy of QA FA1" from TC-EXM-09-E05). | 1. Sign in as Admin.<br>2. Open Exam > Marks.<br>3. Click "Enter Marks" on "Copy of QA FA1". | Message "No class-sections assigned to this exam." | planned |
+| TC-EXM-12-E06 | P2 | Web | Staff | Seeded exam "Half Yearly Examination 2026". | 1. Sign in as Staff.<br>2. Open Exam > Marks > "Half Yearly Examination 2026". | The summary is shown without an "Enter Marks" button. | planned |
+| TC-EXM-12-E07 | P2 | Web | Teacher | Seeded exam "Half Yearly Examination 2026" (10 class-sections). | 1. Sign in as Teacher.<br>2. Open Exam > Marks > "Enter Marks" on "Half Yearly Examination 2026".<br>3. Change the "Class - Section" select to Class 2 - 2-A. | The student list and subjects table reload for Class 2 - 2-A (Written 80 and Internal Assessment 20 per subject). | planned |
+| TC-EXM-12-E08 | P1 | Mobile | Teacher | TC-EXM-06-E01 done. | 1. Sign in as Teacher.<br>2. Open QA FA1 on mobile > "Marks" tab > "View Summary". | Screen "Mark Entry" with exam, board and type, Class and Section, "Students 3/3", "Select all", search "Search name or admission #", subject list with max marks and components. | planned |
+| TC-EXM-12-E09 | P2 | Mobile | Teacher | TC-EXM-12-E08 open. | 1. Sign in as Teacher.<br>2. On the summary tap "Enter Marks". | Opens /exam/marks for QA FA1 with the selected students. | planned |
 
 API tests implemented in: `backend/tests/api/exam/test_f12_f18_f19_summary_audit_notify.py`
 
@@ -1392,13 +1459,13 @@ All U cases blocked (logic is inline in web/src/pages/exam/MarkEntrySummary.tsx)
 2. Admin view "Hall Tickets - <exam>": cards "Total Students", "Eligible", "Ineligible"; buttons "Back", "Recompute" (needs `exams:update`; toast "Eligibility computed successfully"), "Publish Hall Tickets" (F14), "Download" (F14).
 3. Tabs "All Students" (enrolled list), "Eligible", "Ineligible", each with search "Search by student name or admission number...". The tables show Attendance and Fee icons (an "Override" badge when overridden), Eligible badge and Reasons ("Fee payment pending", "Attendance below requirement", "Fee pending and low attendance").
 4. On the "Ineligible" tab the Override column has "Attendance" (when attendance failed) and "Fee" (when fee failed) buttons. Each click sends one override flag and the student moves to "Eligible" when both checks then pass. Buttons disable once set; there is no way to remove an override on web.
-5. Student role opens `/exam/hall-tickets/{id}`: card "You are eligible for the hall ticket" or "You are not eligible...", Hall Ticket No, Attendance %, Fee Status. Parent role: same for the selected child. Both pick the first record returned by the eligible and ineligible lists, which contain all students (KG-3).
+5. Student role opens `/exam/hall-tickets/{id}` ("Hall Ticket - <exam>", "Your hall ticket eligibility status"): intended card "You are eligible for the hall ticket" or "You are not eligible...", Hall Ticket No, Attendance %, Fee Status; Parent role: same for the selected child. The page reads the eligible and ineligible lists, which now return 403 for Student and Parent, so it always shows "You are not enrolled in this exam." ("<child> is not enrolled in this exam." for a parent) (KG-21).
 
 **Steps, mobile.**
 1. Exam > "Hall Tickets": list of non-draft exams; "Manage" opens `/exam/hall-tickets/<id>`.
-2. Admin and staff view: tabs Eligible and Ineligible, buttons "Compute Eligibility" (confirm "Check attendance and fee status for all students?"), publish and download (F14). Each student card shows status, attendance %, Fee Paid or Unpaid, an "Overridden" tag, reason, and a button "Mark Eligible" or "Mark Ineligible" (needs `exams:update`; confirm "Override <name> to eligible?"; toast "Eligibility Updated").
+2. Admin and staff view: counters "<n> eligible" and "<n> ineligible", tabs "Eligible (n)" and "Ineligible (n)", header buttons "Compute" (also "Compute Eligibility" on the empty state "No eligible students found"), "Publish" and "Download All" (Teacher and Staff see only "Download All"). "Compute" (confirm "Check attendance and fee status for all students?"), publish and download (F14). Each student card shows status, attendance %, Fee Paid or Unpaid, an "Overridden" tag, reason, and a button "Mark Eligible" or "Mark Ineligible" (needs `exams:update`; confirm "Override <name> to eligible?"; toast "Eligibility Updated").
 3. "Mark Eligible" sends both overrides true; "Mark Ineligible" sends both false, which removes overrides but cannot make a student ineligible who genuinely passes both checks.
-4. Student and Parent: read-only card as on web with the same first-record problem.
+4. Student and Parent: read-only card as on web; it also shows "You are not enrolled in this exam." because the lists return 403 (KG-21).
 
 **Expected results.**
 - One `hall_ticket_eligibility` row per (exam, student): `attendance_percent`, `attendance_ok`, `fee_paid`, `attendance_override`, `fee_override`, `ineligibility_reason`, `is_eligible`, `hall_ticket_number`, `computed_at`.
@@ -1440,7 +1507,7 @@ Worked examples (minimum attendance 75, minimum fee 50):
 **Error and edge cases.**
 - Exam without attendance dates: everyone passes the attendance check.
 - Recompute after enrollment changes: students who left the class-section keep their old row (not removed).
-- Student or Parent holding `exams:read` can fetch all students' eligibility rows (KG-3).
+- Student and Parent get 403 `Not allowed for this role` on the eligible and ineligible lists; `enrolled-students` stays readable to them (KG-3).
 - Override for a student who is not in the exam: 404.
 
 **Unit-testable logic.**
@@ -1489,25 +1556,30 @@ Worked examples (minimum attendance 75, minimum fee 50):
 | TC-EXM-13-A15 | PUT override writes an audit row | `eligibility_overridden` with `student_id` and `final_eligible` | passing |
 | TC-EXM-13-A16 | Override of S3 then GET eligible | S3 listed with `hall_ticket_number` null until recompute (KG-13) | passing |
 | TC-EXM-13-A17 | Compute and override as TEACHER, STAFF, STUDENT, PARENT | 403 each | passing |
-| TC-EXM-13-A18 | GET enrolled-students, eligible, ineligible as all five roles | 200 for all (STUDENT and PARENT receive all students; documents KG-3) | xfail: KG-3 |
+| TC-EXM-13-A18 | GET enrolled-students, eligible, ineligible as all five roles | 200 for all (STUDENT and PARENT receive all students; documents KG-3) | passing |
 | TC-EXM-13-A19 | All four endpoint groups with NOAUTH | 401 each | passing |
 | TC-EXM-13-A20 | Tenant isolation: tenant B GET eligible for tenant A's exam id; PUT override | Empty list; 404 | passing |
 | TC-EXM-13-A21 | Token A with `cschema` B on POST compute | 403 | passing |
 | TC-EXM-13-A22 | Student S6 with 30 present and 20 late records of 80 (attendance window), minimum 75 | `attendance_percent` 37.50 (late not counted); reason `LOW_ATTENDANCE` | passing |
-| TC-EXM-13-E01 | [web] ADMIN: Exam > Hall Tickets > exam > "Recompute" | Toast "Eligibility computed successfully"; cards show Total, Eligible, Ineligible matching the setup | planned |
-| TC-EXM-13-E02 | [web] Tab "Ineligible" for S3 | Row shows Attendance X icon, "Attendance below requirement", Override button "Attendance" | planned |
-| TC-EXM-13-E03 | [web] Click "Attendance" for S3 | S3 moves to the "Eligible" tab; Attendance column shows an "Override" badge | planned |
-| TC-EXM-13-E04 | [web] Click "Fee" for a student then "Attendance" for the same student | Fee override is lost (second request replaces both flags; documents KG-13) | planned |
-| TC-EXM-13-E05 | [web] Search the Eligible tab by admission number | List narrows | planned |
-| TC-EXM-13-E06 | [web] Hall Tickets list | Draft exams are not listed | planned |
-| TC-EXM-13-E07 | [web] TEACHER opens an exam in Hall Tickets | "Recompute" and "Publish Hall Tickets" hidden; lists visible | planned |
-| TC-EXM-13-E08 | [web] STUDENT opens an exam in Hall Tickets | Shows an eligibility card; the record shown must be the student's own (currently the first record of the exam; documents KG-3) | planned |
-| TC-EXM-13-E09 | [web] PARENT with a selected child | Card for that child; "... is not enrolled in this exam." if the child is absent from the lists | planned |
-| TC-EXM-13-E10 | [mobile] ADMIN: Exam > Hall Tickets > "Manage" > "Compute Eligibility" > confirm | Toast "Eligibility Computed"; lists populate | planned |
-| TC-EXM-13-E11 | [mobile] Ineligible tab: "Mark Eligible" > "Override" | Toast "Eligibility Updated"; student moves to Eligible with an "Overridden" tag | planned |
-| TC-EXM-13-E12 | [mobile] Eligible student (genuinely passing): "Mark Ineligible" | Student stays eligible (only overrides are cleared; documents KG-13) | planned |
-| TC-EXM-13-E13 | [mobile] TEACHER opens the screen | Buttons for compute, publish, override are hidden (no `exams:update`) | planned |
-| TC-EXM-13-E14 | [mobile] STUDENT opens Hall Tickets > exam | Self-service card with Attendance and Fee Status | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-EXM-13-E01 | P1 | Web | Admin | QA FA1 with "Attendance From" 2026-09-25 and "Attendance To" 2026-10-01 (set with Edit) and Exam Settings "Minimum Attendance %" 90 (seeded 60; restore afterwards). Seeded attendance gives Advik Mehta and Harsha Raju 80.00 and Nikhil Krishnan 100.00 in that window. | 1. Sign in as Admin.<br>2. Open Exam > Hall Tickets.<br>3. Click "Manage" on QA FA1.<br>4. Click "Recompute". | Toast "Eligibility computed successfully"; cards Total Students 3, Eligible 1 (Nikhil Krishnan), Ineligible 2. | planned |
+| TC-EXM-13-E02 | P2 | Web | Admin | TC-EXM-13-E01 done. | 1. Sign in as Admin.<br>2. Open the QA FA1 hall ticket page.<br>3. Open tab "Ineligible". | Advik Mehta shows the Attendance cross icon, attendance 80.00, reason "Attendance below requirement" and an Override button "Attendance". | planned |
+| TC-EXM-13-E03 | P1 | Web | Admin | TC-EXM-13-E02 done. | 1. Sign in as Admin.<br>2. On the "Ineligible" tab click "Attendance" for Advik Mehta.<br>3. Open tab "Eligible". | Advik Mehta is listed as eligible with an "Override" badge in the Attendance column; his hall ticket number stays empty until the next recompute (KG-13). | planned |
+| TC-EXM-13-E04 | P3 | Web | Admin | TC-EXM-13-E01 done with Exam Settings "Minimum Fee Paid %" 100 as well (restore empty), so Harsha Raju fails both checks ("Fee pending and low attendance"). | 1. Sign in as Admin.<br>2. On "Ineligible" click "Fee" for Harsha Raju.<br>3. Click "Attendance" for Harsha Raju. | After the second click the fee override is lost because each call replaces both flags (KG-13); Harsha Raju shows "Fee payment pending". | planned |
+| TC-EXM-13-E05 | P3 | Web | Admin | Seeded hall tickets of "Half Yearly Examination 2026" (21 eligible, published). | 1. Sign in as Admin.<br>2. Open Exam > Hall Tickets > "Manage" on "Half Yearly Examination 2026".<br>3. Open tab "Eligible".<br>4. Type "001" in "Search by student name or admission number...". | The list narrows to Karthik Reddy (001). | planned |
+| TC-EXM-13-E06 | P3 | Web | Admin | A draft QA exam exists (TC-EXM-09-E05). | 1. Sign in as Admin.<br>2. Open Exam > Hall Tickets. | Draft exams are not listed; each listed exam has "Manage". | planned |
+| TC-EXM-13-E07 | P2 | Web | Teacher | Seeded hall tickets of "Half Yearly Examination 2026". | 1. Sign in as Teacher.<br>2. Open Exam > Hall Tickets > "Manage" on "Half Yearly Examination 2026". | "Recompute", "Publish Hall Tickets" and the Override column are hidden; the lists are visible. | planned |
+| TC-EXM-13-E08 | P2 | Web | Student | Seeded student login Karthik Reddy (001), eligible for "Half Yearly Examination 2026" (HT-2025-0005). | 1. Sign in as Karthik Reddy (001).<br>2. Open Exam > Hall Tickets.<br>3. Click "Manage" on "Half Yearly Examination 2026". | Target: card "You are eligible for the hall ticket" (or not eligible) with Hall Ticket No, Attendance % and Fee Status for the signed-in student. Currently the eligible and ineligible lists return 403 for Student, so the page always shows "You are not enrolled in this exam." (KG-21). | blocked: KG-21 student hall ticket view reads lists that now return 403 |
+| TC-EXM-13-E09 | P2 | Web | Parent | Seeded parent login of Harsha Raju (004, Class 1 / 1-B) and Tanvi Raju (005, Class 4) (the QA Parent login has no linked child); both children are eligible for "Half Yearly Examination 2026". | 1. Sign in as the parent of Harsha and Tanvi Raju.<br>2. Select Harsha Raju.<br>3. Open Exam > Hall Tickets > "Manage" on "Half Yearly Examination 2026". | Target: card for that child. Currently the lists return 403 for Parent and the page shows "<child> is not enrolled in this exam." (KG-21). | blocked: KG-21 parent hall ticket view reads lists that now return 403 |
+| TC-EXM-13-E10 | P1 | Mobile | Admin | QA FA1 with "Attendance From" 2026-09-25 and "Attendance To" 2026-10-01 (set with Edit) and Exam Settings "Minimum Attendance %" 90 (seeded 60; restore afterwards). Seeded attendance gives Advik Mehta and Harsha Raju 80.00 and Nikhil Krishnan 100.00 in that window; no compute yet on QA FA1. | 1. Sign in as Admin.<br>2. Open Exam tab > "Hall Tickets".<br>3. Tap "Manage" on QA FA1.<br>4. Tap "Compute" (or "Compute Eligibility" on the empty state) and confirm. | Toast "Eligibility Computed"; the counters "<n> eligible" and "<n> ineligible" and the tabs "Eligible (n)" and "Ineligible (n)" fill. | planned |
+| TC-EXM-13-E11 | P2 | Mobile | Admin | TC-EXM-13-E10 done; Advik Mehta ineligible. | 1. Sign in as Admin.<br>2. Open the "Ineligible" tab.<br>3. Tap "Mark Eligible" on Advik Mehta.<br>4. Confirm "Override". | Toast "Eligibility Updated"; Advik Mehta moves to Eligible with an "Overridden" tag. | planned |
+| TC-EXM-13-E12 | P3 | Mobile | Admin | TC-EXM-13-E10 done; Nikhil Krishnan genuinely eligible. | 1. Sign in as Admin.<br>2. Open the "Eligible" tab.<br>3. Tap "Mark Ineligible" on Nikhil Krishnan and confirm "Override". | Nikhil Krishnan stays eligible (only overrides are cleared, KG-13). | planned |
+| TC-EXM-13-E13 | P2 | Mobile | Teacher | Seeded hall tickets of "Half Yearly Examination 2026". | 1. Sign in as Teacher.<br>2. Open Exam tab > "Hall Tickets" > "Manage" on "Half Yearly Examination 2026". | Only "Download All" is offered; "Compute", "Publish", "Mark Eligible" and "Mark Ineligible" are hidden. | planned |
+| TC-EXM-13-E14 | P2 | Mobile | Student | Seeded student login Karthik Reddy (001), eligible for "Half Yearly Examination 2026". | 1. Sign in as Karthik Reddy (001).<br>2. Open Exam tab > "Hall Tickets" > "Half Yearly Examination 2026". | Target: self-service card with eligibility, Attendance and Fee Status. Currently "You are not enrolled in this exam." because the lists return 403 (KG-21). | blocked: KG-21 student hall ticket view reads lists that now return 403 |
 
 API tests implemented in: `backend/tests/api/exam/test_f13_f14_hall_tickets.py`
 
@@ -1520,7 +1592,7 @@ Implemented in: backend/tests/unit/exam/test_hall_tickets.py.
 **Purpose.** Admin makes hall tickets available and downloads one student's ticket as a PDF or all eligible tickets as a ZIP; students and parents download their own.
 
 **Roles and permissions.**
-- Publish: `exams:update`. Download one and download all: `exams:read` (so Student and Parent can call them for any student).
+- Publish: `exams:update`. Download one and download all: `exams:read`. Download-all returns 403 for Student and Parent; download one is limited to the own record (Student) or a linked child (Parent).
 - Web: button "Publish Hall Tickets" and "Download" on the admin hall ticket page; page `/exam/hall-tickets/{id}/download`. Mobile: "Publish" and "Download All" on the hall tickets screen; `/exam/hall-ticket-download` lists eligible tickets.
 
 **Preconditions.**
@@ -1528,8 +1600,8 @@ Implemented in: backend/tests/unit/exam/test_hall_tickets.py.
 
 **Steps, web.**
 1. Admin hall ticket page > "Publish Hall Tickets" > confirm "Publish Hall Tickets?" (text "This will make hall tickets visible to eligible students for <exam>."). Toast "Hall tickets published successfully". The exam detail card "Hall Ticket Status" changes to "Published".
-2. "Download" opens "Download Hall Tickets - <exam>" with "<n> eligible students", search, columns Student, Adm#, Class / Section. "Preview" opens a "Hall Ticket Preview" dialog with the hall ticket card (exam, student, hall ticket number, schedule). "PDF" downloads one ticket (toast "Downloaded"). "Download All" (toast "Hall tickets downloaded") saves the ZIP under a name ending in `.pdf` (KG-9).
-3. Student and Parent: after publication the eligibility card shows "Download Hall Ticket" (only when eligible and published); before publication "Hall tickets have not been published yet. Check back later." This gating is client-side only.
+2. "Download" opens "Download Hall Tickets - <exam>" with "<n> eligible students", search, columns Student, Adm#, Class / Section. "Preview" opens a "Hall Ticket Preview" dialog with the hall ticket card (exam, student, hall ticket number, schedule). "PDF" downloads one ticket (toast "Downloaded"). "Download All" (toast "Hall tickets downloaded") saves the ZIP as `hall-tickets-<exam name>.pdf` (KG-9). One ticket is saved as `hall-ticket-<admission no>.pdf`.
+3. Student and Parent: after publication the eligibility card shows "Download Hall Ticket" (only when eligible and published); before publication "Hall tickets have not been published yet. Check back later." This gating is client-side only. The card never loads at present (KG-21).
 
 **Steps, mobile.**
 1. Hall tickets screen > "Publish" (confirm "Publish hall tickets to all eligible students?"; toast "Hall Tickets Published"). "Download All" (confirm "Download all eligible hall tickets as ZIP?") saves `hall_tickets_<examId>.zip`; each eligible card has "Download PDF" (file `hall-ticket.pdf` or `hall_ticket_<studentId>.pdf`). Student and Parent cards show "Download Hall Ticket".
@@ -1545,13 +1617,13 @@ Implemented in: backend/tests/unit/exam/test_hall_tickets.py.
 
 **Rules and validations.**
 - Publish sets the flag and timestamp every time it is called (repeatable; the timestamp is overwritten). It does not require compute, a status, or any eligible student, and there is no unpublish.
-- Download one: `student_id` required (422); no eligibility row gives 404 `Hall ticket not found. Run compute first.`; not eligible gives 403 `Student is not eligible for a hall ticket.`; student not found 404. The published flag is not checked, and the endpoint does not restrict which student a Student or Parent may request (KG-3).
+- Download one: `student_id` required (422); no eligibility row gives 404 `Hall ticket not found. Run compute first.`; not eligible gives 403 `Student is not eligible for a hall ticket.`; student not found 404. The published flag is not checked. A Student may download only their own ticket and a Parent only a linked child's (`ensure_student_access`, 403 otherwise).
 - Download all: 404 `No eligible students found. Run compute first.` when none eligible.
 - A student whose override made them eligible but who has no number prints "-" for Hall Ticket No.
 
 **Error and edge cases.**
 - Unknown exam on publish: 404. Unknown exam on download: 404 from the eligibility lookup.
-- Download before publication works for any caller (`exams:read`).
+- Download before publication works (the published flag is not enforced, KG-13).
 
 **Unit-testable logic.**
 - `publish_hall_tickets` flag and timestamp; `_build_pdf` content (starts with `%PDF`, includes number, name, schedule rows) using a data dict; `_load_hall_ticket_data` error mapping (404, 403) with fakes; ZIP assembly skipping failures.
@@ -1574,32 +1646,37 @@ Implemented in: backend/tests/unit/exam/test_hall_tickets.py.
 | TC-EXM-14-A03 | POST publish before any compute | 200 (no precondition) | passing |
 | TC-EXM-14-A04 | POST publish unknown exam | 404 | passing |
 | TC-EXM-14-A05 | POST publish writes an audit row | `hall_tickets_published` present | passing |
-| TC-EXM-14-A06 | GET download for an eligible student (ADMIN) | 200 `application/pdf`; body starts with `%PDF`; `Content-Disposition` filename `hall-ticket-<student_id>.pdf` | xfail: DEF-EXM-7 |
+| TC-EXM-14-A06 | GET download for an eligible student (ADMIN) | 200 `application/pdf`; body starts with `%PDF`; `Content-Disposition` filename `hall-ticket-<student_id>.pdf` | passing |
 | TC-EXM-14-A07 | GET download for an ineligible student | 403 `Student is not eligible for a hall ticket.` | passing |
 | TC-EXM-14-A08 | GET download for a student with no eligibility row | 404 | passing |
 | TC-EXM-14-A09 | GET download without `student_id` | 422 | passing |
-| TC-EXM-14-A10 | GET download for a student whose class has exam dates | PDF is produced (schedule content verified by text extraction: subject names and `dd-mm-yyyy` dates) | xfail: DEF-EXM-7 |
-| TC-EXM-14-A11 | GET download before publish | 200 (the published flag is not enforced; documents KG-13) | xfail: DEF-EXM-7 |
-| TC-EXM-14-A12 | GET download-all with 3 eligible students | 200 `application/zip`; archive has 3 PDFs named by hall ticket number | xfail: DEF-EXM-7 |
+| TC-EXM-14-A10 | GET download for a student whose class has exam dates | PDF is produced (schedule content verified by text extraction: subject names and `dd-mm-yyyy` dates) | passing |
+| TC-EXM-14-A11 | GET download before publish | 200 (the published flag is not enforced; documents KG-13) | passing |
+| TC-EXM-14-A12 | GET download-all with 3 eligible students | 200 `application/zip`; archive has 3 PDFs named by hall ticket number | passing |
 | TC-EXM-14-A13 | GET download-all with no eligible students | 404 `No eligible students found. Run compute first.` | passing |
-| TC-EXM-14-A14 | GET download as STUDENT for another student's id | 200 (exposure; documents KG-3; target 403) | xfail: KG-3 |
+| TC-EXM-14-A14 | GET download as STUDENT for another student's id | 200 (exposure; documents KG-3; target 403) | passing |
 | TC-EXM-14-A15 | POST publish as TEACHER, STAFF, STUDENT, PARENT | 403 each | passing |
-| TC-EXM-14-A16 | GET download and download-all as ADMIN, TEACHER, STAFF, STUDENT, PARENT | 200 for all (`exams:read`) | xfail: DEF-EXM-7 |
+| TC-EXM-14-A16 | GET download and download-all as ADMIN, TEACHER, STAFF, STUDENT, PARENT | 200 for all (`exams:read`) | passing |
 | TC-EXM-14-A17 | All three endpoints with NOAUTH | 401 each | passing |
 | TC-EXM-14-A18 | Tenant isolation: tenant B download for tenant A's exam and student | 404 | passing |
 | TC-EXM-14-A19 | Token A with `cschema` B on publish | 403 | passing |
-| TC-EXM-14-E01 | [web] ADMIN: hall ticket page > "Publish Hall Tickets" > "Publish" | Toast "Hall tickets published successfully"; exam detail card shows "Published" | planned |
-| TC-EXM-14-E02 | [web] "Download" > "Preview" for one student | Dialog "Hall Ticket Preview" with exam name, student, number, schedule | planned |
-| TC-EXM-14-E03 | [web] "PDF" for one student | A PDF file downloads; toast "Downloaded" | planned |
-| TC-EXM-14-E04 | [web] "Download All" | A file downloads; its content is a ZIP although named `.pdf` (documents KG-9) | planned |
-| TC-EXM-14-E05 | [web] Download page for an exam with no eligible students | "No eligible students found." and "Download All" disabled | planned |
-| TC-EXM-14-E06 | [web] STUDENT eligible, hall tickets published | "Download Hall Ticket" button works; toast "Hall ticket downloaded" | planned |
-| TC-EXM-14-E07 | [web] STUDENT eligible, not yet published | Message "Hall tickets have not been published yet. Check back later." and no button | planned |
-| TC-EXM-14-E08 | [web] STUDENT not eligible | Red card "You are not eligible for the hall ticket" with the reason text; no download | planned |
-| TC-EXM-14-E09 | [mobile] ADMIN: "Publish" > confirm | Toast "Hall Tickets Published" | planned |
-| TC-EXM-14-E10 | [mobile] "Download Hall Ticket" / "Download PDF" for an eligible student | PDF file saved or shared; toast "Hall ticket downloaded" | planned |
-| TC-EXM-14-E11 | [mobile] "Download All" > confirm | `hall_tickets_<examId>.zip` saved or shared; toast "Hall tickets downloaded" | planned |
-| TC-EXM-14-E12 | [mobile] Download failure (simulate 403 for an ineligible student) | Toast "Download Failed" "Could not download file. Please try again." | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-EXM-14-E01 | P1 | Web | Admin | TC-EXM-13-E01 done. | 1. Sign in as Admin.<br>2. Open the QA FA1 hall ticket page.<br>3. Click "Publish Hall Tickets".<br>4. Click "Publish" in "Publish Hall Tickets?".<br>5. Open the QA FA1 detail Overview. | Toast "Hall tickets published successfully"; the "Hall Ticket Status" card shows "Published". | planned |
+| TC-EXM-14-E02 | P2 | Web | Admin | Seeded hall tickets of "Half Yearly Examination 2026" (21 eligible). | 1. Sign in as Admin.<br>2. Open the "Half Yearly Examination 2026" hall ticket page.<br>3. Click "Download".<br>4. Click "Preview" on Karthik Reddy. | Page "Download Hall Tickets - Half Yearly Examination 2026" with "21 eligible students"; dialog "Hall Ticket Preview" with the exam, Karthik Reddy, HT-2025-0005 and the schedule. | planned |
+| TC-EXM-14-E03 | P1 | Web | Admin | Seeded hall tickets of "Half Yearly Examination 2026". | 1. Sign in as Admin.<br>2. Open the "Half Yearly Examination 2026" download page.<br>3. Click "PDF" on Karthik Reddy. | File "hall-ticket-001.pdf" downloads and opens as a PDF with HALL TICKET, the student details and the Class 1 schedule; toast "Downloaded". | planned |
+| TC-EXM-14-E04 | P3 | Web | Admin | Seeded hall tickets of "Half Yearly Examination 2026". | 1. Sign in as Admin.<br>2. Open the "Half Yearly Examination 2026" download page.<br>3. Click "Download All". | Toast "Hall tickets downloaded"; the file is named "hall-tickets-Half Yearly Examination 2026.pdf" but its content is a ZIP of 21 PDFs (KG-9). | planned |
+| TC-EXM-14-E05 | P3 | Web | Admin | Seeded exam "Unit Test 1 - Class 1B" (no hall ticket compute). | 1. Sign in as Admin.<br>2. Open /exam/hall-tickets/<Unit Test 1 - Class 1B id>/download. | "No eligible students found." and "Download All" disabled. | planned |
+| TC-EXM-14-E06 | P2 | Web | Student | Seeded student login Karthik Reddy (001); "Half Yearly Examination 2026" hall tickets are published and he is eligible. | 1. Sign in as Karthik Reddy (001).<br>2. Open Exam > Hall Tickets > "Half Yearly Examination 2026".<br>3. Click "Download Hall Ticket". | Target: PDF downloads; toast "Hall ticket downloaded". Blocked: the card never loads for students (KG-21). | blocked: KG-21 student hall ticket view reads lists that now return 403 |
+| TC-EXM-14-E07 | P3 | Web | Student | Seeded student login Advik Mehta (admission 002, Class 1 / 1-B; the first sign-in forces a password change; the QA Student login is not linked to a student); TC-EXM-13-E01 done on QA FA1, hall tickets not published. | 1. Sign in as Advik Mehta (002).<br>2. Open Exam > Hall Tickets > QA FA1. | Target: "Hall tickets have not been published yet. Check back later." and no button. Blocked by KG-21. | blocked: KG-21 student hall ticket view reads lists that now return 403 |
+| TC-EXM-14-E08 | P3 | Web | Student | Seeded student login Advik Mehta (admission 002, Class 1 / 1-B; the first sign-in forces a password change; the QA Student login is not linked to a student); TC-EXM-13-E01 done (Advik ineligible, no override). | 1. Sign in as Advik Mehta (002).<br>2. Open Exam > Hall Tickets > QA FA1. | Target: red card "You are not eligible for the hall ticket" with the reason; no download. Blocked by KG-21. | blocked: KG-21 student hall ticket view reads lists that now return 403 |
+| TC-EXM-14-E09 | P1 | Mobile | Admin | TC-EXM-13-E10 done. | 1. Sign in as Admin.<br>2. Open the QA FA1 hall tickets screen.<br>3. Tap "Publish" and confirm. | Toast "Hall Tickets Published". | planned |
+| TC-EXM-14-E10 | P2 | Mobile | Admin | Seeded hall tickets of "Half Yearly Examination 2026". | 1. Sign in as Admin.<br>2. Open Exam tab > "Hall Tickets" > "Manage" on "Half Yearly Examination 2026".<br>3. On the "Eligible" tab tap "Download PDF" on Karthik Reddy. | A PDF is saved (Expo web) or shared (native); toast "Hall ticket downloaded". | planned |
+| TC-EXM-14-E11 | P2 | Mobile | Admin | Seeded hall tickets of "Half Yearly Examination 2026". | 1. Sign in as Admin.<br>2. Open the "Half Yearly Examination 2026" hall tickets screen.<br>3. Tap "Download All" and confirm. | hall_tickets_<examId>.zip is saved or shared; toast "Hall tickets downloaded". | planned |
+| TC-EXM-14-E12 | P3 | Mobile | Admin | Seeded hall tickets of "Half Yearly Examination 2026"; ability to block the download request. | 1. Sign in as Admin.<br>2. Block GET /hall-tickets/download.<br>3. Tap "Download PDF". | Toast "Download Failed" "Could not download file. Please try again." | planned |
 
 API tests implemented in: `backend/tests/api/exam/test_f13_f14_hall_tickets.py`
 
@@ -1724,16 +1801,21 @@ Worked examples with GS1 (Math Written 80 + Oral 20, Science Written 100, Englis
 | TC-EXM-15-A16 | Compute for a class where grade scheme is absent | Subjects `ABS`; `grade_label` null on the overall row; `is_passed` false | passing |
 | TC-EXM-15-A17 | Compute with a subject grade scheme (pass 33) assigned to Science | A Science mark of 33/100 gives `is_passed` true for that subject | passing |
 | TC-EXM-15-A18 | Save a tie (two students 80.00) then compute | Ranks 2 and 3 given to the two (either order); no duplicate rank values | passing |
-| TC-EXM-15-A19 | Two class-sections in one exam | Each section ranks from 1; students also receive `ABS` rows for the other section's subjects (documents KG-5) | xfail: KG-5 |
-| TC-EXM-15-E01 | [web] ADMIN: Exam > Results > "View Results" on an active exam > "Compute Results" | Toast "Aggregates computed successfully"; table lists students with Total, %, Grade, GPA, Rank, Result | planned |
-| TC-EXM-15-E02 | [web] Click "Compute Results" twice | Both succeed (force is always true) | planned |
-| TC-EXM-15-E03 | [web] Open the results view of a draft exam | Not listed under Results (draft exams are excluded) | planned |
-| TC-EXM-15-E04 | [web] Results view for a published exam | "Compute Results" hidden (status not active or locked) | planned |
-| TC-EXM-15-E05 | [web] Table values for S1..S4 | Total `240.0`, `80.0%`, grade A, GPA `3.50`, rank 2, Pass; S4 shows Science cell `ABS` badge and `Fail` | planned |
-| TC-EXM-15-E06 | [web] TEACHER opens the results view of an active exam and clicks "Compute Results" | The button is shown (no permission check in the UI); the API returns 403 and an error toast appears; no results change | planned |
-| TC-EXM-15-E07 | [mobile] ADMIN: Exam > Results > exam chip > "Compute" > confirm | Toast "Results Computed"; list shows percentage, rank, PASS or FAIL | planned |
-| TC-EXM-15-E08 | [mobile] Compute a second time | 409; toast "Failed to compute results." | planned |
-| TC-EXM-15-E09 | [mobile] Tap a student row | Detail with "<total> / <max> marks . Rank #n", per-subject marks, grade, PASS or FAIL, `AB` for absent | planned |
+| TC-EXM-15-A19 | Two class-sections in one exam | Each section ranks from 1; students also receive `ABS` rows for the other section's subjects (documents KG-5) | known defect: KG-5: compute applies every section's subject configs to every student, creating ABS rows and failing students... |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-EXM-15-E01 | P1 | Web | Admin | QA FA1 active with marks saved for Advik Mehta, Harsha Raju and Nikhil Krishnan (TC-EXM-11-E01 for all three). | 1. Sign in as Admin.<br>2. Open Exam > Results.<br>3. Click "View Results" on QA FA1.<br>4. Click "Compute Results". | Table shows "Computing..." then three rows; toast "Aggregates computed successfully"; columns Total, %, Grade, GPA, Rank, Result. | planned |
+| TC-EXM-15-E02 | P2 | Web | Admin | TC-EXM-15-E01 done. | 1. Sign in as Admin.<br>2. On the QA FA1 results view click "Compute Results" again. | Succeeds again (web always sends force=true); same rows. | planned |
+| TC-EXM-15-E03 | P3 | Web | Admin | A draft QA exam exists (TC-EXM-09-E05). | 1. Sign in as Admin.<br>2. Open Exam > Results. | The draft exam is not listed (only active, locked, published, finalized). | planned |
+| TC-EXM-15-E04 | P3 | Web | Admin | Seeded published exam "Unit Test 1 - Class 1B". | 1. Sign in as Admin.<br>2. Open Exam > Results > "View Results" on "Unit Test 1 - Class 1B". | "Compute Results" is hidden. | planned |
+| TC-EXM-15-E05 | P2 | Web | Admin | Seeded computed results of "Unit Test 1 - Class 1B". | 1. Sign in as Admin.<br>2. Open Exam > Results > "View Results" on "Unit Test 1 - Class 1B".<br>3. Read the three rows. | Advik Mehta: Total 97.5, 78.0%, B+, GPA 8.00, Rank 1, Pass; Harsha Raju: 72.8%, B+, Rank 2; Nikhil Krishnan: 68.0%, B, Rank 3; each subject column shows marks out of 25. | planned |
+| TC-EXM-15-E06 | P3 | Web | Teacher | QA FA1 active with marks. | 1. Sign in as Teacher.<br>2. Open Exam > Results > "View Results" on QA FA1.<br>3. Click "Compute Results". | The button is shown (gated by status only); the API answers 403 and an error toast appears; results unchanged. | planned |
+| TC-EXM-15-E07 | P1 | Mobile | Admin | QA FA1 active with marks and no results yet. | 1. Sign in as Admin.<br>2. Open Exam tab > "Results".<br>3. Select QA FA1.<br>4. Tap "Compute" (or "Compute Results" on the empty state) and confirm "Recompute all results for this exam?". | Toast "Results Computed"; the list shows percentage, rank and PASS or FAIL per student. | planned |
+| TC-EXM-15-E08 | P3 | Mobile | Admin | TC-EXM-15-E07 done. | 1. Sign in as Admin.<br>2. Tap "Compute" again and confirm. | API 409 (no force); toast "Failed to compute results." | planned |
+| TC-EXM-15-E09 | P2 | Mobile | Admin | Seeded results of "Unit Test 1 - Class 1B". | 1. Sign in as Admin.<br>2. Open Exam tab > "Results" > "Unit Test 1 - Class 1B".<br>3. Tap the Advik Mehta row. | Detail "<total> / <max> marks . Rank #1" (97.5 of 125), per-subject marks, grade B+, PASS. | planned |
 
 API tests implemented in: `backend/tests/api/exam/test_f15_f16_results.py`
 
@@ -1770,7 +1852,7 @@ Implemented in: backend/tests/unit/exam/test_results_compute.py.
 
 **Rules and validations.**
 - Publish allowed from `active`, `locked`, `finalized`; from `draft` or `published` gives 409 `Exam status '<s>' cannot be published. Must be locked or active.` It does not check that results exist, and republishing an already published exam is rejected.
-- The list ignores publish status: it returns computed results of draft, active and published exams alike, to any caller with `exams:read` (KG-3). Ordering: rank ascending with nulls last, then student name. Unknown exam: `[]`.
+- The list ignores publish status: it returns computed results of draft, active and published exams alike to staff roles; Student and Parent get 403. `GET /results/{student_id}` is limited to the own record or a linked child but also ignores publish status (KG-3). Ordering: rank ascending with nulls last, then student name. Unknown exam: `[]`.
 - Filters: `class_id` and `section_id` match the student's current admission; both together require both.
 - `publish_rank` is ignored: rank is always returned.
 
@@ -1794,7 +1876,7 @@ Implemented in: backend/tests/unit/exam/test_results_compute.py.
 | TC-EXM-16-U07 | ResultsTable search by name and admission number | Case-insensitive filter | blocked: search filter is inline in web/src/components/exam/ResultsTable.tsx |
 | TC-EXM-16-U08 | Web `canPublish` and `canCompute` flags for each status | publish only when `locked`; compute when `active` or `locked` | blocked: canPublish and canCompute are inline in web/src/pages/exam/ResultsPublish.tsx and StudentResults.tsx |
 | TC-EXM-16-A01 | POST publish on an active exam with computed results (ADMIN) | 200 `{status: "published", published_at: null}`; GET exam shows `published` | passing |
-| TC-EXM-16-A02 | POST publish on a locked exam and on a finalized exam (fixtures set directly in the database) | 200 each | skipped: locked and finalized exams cannot be produced through the API and the database must not be |
+| TC-EXM-16-A02 | POST publish on a locked exam and on a finalized exam (fixtures set directly in the database) | 200 each | skipped: locked and finalized exams cannot be produced through the API and the database must not be touched directly |
 | TC-EXM-16-A03 | POST publish on a draft exam | 409 `... cannot be published. Must be locked or active.` | passing |
 | TC-EXM-16-A04 | POST publish on an already published exam | 409 | passing |
 | TC-EXM-16-A05 | POST publish before any compute | 200 (no precondition) | passing |
@@ -1807,7 +1889,7 @@ Implemented in: backend/tests/unit/exam/test_results_compute.py.
 | TC-EXM-16-A12 | GET results with `class_id` only | Students admitted to that class | passing |
 | TC-EXM-16-A13 | GET results for an exam without computation; unknown exam | `[]` both | passing |
 | TC-EXM-16-A14 | GET results before publish (draft, active exam) | 200 with data (publication not enforced; documents KG-3) | passing |
-| TC-EXM-16-A15 | GET results as STUDENT and PARENT | 200 with all students (target 403; documents KG-3) | xfail: KG-3 |
+| TC-EXM-16-A15 | GET results as STUDENT and PARENT | 200 with all students (target 403; documents KG-3) | passing |
 | TC-EXM-16-A16 | GET single result for S1 | 200 with `subject_results` ordered by subject sort order; `rank` 2 | passing |
 | TC-EXM-16-A17 | GET single result for a student without a result; unknown student | 404 `No result found for student ... in exam ...` | passing |
 | TC-EXM-16-A18 | GET results and GET single as ADMIN, TEACHER, STAFF | 200 each | passing |
@@ -1815,16 +1897,21 @@ Implemented in: backend/tests/unit/exam/test_results_compute.py.
 | TC-EXM-16-A20 | Tenant isolation: tenant B GET results of tenant A's exam | `[]`; GET single 404 | passing |
 | TC-EXM-16-A21 | Token A with `cschema` B on GET results | 403 | passing |
 | TC-EXM-16-A22 | After publish, `publish_rank=false` on the exam | Results still contain `rank` (flag ignored; documents KG-11) | passing |
-| TC-EXM-16-E01 | [web] ADMIN: Exam > Results > "View Results" > type a name in "Search student..." | Table filters; footer "Showing 1 of 4 students" | planned |
-| TC-EXM-16-E02 | [web] "Export" > "Export to CSV" | File `<exam>_results.csv` downloads; header row and values match the table | planned |
-| TC-EXM-16-E03 | [web] "Export" > "Export to Excel" | File `<exam>_results.xlsx` downloads; sheet "Results" | planned |
-| TC-EXM-16-E04 | [web] "Export" with a search that matches nothing | Export button disabled | planned |
-| TC-EXM-16-E05 | [web] Open `/exam/exams/{id}/results` for an active exam | "Run Compute" enabled; "Publish Results" disabled with "Exam must be in Locked status to publish." (documents KG-4) | planned |
-| TC-EXM-16-E06 | [web] Same page for a published exam | "Results have been published." | planned |
-| TC-EXM-16-E07 | [web] Sort by Total, % and Rank | Rows reorder; unranked rows last | planned |
-| TC-EXM-16-E08 | [mobile] ADMIN: Exam > Results > exam > "Publish" > confirm | Toast "Results Published"; the exam shows PUBLISHED in lists | planned |
-| TC-EXM-16-E09 | [mobile] TEACHER opens Results | Student list visible; "Compute" and "Publish" buttons hidden | planned |
-| TC-EXM-16-E10 | [mobile] Tap a student row, back | Detail card and return to list | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-EXM-16-E01 | P2 | Web | Admin | Seeded results of "Unit Test 1 - Class 1B" (3 students). | 1. Sign in as Admin.<br>2. Open Exam > Results > "View Results" on "Unit Test 1 - Class 1B".<br>3. Type "Advik" in "Search student...". | Table shows one row; footer "Showing 1 of 3 students". | planned |
+| TC-EXM-16-E02 | P1 | Web | Admin | Seeded results of "Unit Test 1 - Class 1B". | 1. Sign in as Admin.<br>2. Open the "Unit Test 1 - Class 1B" results view.<br>3. Click "Export" > "Export to CSV". | File "Unit Test 1 - Class 1B_results.csv" downloads; header S.No., Student, Adm#, one column per subject, Total, %, Grade, GPA, Rank, Result; values match the table. | planned |
+| TC-EXM-16-E03 | P2 | Web | Admin | Seeded results of "Unit Test 1 - Class 1B". | 1. Sign in as Admin.<br>2. Open the "Unit Test 1 - Class 1B" results view.<br>3. Click "Export" > "Export to Excel". | File "Unit Test 1 - Class 1B_results.xlsx" downloads with sheet "Results". | planned |
+| TC-EXM-16-E04 | P3 | Web | Admin | Seeded results of "Unit Test 1 - Class 1B". | 1. Sign in as Admin.<br>2. Open the "Unit Test 1 - Class 1B" results view.<br>3. Type "zzz" in "Search student...". | "Export" is disabled. | planned |
+| TC-EXM-16-E05 | P3 | Web | Admin | Seeded active exam "Half Yearly Examination 2026". | 1. Sign in as Admin.<br>2. Open /exam/exams/<Half Yearly Examination 2026 id>/results. | "Run Compute" enabled; "Publish Results" disabled with "Exam must be in Locked status to publish." (no lock step exists, KG-4). | planned |
+| TC-EXM-16-E06 | P3 | Web | Admin | Seeded published exam "Unit Test 1 - Class 1B". | 1. Sign in as Admin.<br>2. Open /exam/exams/<Unit Test 1 - Class 1B id>/results. | Text "Results have been published." | planned |
+| TC-EXM-16-E07 | P3 | Web | Admin | Seeded results of "Unit Test 1 - Class 1B". | 1. Sign in as Admin.<br>2. Open the "Unit Test 1 - Class 1B" results view.<br>3. Click the Total, % and Rank headers. | Rows reorder by each column; unranked rows sort last. | planned |
+| TC-EXM-16-E08 | P1 | Mobile | Admin | TC-EXM-15-E01 or TC-EXM-15-E07 done (QA FA1 active with results). | 1. Sign in as Admin.<br>2. Open Exam tab > "Results" > QA FA1.<br>3. Tap "Publish".<br>4. Confirm "Publish results to students and parents?". | Toast "Results Published"; QA FA1 shows PUBLISHED in the lists. This is the only UI path to publish (KG-4). | planned |
+| TC-EXM-16-E09 | P2 | Mobile | Teacher | Seeded results of "Unit Test 1 - Class 1B". | 1. Sign in as Teacher.<br>2. Open Exam tab > "Results" > "Unit Test 1 - Class 1B". | Student list visible; "Compute" and "Publish" hidden. | planned |
+| TC-EXM-16-E10 | P3 | Mobile | Admin | Seeded results of "Unit Test 1 - Class 1B". | 1. Sign in as Admin.<br>2. Open Exam tab > "Results" > "Unit Test 1 - Class 1B".<br>3. Tap a student row.<br>4. Go back. | The detail card opens and back returns to the list. | planned |
 
 API tests implemented in: `backend/tests/api/exam/test_f15_f16_results.py`
 
@@ -1838,7 +1925,7 @@ Implemented in: backend/tests/unit/exam/test_results_audit_notify.py (U01-U02). 
 
 **Roles and permissions.**
 - `GET /exams/{id}/my-marks` and `child-marks`: `exams:read` plus identity from the token (student id or parent id).
-- `GET /exams/{id}/my-result`: `exam_results:read_own`. `GET /exams/my-results`: `exam_results:list_own` (unreachable, KG-2). `GET /exams/{id}/child-result/{student_id}`: `exams:read` plus parent identity and a parent-child link.
+- `GET /exams/{id}/my-result`: `exam_results:read_own`. `GET /exams/my-results`: `exam_results:list_own` (route order fixed, KG-2; still 403 for every student because the role lacks the permission, DEF-EXM-6). `GET /exams/{id}/child-result/{student_id}`: `exams:read` plus parent identity and a parent-child link.
 - Menu: Exam > Marks (button "View My Marks") and Exam > Results (button "View Results") for Student and Parent; mobile Exam tab "My Marks" card and "Results" tile.
 
 **Preconditions.**
@@ -1860,7 +1947,7 @@ Implemented in: backend/tests/unit/exam/test_results_audit_notify.py (U01-U02). 
 - `GET /exams/{exam_id}/child-marks/{student_id}`: same view for a linked child.
 - `GET /exams/{exam_id}/my-result`: `StudentExamResultRead` for the caller.
 - `GET /exams/{exam_id}/child-result/{student_id}`: same for a linked child.
-- `GET /exams/my-results`: intended list of the caller's published results; the route is shadowed by `GET /exams/{exam_id}` and returns 422 (invalid uuid) for every caller (KG-2). The web and mobile API functions call it but no screen uses it.
+- `GET /exams/my-results`: list of the caller's published results. The route is now matched before `GET /exams/{exam_id}` (KG-2 fixed) but returns 403 `permission_denied` for every student (DEF-EXM-6). The web and mobile API functions call it but no screen uses it.
 
 **Rules and validations.**
 - `my-marks` and `my-result` require a student identity: a caller without one (Admin, Teacher, Parent) gets 400 `Only students can access this endpoint` (or 403 first when the role lacks the permission, as for `my-result`: Admin, Teacher, Staff and Parent lack `exam_results:read_own`).
@@ -1872,7 +1959,8 @@ Implemented in: backend/tests/unit/exam/test_results_audit_notify.py (U01-U02). 
 **Error and edge cases.**
 - Student with no marks: `subjects` is an empty list.
 - Parent with several children: the app passes the selected child id; switching the child changes the data.
-- Because Student and Parent hold `exams:read`, they can also call the F16 list endpoints for any student (KG-3).
+- Student and Parent get 403 on the F16 result list; `GET /results/{student_id}` returns only their own or a linked child's result (KG-3).
+- The web Marks list and the mobile "My Marks" list show only draft, active and locked exams, so a student cannot open the raw marks of a published exam from them (web: only by URL; mobile: from the Exams list) (KG-24).
 
 **Unit-testable logic.**
 - `get_student_raw_marks` grouping and ordering (fake rows); `get_published_result_or_403` for each status; web subject card colour rule (35 percent); mobile overall percentage (skips absent subjects).
@@ -1897,34 +1985,40 @@ Implemented in: backend/tests/unit/exam/test_results_audit_notify.py (U01-U02). 
 | TC-EXM-17-A06 | GET child-marks as PARENT for a linked child | 200 | passing |
 | TC-EXM-17-A07 | GET child-marks as PARENT for an unlinked student | 403 `Cannot access marks for unrelated student` | passing |
 | TC-EXM-17-A08 | GET child-marks as STUDENT, ADMIN | 400 `Only parents can access this endpoint` | passing |
-| TC-EXM-17-A09 | GET my-result as STUDENT, exam published and computed | 200 with total, percentage, grade, gpa, rank, `subject_results` | xfail: DEF-EXM-6 |
-| TC-EXM-17-A10 | GET my-result as STUDENT, exam active | 403 `Results are not yet published for this exam.` | xfail: DEF-EXM-6 |
-| TC-EXM-17-A11 | GET my-result as STUDENT, published but no result row | 404 | xfail: DEF-EXM-6 |
+| TC-EXM-17-A09 | GET my-result as STUDENT, exam published and computed | 200 with total, percentage, grade, gpa, rank, `subject_results` | known defect: DEF-EXM-6: Student role has no exam_results:read_own (permission catalog and Full plan omit exam_results), so ... |
+| TC-EXM-17-A10 | GET my-result as STUDENT, exam active | 403 `Results are not yet published for this exam.` | known defect: DEF-EXM-6: Student role has no exam_results:read_own (permission catalog and Full plan omit exam_results), so ... |
+| TC-EXM-17-A11 | GET my-result as STUDENT, published but no result row | 404 | known defect: DEF-EXM-6: Student role has no exam_results:read_own (permission catalog and Full plan omit exam_results), so ... |
 | TC-EXM-17-A12 | GET my-result as ADMIN, TEACHER, STAFF, PARENT | 403 each (no `exam_results:read_own`) | passing |
 | TC-EXM-17-A13 | GET child-result as PARENT for a linked child, exam published | 200 | passing |
 | TC-EXM-17-A14 | GET child-result as PARENT for a linked child, exam active | 403 `Results are not yet published for this exam.` | passing |
 | TC-EXM-17-A15 | GET child-result as PARENT for an unlinked student | 403 `Cannot access results for unrelated student` | passing |
 | TC-EXM-17-A16 | GET child-result as STUDENT and as ADMIN | 400 `Only parents can access this endpoint` | passing |
-| TC-EXM-17-A17 | GET `/exams/my-results` as STUDENT | 422 (route shadowed by `/exams/{exam_id}`; documents KG-2; target 200 with published results only) | xfail: KG-2 |
-| TC-EXM-17-A18 | After the route order is fixed: STUDENT with results in a published and an active exam | List contains only the published exam | xfail: KG-2 |
-| TC-EXM-17-A19 | After the fix: GET my-results as ADMIN and PARENT | 403 and 403 (no `exam_results:list_own`) | xfail: KG-2 |
-| TC-EXM-17-A20 | STUDENT with a result in an exam, then the exam is unlocked | my-result returns 403 again (status active) | xfail: DEF-EXM-6 |
+| TC-EXM-17-A17 | GET `/exams/my-results` as STUDENT | 422 (route shadowed by `/exams/{exam_id}`; documents KG-2; target 200 with published results only) | known defect: DEF-EXM-6: Student role has no exam_results:read_own (permission catalog and Full plan omit exam_results), so ... |
+| TC-EXM-17-A18 | After the route order is fixed: STUDENT with results in a published and an active exam | List contains only the published exam | known defect: DEF-EXM-6: Student role has no exam_results:read_own (permission catalog and Full plan omit exam_results), so ... |
+| TC-EXM-17-A19 | After the fix: GET my-results as ADMIN and PARENT | 403 and 403 (no `exam_results:list_own`) | passing |
+| TC-EXM-17-A20 | STUDENT with a result in an exam, then the exam is unlocked | my-result returns 403 again (status active) | known defect: DEF-EXM-6: Student role has no exam_results:read_own (permission catalog and Full plan omit exam_results), so ... |
 | TC-EXM-17-A21 | All five endpoints with NOAUTH | 401 each | passing |
 | TC-EXM-17-A22 | Tenant isolation: STUDENT of tenant B requests my-marks and my-result for tenant A's exam id | Empty marks; my-result is not returned (404 target; currently 403 because the Student role has no `exam_results:read_own`, DEF-EXM-6) | passing |
 | TC-EXM-17-A23 | Token A with `cschema` B | 403 | passing |
-| TC-EXM-17-A24 | Unlocked then re-published exam | my-result shows recomputed values after `force` compute | xfail: DEF-EXM-6 |
-| TC-EXM-17-E01 | [web] STUDENT: Exam > Marks > "View My Marks" on an active exam | Subject cards with marks; "Absent" and "Not entered" badges where applicable | planned |
-| TC-EXM-17-E02 | [web] STUDENT with no marks yet | "No marks entered yet" empty state | planned |
-| TC-EXM-17-E03 | [web] STUDENT: Exam > Results > "View Results" on a published exam | Pass or Fail card, Grade, Total Marks, Percentage, GPA, Rank, subject table | planned |
-| TC-EXM-17-E04 | [web] STUDENT: results of a non-published exam | "Results have not been published yet. Check back later." | planned |
-| TC-EXM-17-E05 | [web] PARENT with two children: choose child A, open My Marks, switch to child B | Data changes to the selected child | planned |
-| TC-EXM-17-E06 | [web] PARENT: results of a linked child | Child's result card | planned |
-| TC-EXM-17-E07 | [web] STUDENT sees the Mark Entry list | Row action reads "View My Marks"; no grid access | planned |
-| TC-EXM-17-E08 | [mobile] STUDENT: Exam tab > "My Marks" > exam | Subject cards, overall percentage in the header | planned |
-| TC-EXM-17-E09 | [mobile] STUDENT: Exam tab > "Results" > published exam | Banner Pass or Fail, Grade, Total, Percentage, GPA, Rank, subject rows | planned |
-| TC-EXM-17-E10 | [mobile] STUDENT: results of an active exam | "Results have not been published yet. Check back later." | planned |
-| TC-EXM-17-E11 | [mobile] PARENT: "My Marks" for the selected child | Child's marks and name | planned |
-| TC-EXM-17-E12 | [mobile] ADMIN opens `/exam/my-marks` | Redirected to `/exam/list` | planned |
+| TC-EXM-17-A24 | Unlocked then re-published exam | my-result shows recomputed values after `force` compute | known defect: DEF-EXM-6: Student role has no exam_results:read_own (permission catalog and Full plan omit exam_results), so ... |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-EXM-17-E01 | P1 | Web | Student | Seeded student login Advik Mehta (admission 002, Class 1 / 1-B; the first sign-in forces a password change; the QA Student login is not linked to a student); QA FA1 (active) with marks saved for Advik Mehta (TC-EXM-11-E01). | 1. Sign in as Advik Mehta (002).<br>2. Open Exam > Marks.<br>3. Click "View My Marks" on QA FA1. | Header with the exam and "Advik Mehta"; a card per subject "<obtained> / <max>" (green at 35 percent or more, red below), component rows with marks or "Not entered". | planned |
+| TC-EXM-17-E02 | P3 | Web | Student | Seeded student login Advik Mehta (admission 002, Class 1 / 1-B; the first sign-in forces a password change; the QA Student login is not linked to a student); no marks in "Half Yearly Examination 2026". | 1. Sign in as Advik Mehta (002).<br>2. Open Exam > Marks > "View My Marks" on "Half Yearly Examination 2026". | Empty state "No marks entered yet" "Marks will appear here once the teacher saves them." | planned |
+| TC-EXM-17-E03 | P2 | Web | Student | Seeded student login Advik Mehta (admission 002, Class 1 / 1-B; the first sign-in forces a password change; the QA Student login is not linked to a student); seeded published results of "Unit Test 1 - Class 1B" (Advik rank 1). | 1. Sign in as Advik Mehta (002).<br>2. Open Exam > Results.<br>3. Click "View Results" on "Unit Test 1 - Class 1B". | Target: Pass card, Grade B+, Total Marks 97.5 / 125, Percentage 78, GPA, Rank #1 and the subject table. Currently my-result returns 403 for every student (DEF-EXM-6) and the page shows "Results have not been published yet. Check back later." | blocked: DEF-EXM-6 Student role lacks exam_results:read_own |
+| TC-EXM-17-E04 | P3 | Web | Student | Seeded student login Advik Mehta (admission 002, Class 1 / 1-B; the first sign-in forces a password change; the QA Student login is not linked to a student); seeded active exam "Half Yearly Examination 2026". | 1. Sign in as Advik Mehta (002).<br>2. Open Exam > Results > "View Results" on "Half Yearly Examination 2026". | Page "Results - Half Yearly Examination 2026", "Your exam result", message "Results have not been published yet. Check back later." | planned |
+| TC-EXM-17-E05 | P2 | Web | Parent | Seeded parent login of Harsha Raju (004, Class 1 / 1-B) and Tanvi Raju (005, Class 4) (the QA Parent login has no linked child); QA FA1 marks saved for Harsha (TC-EXM-11-E01). | 1. Sign in as the parent of Harsha and Tanvi Raju.<br>2. Select Harsha Raju in the child switcher.<br>3. Open Exam > Marks > "View My Marks" on QA FA1.<br>4. Switch to Tanvi Raju. | Harsha's QA FA1 marks are shown; after switching, Tanvi (Class 4, not in QA FA1) shows the "No marks entered yet" empty state. | planned |
+| TC-EXM-17-E06 | P2 | Web | Parent | Seeded parent login of Harsha Raju (004, Class 1 / 1-B) and Tanvi Raju (005, Class 4) (the QA Parent login has no linked child); seeded published results of "Unit Test 1 - Class 1B". | 1. Sign in as the parent of Harsha and Tanvi Raju.<br>2. Select Harsha Raju.<br>3. Open Exam > Results > "View Results" on "Unit Test 1 - Class 1B". | Harsha Raju's result card: Pass, Grade B+, Percentage 72.80, Rank #2, subject table (child-result works for parents). | planned |
+| TC-EXM-17-E07 | P3 | Web | Student | Seeded student login Advik Mehta (admission 002, Class 1 / 1-B; the first sign-in forces a password change; the QA Student login is not linked to a student). | 1. Sign in as Advik Mehta (002).<br>2. Open Exam > Marks. | Each row offers "View My Marks" (no "Enter Marks"); the grid cannot be opened. | planned |
+| TC-EXM-17-E08 | P1 | Mobile | Student | Seeded student login Advik Mehta (admission 002, Class 1 / 1-B; the first sign-in forces a password change; the QA Student login is not linked to a student); seeded marks of "Unit Test 1 - Class 1B". | 1. Sign in as Advik Mehta (002).<br>2. Open Exam tab > "Exams".<br>3. Tap "Unit Test 1 - Class 1B". | The My Marks screen shows five subject cards (English 23.50 / 25, Hindi 15.00 / 25, Telugu 19.00 / 25, Mathematics 16.50 / 25, Environmental Studies 23.50 / 25) and the overall percentage 78 in the header. (The "My Marks" list itself omits published exams, KG-24.) | planned |
+| TC-EXM-17-E09 | P2 | Mobile | Student | Seeded student login Advik Mehta (admission 002, Class 1 / 1-B; the first sign-in forces a password change; the QA Student login is not linked to a student); seeded published results of "Unit Test 1 - Class 1B". | 1. Sign in as Advik Mehta (002).<br>2. Open Exam tab > "Results" > "Unit Test 1 - Class 1B". | Target: banner Pass or Fail, Grade, Total, Percentage, GPA, Rank and subject rows. Blocked: my-result returns 403 (DEF-EXM-6). | blocked: DEF-EXM-6 Student role lacks exam_results:read_own |
+| TC-EXM-17-E10 | P3 | Mobile | Student | Seeded student login Advik Mehta (admission 002, Class 1 / 1-B; the first sign-in forces a password change; the QA Student login is not linked to a student); seeded active exam "Half Yearly Examination 2026". | 1. Sign in as Advik Mehta (002).<br>2. Open Exam tab > "Results" > "Half Yearly Examination 2026". | "Back to Results" and "Results have not been published yet. Check back later." | planned |
+| TC-EXM-17-E11 | P2 | Mobile | Parent | Seeded parent login of Harsha Raju (004, Class 1 / 1-B) and Tanvi Raju (005, Class 4) (the QA Parent login has no linked child); seeded marks of "Unit Test 1 - Class 1B" for Harsha. | 1. Sign in as the parent of Harsha and Tanvi Raju.<br>2. Select Harsha Raju.<br>3. Open Exam tab > "Exams" > "Unit Test 1 - Class 1B". | Harsha Raju's name and marks (English 22.00 / 25 and so on). | planned |
+| TC-EXM-17-E12 | P3 | Mobile | Admin | None. | 1. Sign in as Admin.<br>2. Navigate in-app to /exam/my-marks. | Redirected to /exam/list. | planned |
+| TC-EXM-17-E13 | P3 | Web | Student | Seeded student login Advik Mehta (admission 002, Class 1 / 1-B; the first sign-in forces a password change; the QA Student login is not linked to a student); seeded published exam "Unit Test 1 - Class 1B" with his marks. | 1. Sign in as Advik Mehta (002).<br>2. Open Exam > Marks. | Target: "Unit Test 1 - Class 1B" is listed with "View My Marks". Currently Student and Parent see only draft, active and locked exams there (mobile "My Marks" list too), so marks of a published exam are reachable only by URL /exam/my-marks/<id> on web or through the Exams list on mobile (KG-24). | blocked: KG-24 Marks list hides published exams from students and parents |
 
 API tests implemented in: `backend/tests/api/exam/test_f17_my_views.py`
 
@@ -1965,7 +2059,7 @@ Implemented in: backend/tests/unit/exam/test_results_audit_notify.py (U01-U05). 
 
 **Error and edge cases.**
 - `page` 0, `page_size` 0 or 101: 422.
-- Student and Parent hold `exams:read` and can read any exam's log (KG-3).
+- Student and Parent get 403 `Not allowed for this role` on the audit endpoint. The web Exam Audit exam list (`/exam/audit`) still opens for every role; "View Log" then redirects non-admins to the exam detail.
 
 **Unit-testable logic.**
 - `log_action` row construction; `get_audit_log` offset and limit; web `actionVariant`; web pager enable rule.
@@ -1988,20 +2082,25 @@ Implemented in: backend/tests/unit/exam/test_results_audit_notify.py (U01-U05). 
 | TC-EXM-18-A08 | `page_size=100` | 200 | passing |
 | TC-EXM-18-A09 | `page_size=101`, `page=0`, `page_size=0` (parametrised) | 422 each | passing |
 | TC-EXM-18-A10 | GET audit for an unknown exam id | 200 `[]` | passing |
-| TC-EXM-18-A11 | GET audit as ADMIN, TEACHER, STAFF, STUDENT, PARENT | 200 for all (documents KG-3) | xfail: KG-3 |
+| TC-EXM-18-A11 | GET audit as ADMIN, TEACHER, STAFF, STUDENT, PARENT | 200 for all (documents KG-3) | passing |
 | TC-EXM-18-A12 | GET audit with NOAUTH | 401 | passing |
 | TC-EXM-18-A13 | Tenant isolation: tenant B GET audit for tenant A's exam id | `[]` | passing |
 | TC-EXM-18-A14 | Token A with `cschema` B | 403 | passing |
 | TC-EXM-18-A15 | Append-only: no PUT, PATCH or DELETE route exists on `/exams/{id}/audit` | 405 for each | passing |
-| TC-EXM-18-E01 | [web] ADMIN: Exam > Exam Audit > exam | "Audit Log - <exam>" lists entries with badges such as "results computed"; time in local format | planned |
-| TC-EXM-18-E02 | [web] Search "publish" | Only entries whose action, reason or values contain it | planned |
-| TC-EXM-18-E03 | [web] "Refresh" | Spinner then the list reloads | planned |
-| TC-EXM-18-E04 | [web] Exam with no entries | "No audit entries found." | planned |
-| TC-EXM-18-E05 | [web] TEACHER opens `/exam/exams/{id}/audit` | Redirected to the exam detail; no "Audit Log" tab | planned |
-| TC-EXM-18-E06 | [web] Exam with more than 20 entries | Next arrow enabled; page 2 shows the next entries | planned |
-| TC-EXM-18-E07 | [mobile] ADMIN: Exam tab > "Audit Log" > exam > "View Log" | Entries listed; search narrows | planned |
-| TC-EXM-18-E08 | [mobile] Exam detail > "Audit Log" section | Expands to the latest entries or "No audit entries." | planned |
-| TC-EXM-18-E09 | [mobile] TEACHER opens `/exam/audit` | Redirected to `/exam/list`; tile absent | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-EXM-18-E01 | P1 | Web | Admin | Seeded audit rows of "Unit Test 1 - Class 1B" (results_computed, results_published). | 1. Sign in as Admin.<br>2. Open Exam > Exam Audit.<br>3. Click "View Log" on "Unit Test 1 - Class 1B". | "Audit Log - Unit Test 1 - Class 1B" lists results_published then results_computed with badges and local timestamps, newest first. | planned |
+| TC-EXM-18-E02 | P3 | Web | Admin | TC-EXM-18-E01 open. | 1. Sign in as Admin.<br>2. Type "publish" in "Search action, reason, value...". | Only the results_published entry remains. | planned |
+| TC-EXM-18-E03 | P3 | Web | Admin | TC-EXM-18-E01 open. | 1. Sign in as Admin.<br>2. Click "Refresh". | Spinner, then the list reloads. | planned |
+| TC-EXM-18-E04 | P3 | Web | Admin | An exam with no audited actions (for example a fresh clone). | 1. Sign in as Admin.<br>2. Open its audit log. | "No audit entries found." | planned |
+| TC-EXM-18-E05 | P2 | Web | Teacher | Seeded exam "Unit Test 1 - Class 1B". | 1. Sign in as Teacher.<br>2. Open Exam > Exam Audit > "View Log" on "Unit Test 1 - Class 1B". | Redirected to the exam detail (the exam list page itself is reachable); no "Audit Log" tab. | planned |
+| TC-EXM-18-E06 | P3 | Web | Admin | QA FA1 with more than 20 audit entries (click "Recompute" on its hall ticket page 21 times). | 1. Sign in as Admin.<br>2. Open its audit log.<br>3. Click the next-page arrow. | Next is enabled on page 1; "Page 2" shows the older entries. | planned |
+| TC-EXM-18-E07 | P1 | Mobile | Admin | Seeded audit rows of "Half Yearly Examination 2026" (hall_tickets_computed, hall_tickets_published). | 1. Sign in as Admin.<br>2. Open the Exam tab and tap "Audit Log".<br>3. Tap "View Log" on "Half Yearly Examination 2026".<br>4. Type "publish" in the search box. | List "Exam Audit Logs" with search "Search by name, board, or status..."; the log lists both hall ticket entries and the search keeps hall_tickets_published. | planned |
+| TC-EXM-18-E08 | P3 | Mobile | Admin | Seeded exam "Unit Test 1 - Class 1B". | 1. Sign in as Admin.<br>2. Open "Unit Test 1 - Class 1B" on mobile.<br>3. Expand the "Audit Log" section. | The two seeded entries are listed. | planned |
+| TC-EXM-18-E09 | P3 | Mobile | Teacher | None. | 1. Sign in as Teacher.<br>2. Open the Exam tab. | No "Audit Log" tile; in-app navigation to /exam/audit redirects to /exam/list. | planned |
 
 API tests implemented in: `backend/tests/api/exam/test_f12_f18_f19_summary_audit_notify.py`
 
@@ -2071,29 +2170,34 @@ Implemented in: backend/tests/unit/exam/test_results_audit_notify.py (U01-U02). 
 | TC-EXM-19-A06 | POST notify writes an audit row | `notification_queued` with metadata type, audience, recipients | passing |
 | TC-EXM-19-A07 | POST notify as TEACHER, STAFF, STUDENT, PARENT | 403 each | passing |
 | TC-EXM-19-A08 | POST send-schedule as ADMIN (no `exams:send_sms`) | 403 | passing |
-| TC-EXM-19-A09 | POST send-schedule as ADMIN+SMS with 2 student ids (one with a parent phone, one without), Celery task mocked | 200 `{status:"queued", queued_count: 1, skipped_count: 1}`; one `notification_queue` row `exam_schedule`; task called with the row id and tenant | skipped: needs exams:send_sms granted to a role (role grants must not change) and would reach the S |
-| TC-EXM-19-A10 | POST send-schedule with an empty list or no body | 200 `queued_count` 0 | skipped: needs exams:send_sms granted to a role (role grants must not change) and would reach the S |
-| TC-EXM-19-A11 | POST send-schedule unknown exam | 404 `Exam not found` | skipped: needs exams:send_sms granted to a role (role grants must not change); the unknown-exam 404 |
-| TC-EXM-19-A12 | POST send-schedule with an unknown student id | Counted in `skipped_count` | skipped: needs exams:send_sms granted to a role and a parent phone; would queue a real SMS |
+| TC-EXM-19-A09 | POST send-schedule as ADMIN+SMS with 2 student ids (one with a parent phone, one without), Celery task mocked | 200 `{status:"queued", queued_count: 1, skipped_count: 1}`; one `notification_queue` row `exam_schedule`; task called with the row id and tenant | skipped: needs exams:send_sms granted to a role (role grants must not change) and would reach the SMS queue and Celery |
+| TC-EXM-19-A10 | POST send-schedule with an empty list or no body | 200 `queued_count` 0 | skipped: needs exams:send_sms granted to a role (role grants must not change) and would reach the SMS queue and Celery |
+| TC-EXM-19-A11 | POST send-schedule unknown exam | 404 `Exam not found` | skipped: needs exams:send_sms granted to a role (role grants must not change); |
+| TC-EXM-19-A12 | POST send-schedule with an unknown student id | Counted in `skipped_count` | skipped: needs exams:send_sms granted to a role and a parent phone; |
 | TC-EXM-19-A13 | Queue row text for send-schedule | `rendered_message` contains `begins on TBA` | skipped: needs exams:send_sms granted to a role and would queue a real SMS |
 | TC-EXM-19-A14 | POST send-results-notification with two student ids as ADMIN+SMS | 200 `queued_count` 2; rows `results_notification`; variables include total marks and percentage | skipped: needs exams:send_sms granted to a role and would queue a real SMS |
 | TC-EXM-19-A15 | POST send-results-notification for a student with no result | Queued with `N/A` variables | skipped: needs exams:send_sms granted to a role and would queue a real SMS |
 | TC-EXM-19-A16 | POST send-results-notification without `student_ids` | 422 | passing |
-| TC-EXM-19-A17 | POST send-results-notification unknown exam | 404 | skipped: the unknown-exam 404 is only reachable after the exams:send_sms check, which no seeded rol |
+| TC-EXM-19-A17 | POST send-results-notification unknown exam | 404 | skipped: the unknown-exam 404 is only reachable after the exams:send_sms check, which no seeded role passes |
 | TC-EXM-19-A18 | POST send-hall-ticket-notification with ids as ADMIN+SMS | 200; rows `hall_ticket_notification`; variables carry the hall ticket number or `N/A` | skipped: needs exams:send_sms granted to a role and would queue a real SMS |
 | TC-EXM-19-A19 | POST send-hall-ticket-notification without `student_ids`; unknown exam | 422; 404 | passing |
 | TC-EXM-19-A20 | The three SMS endpoints as TEACHER, STAFF, STUDENT, PARENT | 403 each | passing |
 | TC-EXM-19-A21 | The three SMS endpoints and notify with NOAUTH | 401 each | passing |
 | TC-EXM-19-A22 | Tenant isolation: ADMIN+SMS of tenant B sends for tenant A's exam and student ids | 404 for the exam; no queue rows in either tenant | skipped: needs exams:send_sms granted to a tenant B admin (role grants must not change) |
 | TC-EXM-19-A23 | Token A with `cschema` B on notify | 403 | passing |
-| TC-EXM-19-E01 | [web] ADMIN opens `/exam/exams/{id}/notify`, audience "Students and Parents", channel Push, message of 10+ characters, "Send Notification" | Toast "<n> notification(s) queued"; form resets | planned |
-| TC-EXM-19-E02 | [web] Message of 5 characters | Inline "Message must be at least 10 characters" | planned |
-| TC-EXM-19-E03 | [web] Deselect all channels | Inline "Select at least one channel" | planned |
-| TC-EXM-19-E04 | [web] TEACHER opens `/exam/exams/{id}/notify` | Redirected to the exam detail | planned |
-| TC-EXM-19-E05 | [mobile] ADMIN: exam detail > "Send Exam Notification", type "Custom", message, audience "Both", channel push, send | Success toast with the queued count | planned |
-| TC-EXM-19-E06 | [mobile] Send with no message | Toast "Please enter a message" | planned |
-| TC-EXM-19-E07 | [mobile] Turn all channels off and send | Toast "Please select at least one delivery channel" | planned |
-| TC-EXM-19-E08 | [mobile] User without `exams:update` opens `/exam/notify` | "You don't have permission to send notifications" | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-EXM-19-E01 | P1 | Web | Admin | TC-EXM-06-E01 done (3 students). | 1. Sign in as Admin.<br>2. Open /exam/exams/<QA FA1 id>/notify.<br>3. Choose "Target Audience" "Students".<br>4. Keep only channel "Push Notification".<br>5. Enter "Message" "QA exam starts Monday".<br>6. Click "Send Notification". | Toast "3 notification(s) queued"; the form resets. Nothing is sent (stub); audit row notification_queued. | planned |
+| TC-EXM-19-E02 | P3 | Web | Admin | QA FA1 exists. | 1. Sign in as Admin.<br>2. Open the notify page.<br>3. Enter a 5-character message and click "Send Notification". | Inline "Message must be at least 10 characters". | planned |
+| TC-EXM-19-E03 | P3 | Web | Admin | QA FA1 exists. | 1. Sign in as Admin.<br>2. Open the notify page.<br>3. Deselect every channel and click "Send Notification". | Inline "Select at least one channel". | planned |
+| TC-EXM-19-E04 | P2 | Web | Teacher | QA FA1 exists. | 1. Sign in as Teacher.<br>2. Open /exam/exams/<id>/notify. | Redirected to the exam detail. | planned |
+| TC-EXM-19-E05 | P1 | Mobile | Admin | QA FA1 exists. | 1. Sign in as Admin.<br>2. Open QA FA1 > "Send Exam Notification".<br>3. Choose "Notification Type *" "Custom", "Message *" "QA exam starts Monday", "Target Audience *" "Both", channel "Push Notification".<br>4. Tap "Send Notification". | Success toast with the queued count. | planned |
+| TC-EXM-19-E06 | P3 | Mobile | Admin | QA FA1 exists. | 1. Sign in as Admin.<br>2. Open "Send Exam Notification".<br>3. Leave "Message *" empty and tap "Send Notification". | Toast "Please enter a message". | planned |
+| TC-EXM-19-E07 | P3 | Mobile | Admin | QA FA1 exists. | 1. Sign in as Admin.<br>2. Open "Send Exam Notification", enter a message.<br>3. Turn off all delivery channels and tap "Send Notification". | Toast "Please select at least one delivery channel". | planned |
+| TC-EXM-19-E08 | P3 | Mobile | Teacher | None. | 1. Sign in as Teacher.<br>2. Navigate in-app to /exam/notify. | "You don't have permission to send notifications". | planned |
 
 API tests implemented in: `backend/tests/api/exam/test_f12_f18_f19_summary_audit_notify.py`
 
@@ -2107,9 +2211,9 @@ Defects and doc-versus-code differences found while writing this page. Fix them 
 
 | ID | Gap | Where | Affects |
 |---|---|---|---|
-| KG-1 | Grant mark permission and the three exam-date create endpoints read `current_user.get("id")`. Tokens carry only `sub`, so `uuid.UUID(None)` raises and the endpoints return 500 for real tokens. | `mark_permission_endpoints.py` (grant), `exam_date_endpoints.py` (create, bulk, multi-section) | F08, F10 |
-| KG-2 | `GET /exams/my-results` is declared after `GET /exams/{exam_id}` in the router order, so the literal path is parsed as a uuid and returns 422. Students cannot list their results. | `main_router.py` (exam router before result router), `result_endpoints.py` | F17 |
-| KG-3 | Student and Parent hold `exams:read`, the only check on: result list and single result (including unpublished), hall ticket eligible and ineligible lists, hall ticket PDF and ZIP download for any student, audit log, class-sections, subject configs, dates. The seeded `exam_hall_tickets:*_own` and `*_related` permissions are unused. Web and mobile hall ticket self views show the first record of the eligible or ineligible list, not the caller's own. | `hall_ticket_endpoints.py`, `result_endpoints.py`, `audit_endpoints.py`, web `HallTicketEligibility.tsx`, mobile `hall-tickets/[examId].tsx` | F13, F14, F16, F17, F18 |
+| KG-1 | Fixed in code (2026-10-05): grant mark permission and the three exam-date create endpoints now read the `sub` claim. They used `current_user.get("id")` and returned 500. The API cases marked `xfail: KG-1` need a rerun. Mobile date create and grant still fail for another reason (KG-8). | `mark_permission_endpoints.py`, `exam_date_endpoints.py` | F08, F10 |
+| KG-2 | Fixed in code: `exam_result_router` is included before `exam_router`, so `GET /exams/my-results` is no longer parsed as a uuid. It now returns 403 for students because of DEF-EXM-6. The API cases marked `xfail: KG-2` need a rerun. | `main_router.py`, `result_endpoints.py` | F17 |
+| KG-3 | Partly fixed in code: the result list, hall ticket eligible and ineligible lists, download-all and the audit log return 403 for the role names Student and Parent, and single-student result and hall ticket download check ownership (`ensure_student_access`). Still open: `GET /results/{student_id}` ignores publish status; `enrolled-students`, class-sections, subject configs and dates stay readable through `exams:read`; custom role names are not blocked; the seeded `exam_hall_tickets:*_own` and `*_related` permissions are unused. The self-service views broke as a result (KG-21). | `hall_ticket_endpoints.py`, `result_endpoints.py`, `audit_endpoints.py` | F13, F14, F16, F17, F18 |
 | KG-4 | No endpoint sets `locked` or `finalized`. The web publish button requires `locked`, so web cannot publish; the backend accepts publish from `active`. The ResultsPublish page has no navigation link. Mobile publishes from any status. | `ResultsPublish.tsx`, `result_service.publish_exam` | F16 |
 | KG-5 | Compute applies every subject config of the exam to every student: multi-class exams and subjects without saved marks create `ABS` rows and fail the student. Remarks-only subjects (max 0) fail. No grade scheme anywhere gives `ABS` and fail. `sub_max` counts only entered components, which inflates percentages for partial marks. Rank ties receive distinct consecutive ranks. `publish_rank` is ignored. Component and subject minimum pass marks are ignored. | `aggregate_service.py` | F15, F16 |
 | KG-6 | Mark entry does not check exam status, deadline, enrollment, that the component belongs to the config, or `remark_grade` membership. Authorization uses the path exam id but rows use the body exam id. Upload and template skip the delegation check and upload sets `entry_source` to `manual`. | `mark_entry_endpoints.py`, `mark_entry_service.py` | F10, F11 |
@@ -2121,15 +2225,20 @@ Defects and doc-versus-code differences found while writing this page. Fix them 
 | KG-12 | Deleting a subject grade scheme or remark set that is referenced fails with 500 (foreign key) instead of 409. Template names are unique across inactive rows in the database but checked only among active ones (500 on reuse). Web remark label limit (100) is above the backend limit (50). | `grading_service.py`, `remark_grade_service.py`, `exam_pattern_service.py`, `examSchemas.ts` | F04, F05, F07 |
 | KG-13 | Hall tickets: numbers are `HT-2025-` plus an unstable list position (fixed year, change on recompute, skip ineligible positions); the published flag is not required for download; override does not assign a number; each override call replaces both flags (web "Fee" then "Attendance" loses the fee override); mobile "Mark Ineligible" cannot make a genuinely eligible student ineligible; stale rows remain after enrollment changes; `late` and `half_day` count as absent; the exam's own `hall_ticket_min_attendance` is ignored. | `hall_ticket_service.py`, `hall_ticket_pdf.py`, `EligibilityPanel.tsx`, `hall-tickets/[examId].tsx` | F13, F14 |
 | KG-14 | `exams:send_sms` is not in any seeded role, so the three SMS endpoints return 403 for Admin until granted. The schedule SMS always says `TBA`. `docs/modules/exam.md` says these endpoints fail with 500 from wrong imports; the imports in `result_endpoints.py` and `hall_ticket_endpoints.py` are now valid and `HTTPException` is imported. | `exam_date_endpoints.py`, `result_endpoints.py`, `hall_ticket_endpoints.py`, `permission_catalog.py` | F19 |
-| KG-15 | Other doc and code differences: the module doc says both clients strip `exam_id` from date creates (the web client now sends it; mobile still omits it); it says mobile has an absent toggle (it has none); the publish error text says "Must be locked or active" but `finalized` is accepted; the module doc says the audit endpoint is admin only (it checks `exams:read`). | `docs/modules/exam.md` | F08, F11, F16, F18 |
+| KG-15 | Remaining doc and code differences: `docs/modules/exam.md` parity table says mobile mark entry has an absent toggle (it shows a read-only "ABS" badge only); the publish error text says "Must be locked or active" but `finalized` is accepted. | `docs/modules/exam.md` | F11, F16 |
 | KG-16 | `POST /exams/{id}/notify` only counts recipients and sends nothing. Audit rows are written only for delete, unlock, compute, publish, hall ticket compute, override and publish, and notify. | `notification_service.py`, `audit_service.py` | F18, F19 |
 | KG-17 | Mark grid pagination is unvalidated (negative page gives 500). Section-less class-sections cannot be used for mark entry in web (queries disabled) or mobile (422). | `mark_entry_endpoints.py`, `useExam.ts`, `marks.tsx` | F11 |
 | KG-18 | Subject config update accepts `is_active` but the table has no such column; `exam_id` in config, date and permission paths is not compared with the row's exam; the grid does not check that the config belongs to the exam or class. | `exam_subject_config_service.py`, `mark_entry_service.py` | F07, F10, F11 |
-| KG-19 | Exam create accepts any string for `board` (not the enum), reports foreign key failures as 409 with the raw database message, and the web wizard sends `status` and `subject_grade_scheme_id` that the backend drops. Board patterns are not linked to exam creation. | `exam_create_full_schema.py`, `exam_endpoints.py` | F02, F06 |
+| KG-19 | Exam create accepts any string for `board` (not the enum), reports foreign key failures as a generic 409, and the web wizard sends `status` and `subject_grade_scheme_id` that the backend drops. Board patterns are not linked to exam creation. | `exam_create_full_schema.py`, `exam_endpoints.py` | F02, F06 |
+| KG-20 | Mobile admin-only exam screens (Exam Settings, Board Patterns, the three grading screens, Create Exam, Mark Permissions, Audit list and Audit Log) crash on a cold load of their URL (Expo web address bar or refresh) with "Something went wrong" / "Attempted to navigate before mounting the Root Layout component": the role guard calls `router.replace` before auth and the root layout are ready. Opening them from the hub works. | `mobile/app/exam/settings.tsx`, `board-patterns.tsx`, `grade-schemes.tsx`, `subject-grade-schemes.tsx`, `remark-sets.tsx`, `create.tsx`, `permissions.tsx`, `audit.tsx`, `audit-log.tsx` | F01 to F05, F06, F10, F18 |
+| KG-21 | Student and Parent hall ticket views (web `StudentHallTicketView` and the parent view in `HallTicketEligibility.tsx`, mobile `hall-tickets/[examId].tsx`) read the eligible and ineligible lists, which now return 403 for those roles, so they always show "You are not enrolled in this exam." and no download button. They need an own-record endpoint. | web `HallTicketEligibility.tsx`, mobile `hall-tickets/[examId].tsx` | F13, F14 |
+| KG-22 | Web Board Patterns page shows "New Pattern", "Create First Pattern", edit and delete to every role (no route guard and no permission gate); the API answers 403 for Teacher and Staff. The sidebar also lists Board Patterns, Grading and Exam Settings for Teacher and Staff. | `web/src/pages/exam/BoardPatternSetup.tsx` | F02 |
+| KG-23 | Web exam detail card "Academic Year" shows a dash when the page is opened directly, because it looks the id up in an academic year store that the page does not load (mobile shows the year). | `web/src/pages/exam/ExamDetail.tsx` | F06 |
+| KG-24 | The web Marks list and the mobile "My Marks" list keep only draft, active and locked exams for every role, so a Student or Parent cannot open the raw marks of a published exam from them (web only by URL `/exam/my-marks/<id>`; mobile through the Exams list). | `web/src/pages/exam/MarkEntryExamList.tsx`, `mobile/app/exam/my-marks/index.tsx` | F17 |
 | DEF-EXM-1 | `PUT /board-patterns/{id}` with `exam_types` returns the stale (old) exam types in the response; a following GET shows the replaced list. | board pattern service | F02 |
 | DEF-EXM-2 | `PUT /grade-schemes/{kind}/{id}` with `bands` returns the stale band list in the response; a following GET is correct. | grading service | F03 |
 | DEF-EXM-3 | `PUT /remark-grades/{id}` with `options` returns the stale options in the response; a following GET is correct. | remark grade service | F05 |
 | DEF-EXM-4 | `PUT /exams/{id}/subject-configs/{cid}` returns 500 (MissingGreenlet) whenever a column value changes; the change is committed. | `exam_subject_config_service.py` | F07 |
 | DEF-EXM-5 | `POST /exams/{id}/unlock` with a reason over 300 characters returns 500 (column limit) instead of 422. | `exam_endpoints.py` | F09 |
 | DEF-EXM-6 | The Student role never receives `exam_results:read_own` (nor `exam_marks:read_own`, `exam_hall_tickets:*_own`): `ALL_ADMIN`, which defines the Full plan, omits those resources and role seeding filters role permissions by plan resources. `GET /exams/{id}/my-result` returns 403 `permission_denied` for every student, so students cannot see their published result. | `permission_catalog.py` (`ALL_ADMIN`), `role_seed_service.py`, `result_endpoints.py` | F09, F17 |
-| DEF-EXM-7 | `GET /exams/{id}/hall-tickets/download` returns 400 `DATABASE_ERROR` for every eligible student, so no hall ticket PDF can be produced. `download-all` swallows the same error per student and returns 200 with an empty ZIP. | `hall_ticket_pdf.py` (`_load_hall_ticket_data`) | F14 |
+| DEF-EXM-7 | Fixed in code (2026-10-05, section parameter cast in `_load_hall_ticket_data`): hall ticket PDF and download-all work again. The API cases marked `xfail: DEF-EXM-7` need a rerun. | `hall_ticket_pdf.py` | F14 |

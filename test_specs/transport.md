@@ -1,10 +1,10 @@
 # Transport (TRN)
 
-Transport covers the school bus operation: routes with their stops, the vehicle fleet, trips (one vehicle on one route with a driver), billing-cycle pricing plans per vehicle, and the assignment of each student to a trip and a pickup stop with a fee per term. Route types and trip types exist as dictionaries in the API only. Staff and admins manage everything on web and mobile; a student or parent sees only their own (or their children's) assignment. The assignment stores a fee but nothing in the fee module reads it, so assigning transport does not bill the student. The legacy `student_trips` table has no API; the screens called "Student Trips" are another view of the student-transport endpoints. This page documents what the code does on 2026-10-02; where `docs/modules/transport.md` disagrees with the code, the code wins and the difference is listed under Known gaps.
+Transport covers the school bus operation: routes with their stops, the vehicle fleet, trips (one vehicle on one route with a driver), billing-cycle pricing plans per vehicle, and the assignment of each student to a trip and a pickup stop with a fee per term. Route types and trip types exist as dictionaries in the API only. Staff and admins manage everything on web and mobile; a student or parent sees only their own (or their children's) assignment. The assignment stores a fee but nothing in the fee module reads it, so assigning transport does not bill the student. The legacy `student_trips` table has no API; the screens called "Student Trips" are another view of the student-transport endpoints. This page documents what the code and the running apps do on 2026-10-07; where `docs/modules/transport.md` disagrees with the code, the code wins and the difference is listed under Known gaps.
 
-_Last verified against code: 2026-10-02_
+_Last verified against code: 2026-10-07_
 
-Conventions: test IDs follow `docs/testing/strategy.md` (`TC-TRN-<FF>-<P><NN>`; U unit, A API, E end to end). All Status values are `planned`. Where a UI label or message contains the rupee sign or a dash character it is written here as "Rs" or a hyphen (plain text only), so match by meaning, not by character. Route, route type and trip type create calls are limited to 30 per minute per user.
+Conventions: test IDs follow `docs/testing/strategy.md` (`TC-TRN-<FF>-<P><NN>`; U unit, A API, E end to end). UI cases (E) use the manual format (Priority P1 smoke, P2 regression, P3 edge). Their preconditions refer to the seeded manual-test tenant `qa_manual` (`backend/scripts/seed_demo_data.py`): routes "Route 1 - Kukatpally" (stops Kukatpally Bus Stand, KPHB Phase 1, JNTU Junction, Moosapet, Demo School Campus) and "Route 2 - Uppal" (Uppal Ring Road, Habsiguda, Tarnaka, Demo School Campus); vehicles School Bus 1 (TS09UA1234, driver Ramesh Yadav) and School Bus 2 (TS09UB5678, driver Mohan Singh), one trip each (trip number 1); four pricing plans (Annual 2026-27 and Monthly 2026-27 for School Bus 1, Annual 2026-27 and Half Yearly 2026-27 for School Bus 2, 2026-06-01 to 2027-03-31); 8 assignments of Class 1 to 5 students (for example Karthik Reddy, Advik Mehta, Saanvi Iyer, Harsha Raju, Tanvi Raju) with fee 4000 (Route 1) or 4667 (Route 2); route types Pickup, Drop and trip types Morning, Evening. Student logins are admission numbers; seeded accounts must change the temporary password at first sign-in. New data a case creates starts with "QA ". Where a UI label or message contains the rupee sign or a dash character it is written here as "Rs" or a hyphen (plain text only), so match by meaning, not by character. Route, route type and trip type create calls are limited to 30 per minute per user.
 
 ## Roles
 
@@ -37,7 +37,7 @@ The resource for trips is `transport_trips`, not `trips`. Role comparisons for t
 | F11 | Student Trips screens and the disabled student_trips API |
 | F12 | Transport fee effect |
 
-Menu paths. The Transport menu is tenant data. The demo catalog (`backend/scripts/seed_demo_catalog.py`) creates Transport with Routes (`/transport/routes`), Route Stops (`/transport/routeStops`), Vehicles (`/transport/vehicles`), Trips (`/transport/trips`), Pricing (`/transport/pricing`) and puts Student Transport under Students (`/students/studenttransport`). The web sidebar and the Transport and Students hubs hide the names "Route Stops", "Transport Trips" and "Student Transport" (`HIDDEN_MENU_ITEMS` in `web/src/lib/menuUtils.ts`), so those pages are reached from inside the Routes page, the Trips page or by URL. The backend resource names are `routes`, `route_stops`, `vehicles`, `transport_trips`, `transport_pricing`, `student_transport`.
+Menu paths. The Transport menu is tenant data. The QA tenants use the demo catalog (`backend/scripts/seed_demo_catalog.py`), which creates Transport with Routes (`/transport/routes`), Route Stops (`/transport/routeStops`), Vehicles (`/transport/vehicles`), Trips (`/transport/trips`), Pricing (`/transport/pricing`) and puts Student Transport under Students (`/students/studenttransport`). The web sidebar and the Transport and Students hubs hide the names "Route Stops", "Transport Trips" and "Student Transport" (`HIDDEN_MENU_ITEMS` in `web/src/lib/menuUtils.ts`), so those pages are reached from inside the Routes page, the Trips page or by URL. The backend resource names are `routes`, `route_stops`, `vehicles`, `transport_trips`, `transport_pricing`, `student_transport`.
 
 ---
 
@@ -51,12 +51,12 @@ Menu paths. The Transport menu is tenant data. The demo catalog (`backend/script
 
 **Steps, web**
 1. Click Transport in the sidebar (route `/transport`). Header "Transport Dashboard", subtitle "Manage school transport, routes, vehicles, and student allocations".
-2. Under "Transport Sections" click a card. Cards come from the children of the Transport menu node minus Route Stops, Transport Trips and Student Transport (for the demo catalog: Routes, Vehicles, Trips, Pricing). A card without a path is dimmed and does nothing.
+2. Under "TRANSPORT SECTIONS" click a card (each has a one-line description, for example "Manage transport routes and their configurations"). Cards come from the children of the Transport menu node minus Route Stops, Transport Trips and Student Transport (for the demo catalog: Routes, Vehicles, Trips, Pricing). A card without a path is dimmed and does nothing.
 
 **Steps, mobile**
-1. Tap the Transport tab (route `/(tabs)/transport`). Banner "Transport". Tiles "Routes" ("Manage transport routes and their configurations") and "Vehicles" ("Manage the school vehicle fleet and details"), each enabled only with `list` on `routes` or `vehicles`. These are the only two tiles on the tab.
-2. Student and parent roles see title "My Transport", text "Transport Information", "View your transport assignment, route, stop and timings." and the button "View My Transport" (opens F10).
-3. A second hub exists at `/transport` (stack route, title "Transport") with stats "Active Routes" and others, and a "Manage" list: Routes, Route Stops, Vehicles, Trips, Pricing, Student Transport, Student Trips. It is not linked from the tab.
+1. On the Dashboard tap the "Transport" module (tab screen `/(tabs)/transport`). Banner "Transport Management" with a subtitle listing Routes, Stops, Vehicles, Trips, then "TRANSPORT SECTIONS" with tiles "Routes" ("Manage transport routes and their configurations") and "Vehicles" ("Manage the school vehicle fleet and details"), each enabled only with `list` on `routes` or `vehicles`. These are the only two tiles on the tab.
+2. Student and parent roles have no Transport module on the Dashboard and no Transport tab (`hideForRoles`), so the tab's "My Transport" panel ("Transport Information", "View My Transport") is not reachable for them; they open their view from the drawer (Students > Student Transport, mapped to `/transport/student-transport`, F10).
+3. A second hub exists at the URL `/transport` (stack route, title "Transport") with stats "Active Routes", "Vehicles", "Students" and a "Manage" list: Routes, Route Stops, Vehicles, Trips, Pricing, Student Transport, Student Trips. It is not linked from the tab; typing `/transport` in Expo web opens this hub, not the tab.
 
 **Expected results**: Navigation only; no data change.
 
@@ -75,12 +75,18 @@ Menu paths. The Transport menu is tenant data. The demo catalog (`backend/script
 | TC-TRN-01-U01 | Web `filterMenuForRole` on a Transport node with children Routes, Route Stops, Trips | "Route Stops" removed for every role | passing |
 | TC-TRN-01-U02 | Web hub filter on children named Route Stops, Transport Trips, Student Transport, Vehicles | Only Vehicles remains | blocked: hub filter is inline in web/src/routes/_app/transport/index.tsx; needs the helper exported |
 | TC-TRN-01-U03 | Mobile tile gating for a user with `routes:list` only | Routes enabled, Vehicles disabled | blocked: tile gating is inline in the mobile transport hub screen; needs the helper exported |
-| TC-TRN-01-A01 | Admin `GET /masters/routes/all_routes` and `GET /masters/vehicles/` | Both 200 (the calls behind the mobile stats) | planned |
-| TC-TRN-01-E01 | Web Admin opens `/transport` | Header "Transport Dashboard"; cards for Routes, Vehicles, Trips, Pricing; none for Route Stops or Student Transport | planned |
-| TC-TRN-01-E02 | Web: click the "Routes" card | Navigates to `/transport/routes` | planned |
-| TC-TRN-01-E03 | Mobile Admin: open the Transport tab | Two tiles Routes and Vehicles | planned |
-| TC-TRN-01-E04 | Mobile Student: open the Transport tab | "My Transport" with "View My Transport" | planned |
-| TC-TRN-01-E05 | Mobile Teacher with read and list on routes and vehicles | Both tiles enabled | planned |
+| TC-TRN-01-A01 | Admin `GET /masters/routes/all_routes` and `GET /masters/vehicles/` | Both 200 (the calls behind the mobile stats) | passing |
+
+UI test cases (manual format):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-TRN-01-E01 | P1 | Web | Admin | Seeded tenant qa_manual | 1. Sign in as Admin.<br>2. Click "Transport" in the sidebar (route /transport). | Header "Transport Dashboard" with "Manage school transport, routes, vehicles, and student allocations"; under "TRANSPORT SECTIONS" cards Routes, Vehicles, Trips, Pricing; no card for Route Stops or Student Transport. | planned |
+| TC-TRN-01-E02 | P2 | Web | Admin | Seeded tenant qa_manual | 1. Open /transport.<br>2. Click the "Routes" card. | Navigates to /transport/routes (page "Routes"). | planned |
+| TC-TRN-01-E03 | P1 | Mobile | Admin | Seeded tenant qa_manual | 1. Sign in as Admin on mobile.<br>2. On the Dashboard tap the "Transport" module. | Screen with banner "Transport Management" (subtitle lists Routes, Stops, Vehicles, Trips) and "TRANSPORT SECTIONS" with exactly two tiles: Routes and Vehicles. | planned |
+| TC-TRN-01-E04 | P2 | Mobile | Student | Seeded student Karthik Reddy (001), assigned to Route 1 - Kukatpally, stop Kukatpally Bus Stand, fee 4000; first sign-in with the seeded temporary password asks for a new password | 1. Sign in on mobile as student 001.<br>2. Look for a Transport module on the Dashboard.<br>3. Open the drawer and choose Students > Student Transport. | No Transport module or tab for students (only Students, Exam Management, Fee Management); the drawer entry opens "My Transport" (/transport/student-transport) with Karthik's assignment. | planned |
+| TC-TRN-01-E05 | P2 | Mobile | Teacher | Seeded tenant qa_manual | 1. Sign in as Teacher on mobile.<br>2. On the Dashboard tap "Transport". | Routes and Vehicles tiles are both enabled (Teacher has list on routes and vehicles). | planned |
+| TC-TRN-01-E06 | P3 | Mobile | Admin | Seeded tenant qa_manual | 1. Sign in as Admin on mobile.<br>2. Open /transport (the seven-section Transport hub). | Stack hub "Transport" with stats Active Routes 2, Vehicles 2, Students, and a "Manage" list: Routes, Route Stops, Vehicles, Trips, Pricing, Student Transport, Student Trips (not linked from the Transport module). | planned |
 
 Implemented in (phase 1 unit tests): web/src/__tests__/reports/menu.test.ts and mobile/__tests__/reports/menuUtils.test.ts (the rule exists in both stacks and is tested in both).
 
@@ -124,19 +130,24 @@ Implemented in (phase 1 unit tests): web/src/__tests__/reports/menu.test.ts and 
 | TC-TRN-02-U02 | `update_partial_details_route_type` with `type_name` equal to the current name | No duplicate error | passing |
 | TC-TRN-02-U03 | `update_partial_details_route_type` with only `description` | `type_name` unchanged (`exclude_unset`) | passing |
 | TC-TRN-02-U04 | `deactivate_route_type` | `is_active=False` and the dropdown cache entry invalidated | passing |
-| TC-TRN-02-A01 | Admin `POST /masters/route-types/` `{type_name:"QA Upward"}` | 201 with id, `is_active=true`, created_at, updated_at | planned |
-| TC-TRN-02-A02 | Create with `{name:"X"}` | 422 (field is `type_name`) | planned |
-| TC-TRN-02-A03 | Create the same `type_name` twice | Second call 400 | planned |
-| TC-TRN-02-A04 | `GET /masters/route-types/all` after deactivating one | Inactive excluded | planned |
-| TC-TRN-02-A05 | `GET /masters/route-types/dropdown` and `?active_only=false` | `[{id, type_name}]` ordered by name; inactive only with false | planned |
-| TC-TRN-02-A06 | `GET /masters/route-types/{id}` existing, inactive, unknown, malformed | 200, 200, 404 "Route type not found", 422 | planned |
-| TC-TRN-02-A07 | `PUT` full body with a new name; `PUT` clashing with another name | 200; 400 | planned |
-| TC-TRN-02-A08 | `PATCH` description only | 200; name unchanged | planned |
-| TC-TRN-02-A09 | `DELETE` then `GET /all` | 200 with `is_active=false`; absent from `/all` | planned |
-| TC-TRN-02-A10 | Reusing the name of a deleted type | 400 (inactive rows count) | planned |
-| TC-TRN-02-A11 | Role matrix | Admin 2xx on all; Staff and Teacher 200 on GET `/all`, `/dropdown`, `/{id}` and 403 on POST, PUT, PATCH, DELETE; Student, Parent 403 | planned |
-| TC-TRN-02-A12 | Tenant isolation | A type from tenant A is absent from tenant B's `/all` and dropdown; same name can exist in both | planned |
-| TC-TRN-02-E01 | Web and mobile: open Routes pages | No route type control exists (documents the absence) | planned |
+| TC-TRN-02-A01 | Admin `POST /masters/route-types/` `{type_name:"QA Upward"}` | 201 with id, `is_active=true`, created_at, updated_at | passing |
+| TC-TRN-02-A02 | Create with `{name:"X"}` | 422 (field is `type_name`) | passing |
+| TC-TRN-02-A03 | Create the same `type_name` twice | Second call 400 | passing |
+| TC-TRN-02-A04 | `GET /masters/route-types/all` after deactivating one | Inactive excluded | passing |
+| TC-TRN-02-A05 | `GET /masters/route-types/dropdown` and `?active_only=false` | `[{id, type_name}]` ordered by name; inactive only with false | passing |
+| TC-TRN-02-A06 | `GET /masters/route-types/{id}` existing, inactive, unknown, malformed | 200, 200, 404 "Route type not found", 422 | passing |
+| TC-TRN-02-A07 | `PUT` full body with a new name; `PUT` clashing with another name | 200; 400 | passing |
+| TC-TRN-02-A08 | `PATCH` description only | 200; name unchanged | passing |
+| TC-TRN-02-A09 | `DELETE` then `GET /all` | 200 with `is_active=false`; absent from `/all` | passing |
+| TC-TRN-02-A10 | Reusing the name of a deleted type | 400 (inactive rows count) | passing |
+| TC-TRN-02-A11 | Role matrix | Admin 2xx on all; Staff and Teacher 200 on GET `/all`, `/dropdown`, `/{id}` and 403 on POST, PUT, PATCH, DELETE; Student, Parent 403 | passing |
+| TC-TRN-02-A12 | Tenant isolation | A type from tenant A is absent from tenant B's `/all` and dropdown; same name can exist in both | passing |
+
+UI test cases (manual format):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-TRN-02-E01 | P1 | Web | Admin | Seeded tenant qa_manual (route types Pickup and Drop exist in the API) | 1. Open Transport > Routes.<br>2. Click "Add Route" and read the dialog.<br>3. Close it; on mobile open the Routes screen and tap "Add Route". | Neither form has a route type or trip type control; the seeded routes still store route_type Pickup as plain text (documents the absence). | planned |
 
 Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_transport_masters.py.
 
@@ -174,15 +185,15 @@ Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_tr
 |---|---|---|---|
 | TC-TRN-03-U01 | `add_trip_type` with an existing name | HTTPException 400 with the trip type name | passing |
 | TC-TRN-03-U02 | Soft delete service return value | `{"message": "Trip type soft deleted"}` | passing |
-| TC-TRN-03-A01 | Admin `POST /masters/trip-types/` `{type_name:"QA First Trip"}` | 200 (not 201) with id and `is_active=true` | planned |
-| TC-TRN-03-A02 | Duplicate create; create with `{name:"X"}` | 400; 422 | planned |
-| TC-TRN-03-A03 | `GET /all` and `GET /dropdown` | Active only; dropdown `[{id, type_name}]` ordered by name | planned |
-| TC-TRN-03-A04 | `GET /{id}` existing, unknown, malformed | 200; 404; 422 | planned |
-| TC-TRN-03-A05 | `PUT` rename; `PUT` to an existing name | 200; 400 | planned |
-| TC-TRN-03-A06 | `PATCH` description only | 200; name unchanged | planned |
-| TC-TRN-03-A07 | `DELETE` | 200 `{"message":"Trip type soft deleted"}`; gone from `/all` | planned |
-| TC-TRN-03-A08 | Role matrix | Admin 2xx; Staff, Teacher 200 on reads and 403 on writes; Student, Parent 403 | planned |
-| TC-TRN-03-A09 | Tenant isolation | Tenant B cannot see tenant A's trip types | planned |
+| TC-TRN-03-A01 | Admin `POST /masters/trip-types/` `{type_name:"QA First Trip"}` | 200 (not 201) with id and `is_active=true` | passing |
+| TC-TRN-03-A02 | Duplicate create; create with `{name:"X"}` | 400; 422 | passing |
+| TC-TRN-03-A03 | `GET /all` and `GET /dropdown` | Active only; dropdown `[{id, type_name}]` ordered by name | passing |
+| TC-TRN-03-A04 | `GET /{id}` existing, unknown, malformed | 200; 404; 422 | passing |
+| TC-TRN-03-A05 | `PUT` rename; `PUT` to an existing name | 200; 400 | passing |
+| TC-TRN-03-A06 | `PATCH` description only | 200; name unchanged | passing |
+| TC-TRN-03-A07 | `DELETE` | 200 `{"message":"Trip type soft deleted"}`; gone from `/all` | passing |
+| TC-TRN-03-A08 | Role matrix | Admin 2xx; Staff, Teacher 200 on reads and 403 on writes; Student, Parent 403 | passing |
+| TC-TRN-03-A09 | Tenant isolation | Tenant B cannot see tenant A's trip types | passing |
 
 Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_transport_masters.py.
 
@@ -197,13 +208,13 @@ Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_tr
 **Preconditions**: None (route types are optional free text).
 
 **Steps, web**
-1. Open `/transport/routes` (Transport > Routes). The table "Routes" has columns Route Name, Starting Point, Ending Point, Number of Stops, Up Journey Time, Down Journey Time, Active and Stops ("View" button); search and pagination (page sizes) are above and below; cells edit inline and rows can be deleted.
-2. Click "Add Route". Dialog "Add New Route": "Route Name *" (placeholder "Enter route name"), "Starting Point *", "Ending Point *", "Number of Stops" (number, min 0), "Active". Under "Route Stops (auto-filled from "Number of Stops")" a row appears per stop with "Stop Name", "Amount (Rs/yr)", "Up Journey Time", "Down Journey Time" (defaults 07:00 and 08:30) and "Remove" (removing a row lowers Number of Stops). Buttons "Cancel" and the submit button.
-3. Submitting creates the route (with daily times fixed at 07:00:00 to 08:30:00, since the dialog has no inputs for them) and then one stop per named row with numbers 1, 2, 3 in order.
+1. Open `/transport/routes` (Transport > Routes). The table "Routes" has columns S.No., Route Name, Starting Point, Ending Point, Number of Stops, Up Journey Time, Down Journey Time, Active, Stops ("View" button) and Actions (pencil "Edit" for inline editing, trash "Delete"); "Export", search "Search..." and pagination ("Rows per page" 5 to 100) surround it. Delete asks "Delete Row?" ("Are you sure you want to delete this row? This action cannot be undone.") and toasts "Route deleted successfully!".
+2. Click "Add Route". Dialog "Add New Route": "Route Name *" (placeholder "Enter route name"), "Starting Point *", "Ending Point *", "Number of Stops" (number, min 0), "Active". Under "Route Stops (auto-filled from "Number of Stops")" a row appears per stop with "Stop Name", "Amount (Rs/yr)", "Up Journey Time", "Down Journey Time" (defaults 07:00 AM and 08:30 AM) and "Remove" (removing a row lowers Number of Stops). With 0 stops it says "Enter a number in "Number of Stops" to add stop rows." Buttons "Cancel" and "Add Route".
+3. Submitting creates the route (with daily times fixed at 07:00:00 to 08:30:00, since the dialog has no inputs for them) and then one stop per named row with numbers 1, 2, 3 in order; rows left without a name create no stop. Toast "Route "<name>" created successfully!"; a duplicate name gives "Failed to create route: Route '<name>' already exists".
 4. Edit a route inline in the table; the delete action deactivates it. Click "View" to scroll to the Route Stops manager (F05). Route type and trip type are not shown anywhere.
 
 **Steps, mobile**
-1. Transport tab, "Routes" tile, screen "Routes". Search "Search routes...", "Export" (Export As: "Export to CSV", "Export to Excel", "Download Data"). "Add Route" opens a form: "Route Name *", "Starting Point *", "Ending Point *", "Number of Stops", "Up Journey Time *", "Down Journey Time *", "Active", "Cancel". Messages: "Route name is required", success "Route created successfully", "Route updated successfully", "Route deleted successfully"; delete confirm title "Delete Route".
+1. Dashboard "Transport" module, "Routes" tile, screen "Routes". Cards show the route, "<start> -> <end>" with an arrow, the times, "Number of Stops" and "View Stops". Search "Search routes...", "Export" (Export As: "Export to CSV", "Export to Excel", "Download Data"). "Add Route" opens "Add New Route": "Route Name *", "Starting Point *", "Ending Point *", "Number of Stops", "Active" and "Route Stops" rows auto-filled from Number of Stops (as on web; no journey time inputs), "Cancel", "Add Route". Messages: "Route name is required", success "Route created successfully", "Route updated successfully", "Route deleted successfully"; delete confirm title "Delete Route".
 2. A "Route Stops" footer ("Route Name:" picker, "Add Stop") manages stops (F05).
 
 **Expected results**: A `routes` row, unique by `route_name`. Deleting sets `is_active=false` and removes it from `/all_routes`, the dropdown and the routes list; its stops stay active.
@@ -234,32 +245,37 @@ Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_tr
 | TC-TRN-04-U05 | `RouteCreate` with `end_time` earlier than `start_time` | Accepted (no ordering rule) | passing |
 | TC-TRN-04-U06 | Cache invalidation: after `add_route`, then after `deactivate_route` | Dropdown cache cleared on create only | passing |
 | TC-TRN-04-U07 | Web stop-row generation: Number of Stops 3 then 2 then remove one row | 3 rows, 2 rows, then 1 row with Number of Stops 1 | blocked: stop-row generation is inline in web/src/pages/transport/routes.tsx; needs the helper exported |
-| TC-TRN-04-A01 | Admin `POST /masters/routes/` `{route_name:"QA Route 1", starting_stop:"School", ending_stop:"Market", number_of_stops:3, start_time:"07:00:00", end_time:"08:30:00"}` | 201; `is_active=true`; times echoed; `route_type` null | planned |
-| TC-TRN-04-A02 | Create with `route_type:"Upward"` and `trip_type:"First Trip"` | 201; stored as given text | planned |
-| TC-TRN-04-A03 | Duplicate `route_name` | 400 "Route 'QA Route 1' already exists" | planned |
-| TC-TRN-04-A04 | Missing `route_name`, `start_time` or `number_of_stops`; `number_of_stops:"abc"` | 422 | planned |
-| TC-TRN-04-A05 | `GET /masters/routes/all_routes` after deactivating one | Inactive excluded | planned |
-| TC-TRN-04-A06 | `GET /masters/routes/routeid/{id}` for active, inactive, unknown, malformed | 200, 200, 404 "Route not found", 422 | planned |
-| TC-TRN-04-A07 | `GET /masters/routes/dropdown` and `?active_only=false` | `[{id, route_name}]` ordered by name | planned |
-| TC-TRN-04-A08 | Create route then immediately rename it, then dropdown | Dropdown may still show the old name (cache); documents the stale window | planned |
-| TC-TRN-04-A09 | `GET /masters/routes/stops-by-route?route_name=QA Route 1` with two stops | Both stops (ordered as stored) | planned |
-| TC-TRN-04-A10 | `stops-by-route` with an unknown name; with no parameter | 404; 422 | planned |
-| TC-TRN-04-A11 | `PUT` with a new name; `PUT` clashing name | 200; 400 | planned |
-| TC-TRN-04-A12 | `PATCH {"is_active": false}` | 200; route disappears from `/all_routes` | planned |
-| TC-TRN-04-A13 | `DELETE` a route that has stops and a trip | 200 `is_active=false`; stops remain active; the trip remains | planned |
-| TC-TRN-04-A14 | Reuse the name of a deleted route | 400 (inactive rows count) | planned |
-| TC-TRN-04-A15 | Role matrix | Admin 2xx; Staff and Teacher 200 on GET endpoints and 403 on POST, PUT, PATCH, DELETE; Student, Parent 403 | planned |
-| TC-TRN-04-A16 | Tenant isolation | Tenant B cannot see, and may reuse, tenant A's route names; by id 404 | planned |
-| TC-TRN-04-E01 | Web Admin: Add Route "QA Route 2", Number of Stops 2, name both stops, submit | Toast "Route \"QA Route 2\" created successfully!"; the Route Stops manager for it shows stops numbered 1 and 2 | planned |
-| TC-TRN-04-E02 | Web: add a route with an existing name | Toast starting "Failed to create route:"; no second row | planned |
-| TC-TRN-04-E03 | Web: inline-edit "Ending Point" and save | Row shows the new value | planned |
-| TC-TRN-04-E04 | Web: delete a route | Toast "Route deleted successfully!"; row leaves the table | planned |
-| TC-TRN-04-E05 | Web: search by part of a route name | Table filters across all pages | planned |
-| TC-TRN-04-E06 | Web Teacher | Table visible; no Add Route or edit or delete controls | planned |
-| TC-TRN-04-E07 | Mobile Admin: Add Route with times 07:00 and 08:30 | Toast "Route created successfully" | planned |
-| TC-TRN-04-E08 | Mobile: Add Route with an empty name | Toast "Route name is required" | planned |
-| TC-TRN-04-E09 | Mobile: Export to CSV | A CSV with the routes is shared or downloaded | planned |
-| TC-TRN-04-E10 | Mobile: delete via confirm "Delete Route" | Toast "Route deleted successfully" | planned |
+| TC-TRN-04-A01 | Admin `POST /masters/routes/` `{route_name:"QA Route 1", starting_stop:"School", ending_stop:"Market", number_of_stops:3, start_time:"07:00:00", end_time:"08:30:00"}` | 201; `is_active=true`; times echoed; `route_type` null | passing |
+| TC-TRN-04-A02 | Create with `route_type:"Upward"` and `trip_type:"First Trip"` | 201; stored as given text | passing |
+| TC-TRN-04-A03 | Duplicate `route_name` | 400 "Route 'QA Route 1' already exists" | passing |
+| TC-TRN-04-A04 | Missing `route_name`, `start_time` or `number_of_stops`; `number_of_stops:"abc"` | 422 | passing |
+| TC-TRN-04-A05 | `GET /masters/routes/all_routes` after deactivating one | Inactive excluded | passing |
+| TC-TRN-04-A06 | `GET /masters/routes/routeid/{id}` for active, inactive, unknown, malformed | 200, 200, 404 "Route not found", 422 | passing |
+| TC-TRN-04-A07 | `GET /masters/routes/dropdown` and `?active_only=false` | `[{id, route_name}]` ordered by name | passing |
+| TC-TRN-04-A08 | Create route then immediately rename it, then dropdown | Dropdown may still show the old name (cache); documents the stale window | passing |
+| TC-TRN-04-A09 | `GET /masters/routes/stops-by-route?route_name=QA Route 1` with two stops | Both stops (ordered as stored) | passing |
+| TC-TRN-04-A10 | `stops-by-route` with an unknown name; with no parameter | 404; 422 | passing |
+| TC-TRN-04-A11 | `PUT` with a new name; `PUT` clashing name | 200; 400 | passing |
+| TC-TRN-04-A12 | `PATCH {"is_active": false}` | 200; route disappears from `/all_routes` | passing |
+| TC-TRN-04-A13 | `DELETE` a route that has stops and a trip | 200 `is_active=false`; stops remain active; the trip remains | passing |
+| TC-TRN-04-A14 | Reuse the name of a deleted route | 400 (inactive rows count) | passing |
+| TC-TRN-04-A15 | Role matrix | Admin 2xx; Staff and Teacher 200 on GET endpoints and 403 on POST, PUT, PATCH, DELETE; Student, Parent 403 | passing |
+| TC-TRN-04-A16 | Tenant isolation | Tenant B cannot see, and may reuse, tenant A's route names; by id 404 | passing |
+
+UI test cases (manual format):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-TRN-04-E01 | P1 | Web | Admin | Seeded tenant qa_manual | 1. Click "Transport" in the sidebar, then "Routes".<br>2. Click "Add Route".<br>3. Enter Route Name "QA Route 3 - Ameerpet", Starting Point "QA Ameerpet", Ending Point "Demo School Campus", Number of Stops 2.<br>4. In the two stop rows enter Stop Name "QA Stop A" and "QA Stop B".<br>5. Click "Add Route".<br>6. Click "View" on the new row. | Toast "Route "QA Route 3 - Ameerpet" created successfully!"; the row shows Up 07:00 and Down 08:30; the Route Stops manager lists QA Stop A (1) and QA Stop B (2). | planned |
+| TC-TRN-04-E02 | P2 | Web | Admin | Seeded route "Route 1 - Kukatpally" (5 stops, Kukatpally Bus Stand to Demo School Campus) | 1. Click "Transport" in the sidebar, then "Routes".<br>2. Click "Add Route".<br>3. Enter Route Name "Route 1 - Kukatpally", Starting Point "QA X", Ending Point "QA Y".<br>4. Click "Add Route". | Toast "Failed to create route: Route 'Route 1 - Kukatpally' already exists"; no second row. | planned |
+| TC-TRN-04-E03 | P2 | Web | Admin | Route "QA Route 3 - Ameerpet" exists (TC-TRN-04-E01 done) | 1. Click "Transport" in the sidebar, then "Routes".<br>2. Click the pencil (Edit) icon in its row.<br>3. Change Ending Point to "QA Campus Gate".<br>4. Save the row. | Toast "Route "QA Route 3 - Ameerpet" updated successfully!"; the row shows QA Campus Gate. | planned |
+| TC-TRN-04-E04 | P2 | Web | Admin | Route "QA Route 3 - Ameerpet" exists (TC-TRN-04-E01 done) | 1. Click "Transport" in the sidebar, then "Routes".<br>2. Click the trash (Delete) icon in its row.<br>3. In "Delete Row?" click "Delete". | Confirm text "Are you sure you want to delete this row? This action cannot be undone."; toast "Route deleted successfully!"; the row leaves the table (stored is_active false). | planned |
+| TC-TRN-04-E05 | P3 | Web | Admin | Seeded route "Route 1 - Kukatpally" (5 stops, Kukatpally Bus Stand to Demo School Campus); Seeded route "Route 2 - Uppal" (4 stops) | 1. Click "Transport" in the sidebar, then "Routes".<br>2. Type "Uppal" in "Search...". | Only Route 2 - Uppal remains. | planned |
+| TC-TRN-04-E06 | P2 | Web | Teacher | Seeded route "Route 1 - Kukatpally" (5 stops, Kukatpally Bus Stand to Demo School Campus) | 1. Sign in as Teacher.<br>2. Click "Transport" in the sidebar, then "Routes". | Routes table visible with "Export" and "View"; no "Add Route", Edit or Delete controls; the stops manager has no "Add Stop". | planned |
+| TC-TRN-04-E07 | P1 | Mobile | Admin | Seeded tenant qa_manual | 1. Sign in as Admin on mobile.<br>2. Dashboard > "Transport" > "Routes".<br>3. Tap "Add Route".<br>4. Enter Route Name "QA Route 4 - Miyapur", Starting Point "QA Miyapur", Ending Point "Demo School Campus".<br>5. Tap "Add Route". | Toast "Route created successfully"; the card "QA Route 4 - Miyapur" appears (the form has no journey time fields, so times use the defaults). | planned |
+| TC-TRN-04-E08 | P3 | Mobile | Admin | Seeded tenant qa_manual | 1. Open the mobile Routes screen.<br>2. Tap "Add Route".<br>3. Leave Route Name empty and tap "Add Route". | Toast "Error" with "Route name is required". | planned |
+| TC-TRN-04-E09 | P3 | Mobile | Admin | Seeded route "Route 1 - Kukatpally" (5 stops, Kukatpally Bus Stand to Demo School Campus) | 1. Open the mobile Routes screen.<br>2. Tap "Export".<br>3. Choose "Export to CSV". | A CSV containing Route 1 - Kukatpally and Route 2 - Uppal is shared or downloaded; no "Failed to export CSV" toast. | planned |
+| TC-TRN-04-E10 | P2 | Mobile | Admin | Route "QA Route 4 - Miyapur" exists (TC-TRN-04-E07 done) | 1. Open the mobile Routes screen.<br>2. Delete "QA Route 4 - Miyapur" and confirm "Delete Route". | Toast "Route deleted successfully"; the card disappears. | planned |
 
 Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_transport_masters.py.
 
@@ -275,12 +291,12 @@ Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_tr
 
 **Steps, web**
 1. On `/transport/routes` use the "Route Stops" manager below the table: "Route Name:" dropdown ("Select a route to view stops..."); table columns S.No., Stop Name, Amount (Rs/yr), Up Journey Time, Down Journey Time, Actions.
-2. "Add Stop" (needs `route_stops:create`, enabled once a route is selected) opens "Add Stop": "Stop Name *", "Stop Number *" (defaults to existing stops plus one), "Amount (Rs/yr)", "Up Journey Time *", "Down Journey Time", "Active". The request also sends `reaching_time` equal to the up time (or 00:00:00).
-3. Edit pencil makes the row editable (name, amount, up and down time); the trash opens "Delete Stop" (Are you sure you want to delete the stop "<name>"? This action cannot be undone.).
-4. The standalone `/transport/routeStops` page (hidden from menus) is a table with columns Route, Stop Name, Stop Number, Pickup Time, Drop Time, Active and an add form with Route, Stop Name, Stop Number, Reaching Time, Pickup Time, Drop Time, Active.
+2. "Add Stop" (needs `route_stops:create`, enabled once a route is selected) opens "Add Stop": "Stop Name *", "Stop Number *" (defaults to existing stops plus one), "Amount (Rs/yr)", "Up Journey Time *" ("Select time"), "Down Journey Time", "Active", buttons "Cancel" and "Add Stop". The request also sends `reaching_time` equal to the up time (or 00:00:00). The up time is not enforced: a stop saved without it shows dashes for the times (seen 2026-10-07). Toast "Route stop "<name>" created successfully!"; with no stops the manager says "No stops for this route.", before choosing a route "Select a route to view its stops."
+3. Edit pencil (title "Edit") makes the row editable (name, amount, up and down time); the trash (title "Delete") opens "Delete Stop" (Are you sure you want to delete the stop "<name>"? This action cannot be undone.); toast "Route stop deleted successfully!".
+4. The standalone `/transport/routeStops` page (hidden from menus) is a table with columns S.No., Route, Stop Name, Stop Number, Pickup Time, Drop Time, Active, Actions ("Export", "Add Route Stop"); a stop whose route is inactive shows the raw route id in the Route column. Its add form has with Route, Stop Name, Stop Number, Reaching Time, Pickup Time, Drop Time, Active.
 
 **Steps, mobile**
-1. Reached from the routes screen footer ("Route Stops", "Route Name:", "Add Stop") or the `/transport` stack hub ("Route Stops"): screen "Route Stops", "Filter by Route:" ("Select a route to view stops..."), search "Search stops...", "Add Stop" with "Stop Name *" (placeholder "Enter stop name"), "Stop Number *" (placeholder "1"), "Up Journey Time *", "Down Journey Time", "Active". Messages: "Route is required", "Stop name is required", "Stop Created", "Stop Updated", "Stop Deleted"; confirm title "Delete Route Stop".
+1. Reached from the routes screen footer ("Route Stops", "Route Name:", "Add Stop") or the `/transport` stack hub ("Route Stops"): screen "Route Stops", "Filter by Route:" ("Select a route to view stops..."; until then "No Route Stops Found"), search "Search stops...", "Add Stop" with "Stop Name *" (placeholder "Enter stop name"), "Stop Number *" (placeholder "1"), "Up Journey Time *", "Down Journey Time", "Active". Messages: "Route is required", "Stop name is required", "Stop Created", "Stop Updated", "Stop Deleted"; confirm title "Delete Route Stop".
 
 **Expected results**: A `route_stops` row. Stop numbers are unique per route including inactive stops (a deactivated stop's number cannot be reused). Delete deactivates and hides it from lists.
 
@@ -313,29 +329,35 @@ Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_tr
 | TC-TRN-05-U05 | `RouteStopCreate` without `reaching_time` | ValidationError | passing |
 | TC-TRN-05-U06 | Web time padding for "07:05" and "07:05:00" | "07:05:00" for both | blocked: time padding is inline in web/src/pages/transport/routeStops.tsx; needs the helper exported |
 | TC-TRN-05-U07 | Web default number for a route with 4 stops | "5" | blocked: default stop number is inline in web/src/pages/transport/routeStops.tsx; needs the helper exported |
-| TC-TRN-05-A01 | Admin `POST /masters/route-stops/` route R, name "Stop A", number 1, reaching_time "07:10:00", pickup_time "07:10:00", drop_time "08:20:00", fees 1200 | 201; response has `route_name`, `fees=1200.0`, `pickup_time` and `drop_time` echoed | planned |
-| TC-TRN-05-A02 | Create (R, number 1) again | 400 "Stop number 1 already exists on this route" | planned |
-| TC-TRN-05-A03 | Create number 1 on a different route | 201 | planned |
-| TC-TRN-05-A04 | Create without `reaching_time`; without `route_id`; `number:"x"` | 422 | planned |
-| TC-TRN-05-A05 | Create with an unknown `route_id` | Non-2xx database error response (no 201) | planned |
-| TC-TRN-05-A06 | Create with `fees:25.5` | Not 2xx (integer column); documents the limitation | planned |
-| TC-TRN-05-A07 | `GET /masters/route-stops/` with stops on two routes and `?route_id=<R>` | Returns all active stops of both routes (parameter ignored) | planned |
-| TC-TRN-05-A08 | `GET /masters/route-stops/{id}` existing, unknown, malformed | 200 with `route_name`; 404 "Route stop not found"; 422 | planned |
-| TC-TRN-05-A09 | `PUT` full body changing name and times | 200; fields updated | planned |
-| TC-TRN-05-A10 | `PATCH {"number": 2}` clashing with another stop | 400 | planned |
-| TC-TRN-05-A11 | `PATCH {"drop_time":"08:45:00"}` then GET | `drop_time` persisted and returned | planned |
-| TC-TRN-05-A12 | `DELETE` a stop then `GET /` | 200 `is_active=false`; absent from the list | planned |
-| TC-TRN-05-A13 | Recreate (R, number 1) after deleting that stop | 400 (inactive rows keep the number) | planned |
-| TC-TRN-05-A14 | Role matrix | Admin 2xx; Staff and Teacher 200 on GETs and 403 on POST, PUT, PATCH, DELETE; Student, Parent 403 | planned |
-| TC-TRN-05-A15 | Tenant isolation | Tenant B list and by-id exclude tenant A's stops | planned |
-| TC-TRN-05-E01 | Web Admin: select a route, Add Stop "QA Stop", number 1, up time 07:10 | Row appears with the amount shown as rupees | planned |
-| TC-TRN-05-E02 | Web: add a stop with a used number | Toast starting "Failed to create route stop:"; no new row | planned |
-| TC-TRN-05-E03 | Web: edit a stop's amount and drop time inline | Row shows new values after save | planned |
-| TC-TRN-05-E04 | Web: delete a stop via "Delete Stop" | Toast "Route stop deleted successfully!"; row removed | planned |
-| TC-TRN-05-E05 | Web Teacher | Manager visible, no Add Stop, edit or delete | planned |
-| TC-TRN-05-E06 | Mobile Admin: Add Stop without a route | Toast "Route is required" | planned |
-| TC-TRN-05-E07 | Mobile: Add Stop with name, number 2 and up time | Toast "Stop Created" | planned |
-| TC-TRN-05-E08 | Mobile: delete a stop via confirm | Toast "Stop Deleted" | planned |
+| TC-TRN-05-A01 | Admin `POST /masters/route-stops/` route R, name "Stop A", number 1, reaching_time "07:10:00", pickup_time "07:10:00", drop_time "08:20:00", fees 1200 | 201; response has `route_name`, `fees=1200.0`, `pickup_time` and `drop_time` echoed | passing |
+| TC-TRN-05-A02 | Create (R, number 1) again | 400 "Stop number 1 already exists on this route" | passing |
+| TC-TRN-05-A03 | Create number 1 on a different route | 201 | passing |
+| TC-TRN-05-A04 | Create without `reaching_time`; without `route_id`; `number:"x"` | 422 | passing |
+| TC-TRN-05-A05 | Create with an unknown `route_id` | Non-2xx database error response (no 201) | passing |
+| TC-TRN-05-A06 | Create with `fees:25.5` | Not 2xx (integer column); documents the limitation | passing |
+| TC-TRN-05-A07 | `GET /masters/route-stops/` with stops on two routes and `?route_id=<R>` | Returns all active stops of both routes (parameter ignored) | passing |
+| TC-TRN-05-A08 | `GET /masters/route-stops/{id}` existing, unknown, malformed | 200 with `route_name`; 404 "Route stop not found"; 422 | passing |
+| TC-TRN-05-A09 | `PUT` full body changing name and times | 200; fields updated | passing |
+| TC-TRN-05-A10 | `PATCH {"number": 2}` clashing with another stop | 400 | passing |
+| TC-TRN-05-A11 | `PATCH {"drop_time":"08:45:00"}` then GET | `drop_time` persisted and returned | passing |
+| TC-TRN-05-A12 | `DELETE` a stop then `GET /` | 200 `is_active=false`; absent from the list | passing |
+| TC-TRN-05-A13 | Recreate (R, number 1) after deleting that stop | 400 (inactive rows keep the number) | passing |
+| TC-TRN-05-A14 | Role matrix | Admin 2xx; Staff and Teacher 200 on GETs and 403 on POST, PUT, PATCH, DELETE; Student, Parent 403 | passing |
+| TC-TRN-05-A15 | Tenant isolation | Tenant B list and by-id exclude tenant A's stops | passing |
+
+UI test cases (manual format):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-TRN-05-E01 | P1 | Web | Admin | Seeded route "Route 2 - Uppal" (4 stops) | 1. Click "Transport" in the sidebar, then "Routes".<br>2. In "Route Name:" choose "Route 2 - Uppal".<br>3. Click "Add Stop".<br>4. Enter Stop Name "QA Stop Nagole", keep Stop Number 5, Amount (Rs/yr) 1400, Up Journey Time 07:50.<br>5. Click "Add Stop". | Toast "Route stop "QA Stop Nagole" created successfully!"; the row shows S.No. 5, amount Rs 1,400 and 07:50. | planned |
+| TC-TRN-05-E02 | P2 | Web | Admin | Seeded route "Route 2 - Uppal" (4 stops) | 1. Click "Transport" in the sidebar, then "Routes".<br>2. Choose "Route 2 - Uppal" in "Route Name:".<br>3. Click "Add Stop", enter Stop Name "QA Dup Stop", Stop Number 1.<br>4. Click "Add Stop". | Toast "Failed to create route stop: Stop number 1 already exists on this route"; no new row. | planned |
+| TC-TRN-05-E03 | P2 | Web | Admin | Stop "QA Stop Nagole" exists (TC-TRN-05-E01 done) | 1. Click "Transport" in the sidebar, then "Routes".<br>2. Choose "Route 2 - Uppal".<br>3. Click the pencil (title Edit) on "QA Stop Nagole".<br>4. Change Amount to 1450 and Down Journey Time to 17:00, then save. | Toast "Route stop "QA Stop Nagole" updated successfully!"; the row shows Rs 1,450 and 17:00. | planned |
+| TC-TRN-05-E04 | P2 | Web | Admin | Stop "QA Stop Nagole" exists (TC-TRN-05-E01 done) | 1. Click "Transport" in the sidebar, then "Routes".<br>2. Choose "Route 2 - Uppal".<br>3. Click the trash (title Delete) on "QA Stop Nagole".<br>4. In "Delete Stop" click "Delete". | Confirm text Are you sure you want to delete the stop "QA Stop Nagole"? This action cannot be undone.; toast "Route stop deleted successfully!"; the row disappears. | planned |
+| TC-TRN-05-E05 | P2 | Web | Teacher | Seeded route "Route 1 - Kukatpally" (5 stops, Kukatpally Bus Stand to Demo School Campus) | 1. Sign in as Teacher.<br>2. Click "Transport" in the sidebar, then "Routes".<br>3. Choose "Route 1 - Kukatpally" in "Route Name:". | The five stops are listed; no "Add Stop", Edit or Delete controls. | planned |
+| TC-TRN-05-E06 | P3 | Mobile | Admin | Seeded tenant qa_manual | 1. Sign in as Admin on mobile.<br>2. Open /transport (the seven-section Transport hub).<br>3. Tap "Route Stops".<br>4. Without choosing a route in "Filter by Route:" tap "Add Stop" and save. | Toast "Error" with "Route is required" (the screen shows "No Route Stops Found" until a route is chosen). | planned |
+| TC-TRN-05-E07 | P2 | Mobile | Admin | Seeded route "Route 1 - Kukatpally" (5 stops, Kukatpally Bus Stand to Demo School Campus) | 1. Open Route Stops on mobile.<br>2. Choose "Route 1 - Kukatpally" in "Filter by Route:".<br>3. Tap "Add Stop": Stop Name "QA Stop Allwyn", Stop Number 6, Up Journey Time 07:40.<br>4. Save. | Toast "Stop Created" with "Route stop created successfully"; the stop appears in the list. | planned |
+| TC-TRN-05-E08 | P2 | Mobile | Admin | Stop "QA Stop Allwyn" exists (TC-TRN-05-E07 done) | 1. Open Route Stops on mobile and choose Route 1 - Kukatpally.<br>2. Delete "QA Stop Allwyn" and confirm "Delete Route Stop". | Toast "Stop Deleted" with "Route stop deleted successfully"; the stop disappears. | planned |
+| TC-TRN-05-E09 | P3 | Web | Admin | Seeded route "Route 2 - Uppal" (4 stops) | 1. Click "Transport" in the sidebar, then "Routes".<br>2. Choose "Route 2 - Uppal".<br>3. Click "Add Stop", enter only Stop Name "QA No Time" (Stop Number prefilled).<br>4. Click "Add Stop". | Expected: "Up Journey Time *" is enforced. Today the stop is saved without times (shown as a dash) and reaching_time is stored as 00:00:00 (Known gaps 20). Delete the stop afterwards. | planned |
 
 Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_transport_masters.py.
 
@@ -350,12 +372,12 @@ Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_tr
 **Preconditions**: For the trip rows in the add dialog: routes (F04) and drivers (staff with a user account).
 
 **Steps, web**
-1. Open `/transport/vehicles` (title "Vehicles"). Columns Vehicle Name, Reg. Number, Driver, Co-Driver, Licence No., Licence Expiry, Insurance Vendor, Insurance Expiry, Trips, Active, Edit.
-2. "Add Vehicle" opens "Add Vehicle": "Vehicle Name *" (placeholder "Bus 01"), "Registration Number *" (placeholder "KA01AB1234"), "Fee Category", "Fee Type", "Driving Licence No. *", "Driver Name" ("Select driver..."), "Co-Driver Name", "Driving Licence Expiry Date", "Bus Insurance Vendor", "Number of Trips", "Fees", "Insurance Expiry Date", "Active", and a "Trips" section ("Add Trip": Trip Type label, "Route", "Driver"). Validation toasts: "Vehicle Name and Registration Number are required", "Driving Licence No. is required", "Driving Licence No. cannot exceed <n> characters".
-3. Submit runs three requests: create with core fields (vehicle type fixed to "Bus", inspection and pollution dates set to today), a PATCH with the extended fields (fee category and fee type are sent but dropped by the API), then one trip per row that has both a route and a driver, with trip numbers 1, 2, 3. The "Edit" column opens an edit dialog of the same fields.
+1. Open `/transport/vehicles` (title "Vehicles"). Columns S.No., Vehicle Name, Reg. Number, Driver, Co-Driver, Licence No., Licence Expiry, Insurance Vendor, Insurance Expiry, Trips, Active, Edit (pencil), Actions (trash "Delete", confirm "Delete Row?", toast "Vehicle deleted successfully"). Below the table "Vehicle:" ("Type to search vehicle...") shows the chosen vehicle's trips ("Select a vehicle to view its trips.").
+2. "Add Vehicle" opens "Add Vehicle": "Vehicle Name *" (placeholder "Bus 01"), "Registration Number *" (placeholder "KA01AB1234"), "Fee Category", "Fee Type", "Driving Licence No. *", "Driver Name" ("Select driver..."), "Co-Driver Name", "Driving Licence Expiry Date", "Bus Insurance Vendor", "Number of Trips", "Fees", "Insurance Expiry Date", "Active", and a "Trips" section that starts with two rows (Trip 1, Trip 2; "Type to search route...", "Select driver...") plus "Add Trip". Submit button "Add Vehicle". Validation toasts: "Vehicle Name and Registration Number are required", "Driving Licence No. is required", "Driving Licence No. cannot exceed <n> characters".
+3. Submit runs three requests: create with core fields (vehicle type fixed to "Bus", inspection and pollution dates set to today), a PUT with the extended fields (fee category and fee type are sent but dropped by the API), then one trip per row that has both a route and a driver, with trip numbers 1, 2, 3. Toasts "Vehicle created successfully" and "Vehicle updated successfully" (seen 2026-10-07). The "Edit" column opens an edit dialog of the same fields.
 
 **Steps, mobile**
-1. Transport tab, "Vehicles" tile, screen "Vehicles", search "Search vehicles...". "Add Vehicle": "Vehicle Name *" (placeholder "Enter vehicle name"), "Registration Number *" (placeholder "e.g. AP09AB1234"), "Fee Category", "Fee Type", "Driving Licence No. *" (placeholder "Enter licence number"), "Driver Name", "Co-Driver Name", "Driving Licence Expiry Date", "Bus Insurance Vendor", "Insurance Expiry Date", "Number of Trips" (placeholder "e.g. 2"), "Active", and "Vehicle Trips" with "Add Trip" (Route, Driver). Same validation messages as web; success "Vehicle created successfully", "Vehicle updated successfully", "Vehicle deleted successfully".
+1. Dashboard "Transport" module, "Vehicles" tile, screen "Vehicles", search "Search vehicles...", a "Vehicle Trips" panel ("Select vehicle") below the list; empty list "No Vehicles Found" ("Add your first vehicle to get started"). "Add Vehicle": "Vehicle Name *" (placeholder "Enter vehicle name"), "Registration Number *" (placeholder "e.g. AP09AB1234"), "Fee Category", "Fee Type", "Driving Licence No. *" (placeholder "Enter licence number"), "Driver Name", "Co-Driver Name", "Driving Licence Expiry Date", "Bus Insurance Vendor" (placeholder "Enter vendor name"), "Number of Trips" (placeholder "e.g. 2"), "Fees (Rs)" (placeholder "e.g. 1200"), "Insurance Expiry Date", "Active", and "Trips" (Trip 1, Trip 2 with Route and Driver, plus "Add Trip"); submit "Add Vehicle". Same validation messages as web; success "Vehicle created successfully", "Vehicle updated successfully", "Vehicle deleted successfully".
 
 **Expected results**: A `vehicles` row (unique registration number) plus optional trips. Delete deactivates the vehicle only; its trips remain.
 
@@ -385,31 +407,37 @@ Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_tr
 | TC-TRN-06-U04 | `get_vehicle_route_stops` with stops numbered 3, 1, 2 (one inactive) | Active stops ordered 1, 2 or 1, 3 by number | passing |
 | TC-TRN-06-U05 | `VehicleCreate` without `last_inspected_date` | ValidationError | passing |
 | TC-TRN-06-U06 | Web create orchestration with two valid trip rows and one row missing a driver | Two trips created with `trip_number` 1 and 2 | blocked: three-step create orchestration is inline in web/src/pages/transport/vehicles.tsx; needs the helper exported |
-| TC-TRN-06-A01 | Admin `POST /masters/vehicles/` name "QA Bus 1", registration "QA01AB0001", type "Bus", inspection and pollution dates "2026-09-01" | 201; `is_active=true`; dates echoed | planned |
-| TC-TRN-06-A02 | Create with the extended fields (`driver_name`, `driving_licence_no`, `fees:1200.50`, `is_ac:true`, `number_of_trips:2`) | 201; all echoed; `fees` as a number | planned |
-| TC-TRN-06-A03 | Duplicate registration number | 400 "Vehicle 'QA01AB0001' already registered" | planned |
-| TC-TRN-06-A04 | Create with `fee_category_id` and `fee_type_id` extra fields | 201; the fields are not in the response (silently dropped) | planned |
-| TC-TRN-06-A05 | Create without `name`; without `vehicle_type`; invalid date text | 422 | planned |
-| TC-TRN-06-A06 | `GET /masters/vehicles/` after deactivating one | Inactive excluded | planned |
-| TC-TRN-06-A07 | `GET /masters/vehicles/dropdown` and `?active_only=false` | `[{id, name}]`; inactive only with false | planned |
-| TC-TRN-06-A08 | `GET /masters/vehicles/{id}` existing, inactive, unknown, malformed | 200, 200, 404 "Vehicle not found", 422 | planned |
-| TC-TRN-06-A09 | Vehicle with two trips: `GET /{id}/routes` and `GET /{id}/trips` | Routes `[{id, route_name}]` distinct and ordered by name; trips `[{id, trip_number, route_id, route_name}]` ordered by `trip_number` | planned |
-| TC-TRN-06-A10 | `GET /{id}/routes/{route_id}/stops` for an assigned route | Active stops ordered by `number` with `pickup_time`, `drop_time`, `fees` | planned |
-| TC-TRN-06-A11 | `GET /{id}/routes/{route_id}/stops` for an unassigned route | 404 "Vehicle is not assigned to this route" | planned |
-| TC-TRN-06-A12 | `GET /{id}/routes` and `/trips` for a vehicle with no trips | 200 `[]` | planned |
-| TC-TRN-06-A13 | `PUT` full body; `PUT` clashing registration | 200; 400 | planned |
-| TC-TRN-06-A14 | `PATCH {"driver_name":"R. Kumar","is_active":false}` | 200; vehicle leaves the list | planned |
-| TC-TRN-06-A15 | `DELETE` a vehicle that has a trip | 200 `is_active=false`; the trip still exists | planned |
-| TC-TRN-06-A16 | Role matrix | Admin 2xx on all; Staff and Teacher 200 on the GET endpoints (including sub-resources) and 403 on POST, PUT, PATCH, DELETE; Student, Parent 403 | planned |
-| TC-TRN-06-A17 | Tenant isolation | Tenant B cannot see tenant A's vehicles; sub-resources return `[]` or 404 | planned |
-| TC-TRN-06-E01 | Web Admin: Add Vehicle with name, registration, licence number | Vehicle appears in the table with Active status | planned |
-| TC-TRN-06-E02 | Web: Add Vehicle plus one trip row (route and driver) | Vehicle row shows the trip; Trips page lists trip number 1 | planned |
-| TC-TRN-06-E03 | Web: submit without a licence number | Toast "Driving Licence No. is required" | planned |
-| TC-TRN-06-E04 | Web: duplicate registration | Toast starting "Failed to create vehicle:"; no second row | planned |
-| TC-TRN-06-E05 | Web: Edit a vehicle's driver name | Table shows the new driver | planned |
-| TC-TRN-06-E06 | Mobile Admin: Add Vehicle with two trips | Toast "Vehicle created successfully"; "Vehicle Trips" lists them | planned |
-| TC-TRN-06-E07 | Mobile: delete a vehicle | Toast "Vehicle deleted successfully" | planned |
-| TC-TRN-06-E08 | Mobile Teacher | Vehicles list visible, no Add Vehicle | planned |
+| TC-TRN-06-A01 | Admin `POST /masters/vehicles/` name "QA Bus 1", registration "QA01AB0001", type "Bus", inspection and pollution dates "2026-09-01" | 201; `is_active=true`; dates echoed | passing |
+| TC-TRN-06-A02 | Create with the extended fields (`driver_name`, `driving_licence_no`, `fees:1200.50`, `is_ac:true`, `number_of_trips:2`) | 201; all echoed; `fees` as a number | passing |
+| TC-TRN-06-A03 | Duplicate registration number | 400 "Vehicle 'QA01AB0001' already registered" | passing |
+| TC-TRN-06-A04 | Create with `fee_category_id` and `fee_type_id` extra fields | 201; the fields are not in the response (silently dropped) | passing |
+| TC-TRN-06-A05 | Create without `name`; without `vehicle_type`; invalid date text | 422 | passing |
+| TC-TRN-06-A06 | `GET /masters/vehicles/` after deactivating one | Inactive excluded | passing |
+| TC-TRN-06-A07 | `GET /masters/vehicles/dropdown` and `?active_only=false` | `[{id, name}]`; inactive only with false | passing |
+| TC-TRN-06-A08 | `GET /masters/vehicles/{id}` existing, inactive, unknown, malformed | 200, 200, 404 "Vehicle not found", 422 | passing |
+| TC-TRN-06-A09 | Vehicle with two trips: `GET /{id}/routes` and `GET /{id}/trips` | Routes `[{id, route_name}]` distinct and ordered by name; trips `[{id, trip_number, route_id, route_name}]` ordered by `trip_number` | passing |
+| TC-TRN-06-A10 | `GET /{id}/routes/{route_id}/stops` for an assigned route | Active stops ordered by `number` with `pickup_time`, `drop_time`, `fees` | passing |
+| TC-TRN-06-A11 | `GET /{id}/routes/{route_id}/stops` for an unassigned route | 404 "Vehicle is not assigned to this route" | passing |
+| TC-TRN-06-A12 | `GET /{id}/routes` and `/trips` for a vehicle with no trips | 200 `[]` | passing |
+| TC-TRN-06-A13 | `PUT` full body; `PUT` clashing registration | 200; 400 | passing |
+| TC-TRN-06-A14 | `PATCH {"driver_name":"R. Kumar","is_active":false}` | 200; vehicle leaves the list | passing |
+| TC-TRN-06-A15 | `DELETE` a vehicle that has a trip | 200 `is_active=false`; the trip still exists | passing |
+| TC-TRN-06-A16 | Role matrix | Admin 2xx on all; Staff and Teacher 200 on the GET endpoints (including sub-resources) and 403 on POST, PUT, PATCH, DELETE; Student, Parent 403 | passing |
+| TC-TRN-06-A17 | Tenant isolation | Tenant B cannot see tenant A's vehicles; sub-resources return `[]` or 404 | passing |
+
+UI test cases (manual format):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-TRN-06-E01 | P1 | Web | Admin | Seeded tenant qa_manual | 1. Click "Transport" > "Vehicles".<br>2. Click "Add Vehicle".<br>3. Enter Vehicle Name "QA Bus 3", Registration Number "QA09XY0003", Driving Licence No. "QADL0003".<br>4. Click "Add Vehicle". | Two requests (POST then PUT); toasts "Vehicle created successfully" and "Vehicle updated successfully"; row "QA Bus 3" with Active status and Trips 0. | planned |
+| TC-TRN-06-E02 | P2 | Web | Admin | Seeded route "Route 1 - Kukatpally" (5 stops, Kukatpally Bus Stand to Demo School Campus); seeded driver Ramesh Yadav | 1. Open Transport > Vehicles and click "Add Vehicle".<br>2. Enter Vehicle Name "QA Bus 4", Registration Number "QA09XY0004", Driving Licence No. "QADL0004".<br>3. In "Trip 1" choose Route "Route 1 - Kukatpally" and Driver "Ramesh Yadav".<br>4. Click "Add Vehicle".<br>5. Open Transport > Trips. | Expected: the vehicle row shows 1 trip and Trips lists QA Bus 4 on Route 1 - Kukatpally with trip number 1. Today the vehicle saves but the trip fails because the dialog sends the staff id as driver_id. | blocked: web vehicle dialog sends the staff id as driver_id (module rule 9, Known gaps 14) |
+| TC-TRN-06-E03 | P2 | Web | Admin | Seeded tenant qa_manual | 1. Open Transport > Vehicles and click "Add Vehicle".<br>2. Click "Add Vehicle" with all fields empty.<br>3. Enter Vehicle Name "QA Bus 5" and Registration Number "QA09XY0005" and click "Add Vehicle" again. | Step 2: toast "Vehicle Name and Registration Number are required"; step 3: toast "Driving Licence No. is required"; nothing is saved. | planned |
+| TC-TRN-06-E04 | P2 | Web | Admin | Seeded vehicle "School Bus 1" (TS09UA1234, driver Ramesh Yadav) on Route 1 - Kukatpally | 1. Open Transport > Vehicles and click "Add Vehicle".<br>2. Enter Vehicle Name "QA Dup Bus", Registration Number "TS09UA1234", Driving Licence No. "QADL0009".<br>3. Click "Add Vehicle". | Error toast with the API message "Vehicle 'TS09UA1234' already registered"; the dialog stays usable; no second row. | planned |
+| TC-TRN-06-E05 | P2 | Web | Admin | Vehicle "QA Bus 3" exists (TC-TRN-06-E01 done) | 1. Open Transport > Vehicles.<br>2. Click the Edit icon in the "QA Bus 3" row.<br>3. Enter Co-Driver Name "QA Helper" and save. | Toast "Vehicle updated successfully"; the Co-Driver column shows QA Helper. | planned |
+| TC-TRN-06-E06 | P2 | Mobile | Admin | Seeded route "Route 1 - Kukatpally" (5 stops, Kukatpally Bus Stand to Demo School Campus); Seeded route "Route 2 - Uppal" (4 stops) | 1. Sign in as Admin on mobile.<br>2. Dashboard > "Transport" > "Vehicles".<br>3. Tap "Add Vehicle": Vehicle Name "QA Bus 6", Registration Number "QA09XY0006", Driving Licence No. "QADL0006".<br>4. In Trip 1 choose Route 1 - Kukatpally and Driver Ramesh Yadav; in Trip 2 choose Route 2 - Uppal and Driver Mohan Singh.<br>5. Tap "Add Vehicle". | Toast "Vehicle created successfully"; in "Vehicle Trips" choosing QA Bus 6 lists two trips. | planned |
+| TC-TRN-06-E07 | P2 | Mobile | Admin | Vehicle "QA Bus 6" exists (TC-TRN-06-E06 done) | 1. Open the mobile Vehicles screen.<br>2. Delete "QA Bus 6" and confirm. | Toast "Vehicle deleted successfully"; the card disappears (its trips remain). | planned |
+| TC-TRN-06-E08 | P2 | Mobile | Teacher | Seeded vehicle "School Bus 1" (TS09UA1234, driver Ramesh Yadav) on Route 1 - Kukatpally; Seeded vehicle "School Bus 2" (TS09UB5678, driver Mohan Singh) on Route 2 - Uppal | 1. Sign in as Teacher on mobile.<br>2. Dashboard > "Transport" > "Vehicles". | Expected: School Bus 1 and School Bus 2 are listed without "Add Vehicle". Seen 2026-10-07 on qa_school: "No Vehicles Found" although the API returns the vehicles for Teacher. | blocked: mobile Vehicles list is empty for Teacher (Known gaps 21) |
+| TC-TRN-06-E09 | P3 | Web | Admin | Vehicle "QA Bus 3" exists (TC-TRN-06-E01 done) | 1. Open Transport > Vehicles.<br>2. Click the trash (Delete) icon in the "QA Bus 3" row.<br>3. In "Delete Row?" click "Delete". | Toast "Vehicle deleted successfully"; the row leaves the table. | planned |
 
 Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_transport_masters.py.
 
@@ -424,11 +452,11 @@ Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_tr
 **Preconditions**: A vehicle (F06), a route (F04) and optionally a driver (a user account).
 
 **Steps, web**
-1. Open `/transport/trips` (Transport > Trips; title "Trips"). Columns Vehicle, Route, Driver, Trip Number; inline edit and delete; pagination. A separate "Trip Management" component with the same fields exists but is not routed.
-2. "Add Trip" opens "Add New Trip" with "Vehicle" (label "name - registration"), "Route", "Driver" (staff drivers), "Trip Number" (default 1). In the create dialog all four are marked required. Success and error toasts come from the generic master page.
+1. Open `/transport/trips` (Transport > Trips; title "Trips"). Columns S.No., Vehicle, Route, Driver, Trip Number, Actions; "Export", search, inline edit and delete; pagination; empty table "No data". Teacher sees no "Add Trip"; Staff does. A separate "Trip Management" component with the same fields exists but is not routed.
+2. "Add Trip" opens "Add New Trip" with native selects "Vehicle" ("Select Vehicle", options "name - registration"), "Route" ("Select Route"), "Driver" ("Select Driver", staff drivers) and "Trip Number" (default 1), buttons "Cancel" and "Add Trip". Nothing is checked before sending: with no driver the dialog sends `driver_id: ""`, the API answers 422 and the toast reads "[object Object]" (seen 2026-10-07). Toasts "Trip created!", "Trip updated!", "Trip deleted!"; other errors show the API message.
 
 **Steps, mobile**
-1. `/transport` stack hub, "Trips" (title "Trips"), search "Search trips...", "Add Trip": "Vehicle *" ("Select vehicle"), "Route *" ("Select route"), "Driver *" ("Select driver"), "Trip Number *" (placeholder "1"). Validation toasts "Vehicle is required", "Route is required". Success "Trip created successfully", "Trip updated successfully", "Trip deleted successfully".
+1. `/transport` stack hub, "Trips" (title "Trips"), search "Search trips...", "Add Trip" opens "Add Trip": "Vehicle *" ("Select vehicle"), "Route *" ("Select route"), "Driver *" ("Select driver"), "Trip Number *" (placeholder "1"), buttons "Cancel" and "Create". Validation toasts "Vehicle is required", "Route is required". Success "Trip created successfully", "Trip updated successfully", "Trip deleted successfully".
 
 **Expected results**: A `trips` row, unique per (vehicle, route). Delete removes the row for good.
 
@@ -454,27 +482,33 @@ Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_tr
 | TC-TRN-07-U01 | `add_trip` with an existing (vehicle, route) | HTTPException 400 "This vehicle is already assigned to this route" | passing |
 | TC-TRN-07-U02 | `update_partial_details_trip` changing only `trip_number` | Vehicle and route unchanged | passing |
 | TC-TRN-07-U03 | `TripCreate` without `trip_number` | ValidationError | passing |
-| TC-TRN-07-A01 | Admin `POST /masters/trips/` vehicle V, route R, trip_number 1, driver omitted | 201; `driver_id` null; created_at and updated_at set | planned |
-| TC-TRN-07-A02 | Same (V, R) again with trip_number 2 | 400 "This vehicle is already assigned to this route" | planned |
-| TC-TRN-07-A03 | Vehicle V on a second route R2 with trip_number 2 | 201 | planned |
-| TC-TRN-07-A04 | Create with `driver_id` of an existing user | 201 with the id echoed | planned |
-| TC-TRN-07-A05 | Create with an unknown `vehicle_id`; unknown `driver_id` | Non-2xx database error response | planned |
-| TC-TRN-07-A06 | Create without `vehicle_id`; `trip_number:"a"` | 422 | planned |
-| TC-TRN-07-A07 | `GET /masters/trips/` with 3 trips | Array of 3 (unpaginated, includes trips of inactive vehicles) | planned |
-| TC-TRN-07-A08 | `GET /masters/trips/{id}` existing, unknown, malformed | 200; 404 "Trip not found"; 422 | planned |
-| TC-TRN-07-A09 | `PUT` full body changing trip_number | 200 | planned |
-| TC-TRN-07-A10 | `PATCH` changing `route_id` to a route the vehicle already serves | 400 "This vehicle is already assigned to this route" | passing (unit) |
-| TC-TRN-07-A11 | `DELETE` a trip with no assignments | 200 returns the trip; `GET` then 404 | planned |
-| TC-TRN-07-A12 | `DELETE` a trip that has a student assignment | Non-2xx database error; trip still exists | planned |
-| TC-TRN-07-A13 | Role matrix | Admin 2xx; Staff 201 on POST, 200 on GETs, PUT and PATCH, 403 on DELETE; Teacher 200 on GETs and 403 on POST, PUT, PATCH, DELETE; Student, Parent 403 | planned |
-| TC-TRN-07-A14 | Tenant isolation | Tenant B list and by-id exclude tenant A's trips | planned |
-| TC-TRN-07-E01 | Web Admin: Add Trip with vehicle, route, driver, trip number 1 | Toast "Trip created!"; row appears with vehicle, route and driver names | planned |
-| TC-TRN-07-E02 | Web: Add the same vehicle and route again | Error toast with the API message "This vehicle is already assigned to this route"; no second row | planned |
-| TC-TRN-07-E03 | Web: inline-edit the trip number | New number shown | planned |
-| TC-TRN-07-E04 | Web: delete a trip | Toast "Trip deleted!"; row removed | planned |
-| TC-TRN-07-E05 | Web Staff | Add and edit available; delete control hidden or fails with 403 | planned |
-| TC-TRN-07-E06 | Mobile Admin: Add Trip without a vehicle | Toast "Vehicle is required" | planned |
-| TC-TRN-07-E07 | Mobile: Add Trip with vehicle, route, driver, number | Toast "Trip created successfully" | planned |
+| TC-TRN-07-A01 | Admin `POST /masters/trips/` vehicle V, route R, trip_number 1, driver omitted | 201; `driver_id` null; created_at and updated_at set | passing |
+| TC-TRN-07-A02 | Same (V, R) again with trip_number 2 | 400 "This vehicle is already assigned to this route" | passing |
+| TC-TRN-07-A03 | Vehicle V on a second route R2 with trip_number 2 | 201 | passing |
+| TC-TRN-07-A04 | Create with `driver_id` of an existing user | 201 with the id echoed | passing |
+| TC-TRN-07-A05 | Create with an unknown `vehicle_id`; unknown `driver_id` | Non-2xx database error response | passing |
+| TC-TRN-07-A06 | Create without `vehicle_id`; `trip_number:"a"` | 422 | passing |
+| TC-TRN-07-A07 | `GET /masters/trips/` with 3 trips | Array of 3 (unpaginated, includes trips of inactive vehicles) | passing |
+| TC-TRN-07-A08 | `GET /masters/trips/{id}` existing, unknown, malformed | 200; 404 "Trip not found"; 422 | passing |
+| TC-TRN-07-A09 | `PUT` full body changing trip_number | 200 | passing |
+| TC-TRN-07-A10 | `PATCH` changing `route_id` to a route the vehicle already serves | 400 "This vehicle is already assigned to this route" | passing |
+| TC-TRN-07-A11 | `DELETE` a trip with no assignments | 200 returns the trip; `GET` then 404 | passing |
+| TC-TRN-07-A12 | `DELETE` a trip that has a student assignment | Non-2xx database error; trip still exists | passing |
+| TC-TRN-07-A13 | Role matrix | Admin 2xx; Staff 201 on POST, 200 on GETs, PUT and PATCH, 403 on DELETE; Teacher 200 on GETs and 403 on POST, PUT, PATCH, DELETE; Student, Parent 403 | passing |
+| TC-TRN-07-A14 | Tenant isolation | Tenant B list and by-id exclude tenant A's trips | passing |
+
+UI test cases (manual format):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-TRN-07-E01 | P1 | Web | Admin | Vehicle "QA Bus 3" exists (TC-TRN-06-E01 done); Seeded route "Route 2 - Uppal" (4 stops); seeded driver Mohan Singh | 1. Click "Transport" > "Trips".<br>2. Click "Add Trip".<br>3. Choose Vehicle "QA Bus 3 - QA09XY0003", Route "Route 2 - Uppal", Driver "Mohan Singh", Trip Number 1.<br>4. Click "Add Trip". | Toast "Trip created!"; the row shows QA Bus 3, Route 2 - Uppal, Mohan Singh, 1. | planned |
+| TC-TRN-07-E02 | P2 | Web | Admin | Seeded vehicle "School Bus 1" (TS09UA1234, driver Ramesh Yadav) on Route 1 - Kukatpally | 1. Open Transport > Trips and click "Add Trip".<br>2. Choose Vehicle "School Bus 1 - TS09UA1234", Route "Route 1 - Kukatpally", Driver "Ramesh Yadav", Trip Number 2.<br>3. Click "Add Trip". | Error toast "This vehicle is already assigned to this route"; no second row. | planned |
+| TC-TRN-07-E03 | P2 | Web | Admin | Trip from TC-TRN-07-E01 exists | 1. Open Transport > Trips.<br>2. Click the Edit icon on the QA Bus 3 row.<br>3. Change Trip Number to 2 and save. | Toast "Trip updated!"; the row shows 2. | planned |
+| TC-TRN-07-E04 | P2 | Web | Admin | Trip from TC-TRN-07-E01 exists with no student assignment | 1. Open Transport > Trips.<br>2. Click the Delete icon on the QA Bus 3 row and confirm "Delete". | Toast "Trip deleted!"; the row is removed (hard delete). | planned |
+| TC-TRN-07-E05 | P2 | Web | Staff | Seeded vehicle "School Bus 1" (TS09UA1234, driver Ramesh Yadav) on Route 1 - Kukatpally | 1. Sign in as Staff.<br>2. Open Transport > Trips. | The seeded trips are listed; "Add Trip" and Edit are available; the Delete control is hidden or the delete fails with a 403 error toast (Staff has no delete grant). | planned |
+| TC-TRN-07-E06 | P3 | Mobile | Admin | Seeded tenant qa_manual | 1. Sign in as Admin on mobile.<br>2. Open /transport (the seven-section Transport hub).<br>3. Tap "Trips", then "Add Trip".<br>4. Leave Vehicle empty and tap "Create". | Toast "Error" with "Vehicle is required". | planned |
+| TC-TRN-07-E07 | P2 | Mobile | Admin | Vehicle "QA Bus 3" exists (TC-TRN-06-E01 done); Seeded route "Route 1 - Kukatpally" (5 stops, Kukatpally Bus Stand to Demo School Campus) | 1. Open Trips on mobile and tap "Add Trip".<br>2. Choose Vehicle QA Bus 3, Route Route 1 - Kukatpally, Driver Ramesh Yadav, Trip Number 3.<br>3. Tap "Create". | Toast "Trip created successfully"; the trip card appears. | planned |
+| TC-TRN-07-E08 | P3 | Web | Admin | Vehicle "QA Bus 3" exists (TC-TRN-06-E01 done); Seeded route "Route 1 - Kukatpally" (5 stops, Kukatpally Bus Stand to Demo School Campus) | 1. Open Transport > Trips and click "Add Trip".<br>2. Choose Vehicle QA Bus 3 and Route Route 1 - Kukatpally; leave Driver as "Select Driver".<br>3. Click "Add Trip". | Expected: the trip is created without a driver (driver is optional in the API). Today the dialog sends driver_id "" and the toast reads "[object Object]" (422). | blocked: web Add Trip sends an empty driver_id (Known gaps 20) |
 
 Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_transport_masters.py.
 
@@ -489,11 +523,11 @@ Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_tr
 **Preconditions**: A vehicle (F06); optionally a route (F04).
 
 **Steps, web**
-1. Open `/transport/pricing` (title "Transport Pricing"; guard `transport_pricing`). Columns Vehicle, Route, Billing Cycle, Cycle Name, Amount, Start Date, End Date, Active; inline edit; delete.
-2. "Add Pricing" opens the dialog: "Vehicle" ("Select Vehicle"), "Route" ("Select Route (optional)"), "Billing Cycle" (Annual, Semester, Monthly, Custom), "Cycle Name", "Amount (Rs)", "Start Date", "End Date", "Active". Required fields: Vehicle, Billing Cycle, Cycle Name, Amount, Start Date, End Date.
+1. Open `/transport/pricing` (title "Transport Pricing"; guard `transport_pricing`; Staff and Teacher get "Access Denied" with "You don't have permission to view transport pricing."). Columns S.No., Vehicle, Route, Billing Cycle, Cycle Name, Amount, Start Date, End Date, Active, Actions; "Export"; inline edit; delete with "Delete Row?" and toast "Pricing deleted successfully!".
+2. "Add Pricing" opens the dialog: "Vehicle" ("Select Vehicle"), "Route" ("Select Route (optional)"), "Billing Cycle" (Annual, Semester, Monthly, Custom), "Cycle Name", "Amount (Rs)", "Start Date", "End Date", "Active". Billing Cycle defaults to Annual; submit button "Add Pricing". Vehicle, Billing Cycle, Cycle Name, Amount, Start Date and End Date are required by the API but not checked in the dialog: a missing vehicle gives "Failed to create pricing: [object Object]" (422) and the dialog closes. Success toast "Pricing "<cycle name>" created successfully!"; an overlap gives "Failed to create pricing: Overlapping pricing exists for this vehicle/route/billing_cycle (id=<id>)".
 
 **Steps, mobile**
-1. `/transport` stack hub, "Pricing" (title "Transport Pricing"), "Add Pricing": "Vehicle *", "Route" ("Select Route (optional)"), "Billing Cycle *", "Cycle Name *" (placeholder "e.g. Annual 2025-26"), "Amount" (placeholder "e.g. 15000"), "Start Date *", "End Date *", "Active", "Cancel". Validation titles "Validation": "Vehicle is required", "Billing cycle is required", "Cycle name is required", "Amount must be a positive number", "Start date is required", "End date is required", "End date must be after start date". Toasts "Created"/"Updated"/"Deleted" ("Pricing created successfully"); delete confirm "Delete Pricing".
+1. `/transport` stack hub, "Pricing" (title "Transport Pricing"; Staff sees "You don't have permission to view transport pricing"), "Add Pricing": "Vehicle *", "Route" ("Select Route (optional)"), "Billing Cycle *" (default Annual), "Cycle Name *" (placeholder "e.g. Annual 2025-26"), "Amount (Rs) *" (placeholder "e.g. 15000"), "Start Date *" (defaults to today), "End Date *" ("Select end date"), "Active", "Cancel", "Save". Validation titles "Validation": "Vehicle is required", "Billing cycle is required", "Cycle name is required", "Amount must be a positive number", "Start date is required", "End date is required", "End date must be after start date". Toasts "Created"/"Updated"/"Deleted" ("Pricing created successfully"); delete confirm "Delete Pricing".
 
 **Expected results**: A `transport_pricing` row. Delete deactivates; the plan disappears from the list and dropdown but can still be read by id.
 
@@ -530,32 +564,38 @@ Reference plan P1: vehicle V, route R, annual, 2026-04-01 to 2027-03-31, amount 
 | TC-TRN-08-U09 | `TransportPricingCreate` with `end_date == start_date` | ValidationError "end_date must be after start_date" | passing |
 | TC-TRN-08-U10 | Amount 0, 0.00, -1, 99999999.99, 100000000.00, 10.005 | Rejected, rejected, rejected, accepted, rejected, rejected | passing |
 | TC-TRN-08-U11 | PATCH with only `end_date` earlier than the stored `start_date` | HTTPException 400 "end_date must be after start_date" | passing |
-| TC-TRN-08-A01 | Admin `POST /masters/transport-pricing/` for V/R annual "Annual 2026-27", 12000.00, 2026-04-01 to 2027-03-31 | 201; `vehicle_name` and `route_name` populated; `amount` "12000.00" | planned |
-| TC-TRN-08-A02 | Create an overlapping annual V/R plan (2026-12-01 to 2027-06-01) | 400 with message containing "Overlapping pricing exists" and P1's id | planned |
-| TC-TRN-08-A03 | Create the adjacent plan 2027-03-31 to 2028-03-30 | 201 | planned |
-| TC-TRN-08-A04 | Create a monthly V/R plan with P1's dates; a null-route annual plan with P1's dates | 201; 201 | planned |
-| TC-TRN-08-A05 | Create with `end_date == start_date` | 422 | planned |
-| TC-TRN-08-A06 | Create with `billing_cycle:"weekly"`; amount 0; missing `cycle_name` | 422 each | planned |
-| TC-TRN-08-A07 | Create with an unknown `vehicle_id`; unknown `route_id` | 404 "Vehicle not found"; 404 "Route not found" | planned |
-| TC-TRN-08-A08 | `GET /masters/transport-pricing/` with plans for two vehicles; `?vehicle_id=V`; `?billing_cycle=monthly` | Filters apply; active only; ordered by `start_date` descending | planned |
-| TC-TRN-08-A09 | `GET /masters/transport-pricing/dropdown?vehicle_id=V` | `[{id, cycle_name, billing_cycle, amount}]` ordered by `cycle_name`, including expired plans | planned |
-| TC-TRN-08-A10 | Dropdown without `vehicle_id` | 422 | planned |
-| TC-TRN-08-A11 | `GET /{id}` for active, deactivated, unknown, malformed | 200, 200, 404 "Transport pricing not found", 422 | planned |
-| TC-TRN-08-A12 | `PUT` full body with a new amount | 200 | planned |
-| TC-TRN-08-A13 | `PATCH {"start_date":"2027-03-31"}` on a plan whose end is 2027-03-31 | 400 "end_date must be after start_date" | planned |
-| TC-TRN-08-A14 | `PATCH` moving a plan into an overlapping range | 400 overlap message | planned |
-| TC-TRN-08-A15 | `DELETE` P1 then create an overlapping plan | 200 `is_active=false`; the new plan returns 201 | planned |
-| TC-TRN-08-A16 | Two existing overlapping active plans, then a third overlapping both | 500 (single-row lookup raises); documents the known gap | planned |
-| TC-TRN-08-A17 | Role matrix | Admin 2xx; Staff, Teacher, Student, Parent 403 on every endpoint | planned |
-| TC-TRN-08-A18 | Tenant isolation | Tenant B cannot read or list tenant A's plans; same dates and vehicle id from B fail with 404 vehicle | planned |
-| TC-TRN-08-E01 | Web Admin: Add Pricing annual "Annual 2026-27" 12000 | Toast "Pricing \"Annual 2026-27\" created successfully!"; row appears with vehicle, route and amount | planned |
-| TC-TRN-08-E02 | Web: add an overlapping plan | Toast starting "Failed to create pricing:"; no row | planned |
-| TC-TRN-08-E03 | Web: inline-edit Cycle Name and amount | Row updated | planned |
-| TC-TRN-08-E04 | Web: delete a plan | Toast "Pricing deleted successfully!"; row disappears | planned |
-| TC-TRN-08-E05 | Web Staff opens `/transport/pricing` | List call returns 403; no data | planned |
-| TC-TRN-08-E06 | Mobile Admin: Add Pricing with end date before start date | Validation "End date must be after start date" | planned |
-| TC-TRN-08-E07 | Mobile: Add Pricing with valid data | Toast "Pricing created successfully" | planned |
-| TC-TRN-08-E08 | Mobile: delete via "Delete Pricing" | Toast "Pricing deleted successfully" | planned |
+| TC-TRN-08-A01 | Admin `POST /masters/transport-pricing/` for V/R annual "Annual 2026-27", 12000.00, 2026-04-01 to 2027-03-31 | 201; `vehicle_name` and `route_name` populated; `amount` "12000.00" | passing |
+| TC-TRN-08-A02 | Create an overlapping annual V/R plan (2026-12-01 to 2027-06-01) | 400 with message containing "Overlapping pricing exists" and P1's id | passing |
+| TC-TRN-08-A03 | Create the adjacent plan 2027-03-31 to 2028-03-30 | 201 | passing |
+| TC-TRN-08-A04 | Create a monthly V/R plan with P1's dates; a null-route annual plan with P1's dates | 201; 201 | passing |
+| TC-TRN-08-A05 | Create with `end_date == start_date` | 422 | passing |
+| TC-TRN-08-A06 | Create with `billing_cycle:"weekly"`; amount 0; missing `cycle_name` | 422 each | passing |
+| TC-TRN-08-A07 | Create with an unknown `vehicle_id`; unknown `route_id` | 404 "Vehicle not found"; 404 "Route not found" | passing |
+| TC-TRN-08-A08 | `GET /masters/transport-pricing/` with plans for two vehicles; `?vehicle_id=V`; `?billing_cycle=monthly` | Filters apply; active only; ordered by `start_date` descending | passing |
+| TC-TRN-08-A09 | `GET /masters/transport-pricing/dropdown?vehicle_id=V` | `[{id, cycle_name, billing_cycle, amount}]` ordered by `cycle_name`, including expired plans | passing |
+| TC-TRN-08-A10 | Dropdown without `vehicle_id` | 422 | passing |
+| TC-TRN-08-A11 | `GET /{id}` for active, deactivated, unknown, malformed | 200, 200, 404 "Transport pricing not found", 422 | passing |
+| TC-TRN-08-A12 | `PUT` full body with a new amount | 200 | passing |
+| TC-TRN-08-A13 | `PATCH {"start_date":"2027-03-31"}` on a plan whose end is 2027-03-31 | 400 "end_date must be after start_date" | passing |
+| TC-TRN-08-A14 | `PATCH` moving a plan into an overlapping range | 400 overlap message | passing |
+| TC-TRN-08-A15 | `DELETE` P1 then create an overlapping plan | 200 `is_active=false`; the new plan returns 201 | passing |
+| TC-TRN-08-A16 | Two existing overlapping active plans, then a third overlapping both | A second plan starting on the first plan's end date is 201; a third plan overlapping both is 400 | passing |
+| TC-TRN-08-A17 | Role matrix | Admin 2xx; Staff, Teacher, Student, Parent 403 on every endpoint | passing |
+| TC-TRN-08-A18 | Tenant isolation | Tenant B cannot read or list tenant A's plans; same dates and vehicle id from B fail with 404 vehicle | passing |
+
+UI test cases (manual format):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-TRN-08-E01 | P1 | Web | Admin | Vehicle "QA Bus 3" exists (TC-TRN-06-E01 done); Seeded route "Route 2 - Uppal" (4 stops) | 1. Click "Transport" > "Pricing".<br>2. Click "Add Pricing".<br>3. Choose Vehicle "QA Bus 3", Route "Route 2 - Uppal", Billing Cycle "Annual"; enter Cycle Name "QA Annual 2026-27", Amount 13000, Start Date 2026-06-01, End Date 2027-03-31.<br>4. Click "Add Pricing". | Toast "Pricing "QA Annual 2026-27" created successfully!"; the row shows QA Bus 3, Route 2 - Uppal, Annual, Rs 13,000, the dates and Active. | planned |
+| TC-TRN-08-E02 | P2 | Web | Admin | Seeded plan "Annual 2026-27" for School Bus 1 on Route 1 - Kukatpally (2026-06-01 to 2027-03-31) | 1. Open Transport > Pricing and click "Add Pricing".<br>2. Choose Vehicle School Bus 1, Route Route 1 - Kukatpally, Billing Cycle Annual; Cycle Name "QA Overlap", Amount 500, Start Date 2026-12-01, End Date 2027-06-01.<br>3. Click "Add Pricing". | Toast "Failed to create pricing: Overlapping pricing exists for this vehicle/route/billing_cycle (id=<id of the seeded plan>)"; no new row. | planned |
+| TC-TRN-08-E03 | P2 | Web | Admin | Plan "QA Annual 2026-27" exists (TC-TRN-08-E01 done) | 1. Open Transport > Pricing.<br>2. Click the Edit icon on the QA Annual 2026-27 row.<br>3. Change Cycle Name to "QA Annual 26-27" and Amount to 13500, then save. | Toast "Pricing "QA Annual 26-27" updated successfully!"; the row shows the new values. | planned |
+| TC-TRN-08-E04 | P2 | Web | Admin | Plan from TC-TRN-08-E03 exists | 1. Open Transport > Pricing.<br>2. Click the Delete icon on that row.<br>3. In "Delete Row?" click "Delete". | Toast "Pricing deleted successfully!"; the row disappears. | planned |
+| TC-TRN-08-E05 | P2 | Web | Staff | Seeded tenant qa_manual | 1. Sign in as Staff.<br>2. Open /transport/pricing. | "Access Denied" with "You don't have permission to view transport pricing." (Teacher sees the same). | planned |
+| TC-TRN-08-E06 | P3 | Mobile | Admin | Seeded vehicle "School Bus 1" (TS09UA1234, driver Ramesh Yadav) on Route 1 - Kukatpally | 1. Sign in as Admin on mobile.<br>2. Open /transport (the seven-section Transport hub).<br>3. Tap "Pricing", then "Add Pricing".<br>4. Choose Vehicle School Bus 1, Cycle Name "QA Bad Dates", Amount 100, Start Date 2027-03-01, End Date 2027-02-01.<br>5. Tap "Save". | Toast "Validation" with "End date must be after start date"; nothing is saved. | planned |
+| TC-TRN-08-E07 | P2 | Mobile | Admin | Vehicle "QA Bus 3" exists (TC-TRN-06-E01 done) | 1. Open Pricing on mobile and tap "Add Pricing".<br>2. Choose Vehicle QA Bus 3, Billing Cycle Monthly, Cycle Name "QA Monthly", Amount 1200; keep Start Date (today), End Date 2027-03-31.<br>3. Tap "Save". | Toast "Created" with "Pricing created successfully"; the card appears. | planned |
+| TC-TRN-08-E08 | P2 | Mobile | Admin | Plan "QA Monthly" exists (TC-TRN-08-E07 done) | 1. Open Pricing on mobile.<br>2. Delete "QA Monthly" and confirm "Delete Pricing". | Toast "Deleted" with "Pricing deleted successfully"; the card disappears. | planned |
+| TC-TRN-08-E09 | P3 | Web | Admin | Seeded tenant qa_manual | 1. Open Transport > Pricing and click "Add Pricing".<br>2. Enter only Cycle Name "QA No Vehicle" and Amount 100 (no vehicle).<br>3. Click "Add Pricing". | Expected: the dialog blocks the save and names the missing fields. Today the request goes out, the API answers 422, the toast reads "Failed to create pricing: [object Object]" and the dialog closes. | blocked: web pricing dialog has no required-field check and shows 422 details as [object Object] (Known gaps 20) |
 
 Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_transport_pricing_assignment.py (overlap predicate evaluated from the real query WHERE clause).
 
@@ -570,15 +610,15 @@ Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_tr
 **Preconditions**: A student (admission), a trip (F07) and a stop (F05); optionally a pricing plan for the trip's vehicle (F08).
 
 **Steps, web**
-1. Open `/students/studenttransport` (Students > Student Transport; the menu entry is hidden by the sidebar filter, so use the URL or a link). For admin, staff and teacher roles the page "Student Transport" shows the assignments table.
+1. Open `/students/studenttransport` (Students > Student Transport; the menu entry is hidden by the sidebar filter, so use the URL or a link). For admin and staff roles the page "Student Transport" shows the assignments table (empty: "No transport assignments found."). Teacher has no `student_transport` grant and sees "Failed to load transport assignments: Permission not found in database: Teacher cannot list student_transport. Contact administrator to configure permissions."
 2. Search "Search student, route, stop...". Columns S.No., Student, Trip, Route, Stop, Pricing, Fee/Term, Actions (Edit, Delete; visible with update or delete).
-3. "Assign Transport" (needs `student_transport:create`) opens "Assign Transport": "Student", "Trip" (listed as "Trip #<n>"), "Stop" (listed as "#<number> - <name>"; the list contains stops of every route), "Pricing Plan (optional)" (shown only when the chosen trip's vehicle has plans), and "Fee per Term (Rs)" (min 0, step 0.01). Selecting a stop prefills the fee from the stop fee ("Auto-filled from stop fee. You can edit it if needed."); selecting a student prefills it from the student's transport-type fee mapping when one exists ("Auto-loaded from the student's assigned transport fee (...)"); selecting a pricing plan prefills it from the plan amount ("Auto-filled from selected pricing plan..."). The submit button is disabled until trip, stop, fee and (on create) student are set; a fee of 0 or less is not submitted.
+3. "Assign Transport" (needs `student_transport:create`) opens "Assign Transport": "Student" ("Select student..."), "Trip" ("Select trip...", listed as "Trip #<n>", so two trips with the same number look identical; the seeded trips are both "Trip #1"), "Stop" ("Select stop...", listed as "#<number> - <name>", filtered to the chosen trip's route), "Pricing Plan (optional)" (shown only when the chosen trip's vehicle has plans), and "Fee per Term (Rs)" (placeholder "e.g. 1500", min 0, step 0.01); buttons "Cancel" and "Assign". Selecting a stop prefills the fee from the stop fee ("Auto-filled from stop fee. You can edit it if needed."); selecting a student prefills it from the student's transport-type fee mapping when one exists ("Auto-loaded from the student's assigned transport fee (...)"); selecting a pricing plan prefills it from the plan amount ("Auto-filled from selected pricing plan..."). The submit button is disabled until trip, stop, fee and (on create) student are set; a fee of 0 or less is not submitted.
 4. Edit opens "Edit Assignment" and sends only changed fields (trip, stop, fee, pricing). Delete opens "Delete Transport Assignment".
 5. A second, raw-ID screen exists at `/transport/studentTransport` ("Student Transport" with "Add Student Transport": Trip ID, Student ID, Stop ID, Pricing ID, Fee Per Term; hidden from menus).
 
 **Steps, mobile**
-1. `/students/transport` (title "Student Transport Assignments") for non-student roles: "Assign Transport" button, "Filters", search "Search student, route, stop...", list cards with Student, Trip, Stop, "Fee / Term", pricing; "Edit" and "Delete". The form has Student, Trip, Stop (loaded for the trip's route), "Pricing Plan (optional)" and the fee. Validation: "Please select a trip and stop", "Please select a student", "Enter a valid fee amount"; success "Assigned", "Updated", "Removed".
-2. The `/transport` stack hub "Student Transport" screen (title "Student Transport"): "Add Assignment": "Student *", "Trip *", "Stop *" ("Select a trip first"), "Fee Per Term (Rs) *" (placeholder "0"); it has no pricing picker and lists stops of every route. Messages "Student is required", "Trip is required", "Stop is required", "Enter a valid fee amount", "Transport assignment created", "Transport assignment updated", "Transport assignment deleted".
+1. `/students/transport` (title "Student Transport Assignments") for non-student roles: "Assign Transport" button, "Filters", search "Search student, route, stop...", list cards with Student, Trip, Stop, "Fee / Term", pricing; "Edit" and "Delete"; empty "No transport assignments yet". The form "Assign Transport" has Student, Trip, Stop ("Select trip first"), "Pricing Plan (optional)" ("Select trip first") and "Fee per Term (Rs)" (placeholder "0.00"), buttons "Cancel" and "Assign". Validation: "Please select a trip and stop", "Please select a student", "Enter a valid fee amount"; success "Assigned", "Updated", "Removed".
+2. The `/transport` stack hub "Student Transport" screen (title "Student Transport"): "Add Assignment" opens "New Assignment" (buttons "Cancel", "Create"): "Student *", "Trip *", "Stop *" ("Select a trip first"), "Fee Per Term (Rs) *" (placeholder "0"); it has no pricing picker and lists stops of every route. Messages "Student is required", "Trip is required", "Stop is required", "Enter a valid fee amount", "Transport assignment created", "Transport assignment updated", "Transport assignment deleted".
 
 **Expected results**: A `student_transport_assignments` row (not tied to an academic year, no `is_active`, no fee term). Delete removes the row.
 
@@ -615,37 +655,43 @@ Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_tr
 | TC-TRN-09-U08 | PATCH with `trip_id` to a trip the student already has | No duplicate check (no error from the service) | passing |
 | TC-TRN-09-U09 | Web submit guard: fee "0", "-5", "abc", "1500.50" | Blocked, blocked, blocked, submitted as 1500.5 | blocked: submit guard is inline in the web student transport page; needs the helper exported |
 | TC-TRN-09-U10 | Web fee prefill when stop fee 1200, then a student mapping fee 1500 loads | Fee field shows 1500 with the student-source hint | blocked: fee prefill is inline in web/src/pages/students/StudentTransportPage.tsx; needs the helper exported |
-| TC-TRN-09-A01 | Admin `POST /students/student-transport/` student S, trip T, stop P (fees 1200), `fee_per_term` 1200 | 201 with nested student, trip.route, trip.vehicle, stop and `pricing` null; `fee_per_term` 1200.0 | planned |
-| TC-TRN-09-A02 | Create without `fee_per_term` for a stop with fees 1200 | 201; `fee_per_term` 1200.0 | planned |
-| TC-TRN-09-A03 | Create without `fee_per_term` for a stop with no fee | 400 "This stop has no default fee - enter the amount manually" | planned |
-| TC-TRN-09-A04 | Create with `fee_per_term:-1` or `0` | 422 | planned |
-| TC-TRN-09-A05 | Create the same (S, T) again | 422 "Student already has transport assignment for this trip" | planned |
-| TC-TRN-09-A06 | Create for the same student on a second trip | 201 (a student may have several assignments) | planned |
-| TC-TRN-09-A07 | Create with unknown student, trip, stop ids | 404 "Student not found", "Trip not found", "Route stop not found" | planned |
-| TC-TRN-09-A08 | Create with a stop from a different route than the trip | 400 "The selected stop does not belong to the route of the selected trip" | passing (unit) |
-| TC-TRN-09-A09 | Create with an active `pricing_id` | 201; `pricing` has `cycle_name`, `billing_cycle`, `amount`; fee is not taken from the plan | planned |
-| TC-TRN-09-A10 | Create with an inactive or unknown `pricing_id` | 404 "Transport pricing not found or inactive" | planned |
-| TC-TRN-09-A11 | Create with explicit `fee_per_term:0`; then `GET /students/student-transport/` | 422 (0 is rejected everywhere); a stop with fee 0 and no explicit fee gives 400 "no default fee"; no 500 | passing (unit) |
-| TC-TRN-09-A12 | `GET /students/student-transport/` | Array of all assignments for the tenant with nested objects | planned |
-| TC-TRN-09-A13 | `PATCH` `{fee_per_term: 1300}` | 200; fee 1300.0 | planned |
-| TC-TRN-09-A14 | `PATCH {"fee_per_term":0}`; `{"fee_per_term":-5}` | 422 each | planned |
-| TC-TRN-09-A15 | `PATCH` to an unknown trip or stop; unknown assignment id | 404 "Trip not found" or "Route stop not found"; 404 "Transport assignment not found" | planned |
-| TC-TRN-09-A16 | `PATCH {"pricing_id": null}` | 200; pricing cleared | planned |
-| TC-TRN-09-A17 | `DELETE` an assignment then `GET /student/{id}` | 204; the student has no assignments (200 with an empty list) | planned |
-| TC-TRN-09-A18 | `DELETE` unknown id | 404 "Transport assignment not found" | planned |
-| TC-TRN-09-A19 | Role matrix on POST, GET `/`, PATCH, DELETE | Admin 2xx; Staff 201 POST, 200 GET and PATCH, 403 DELETE; Teacher 403 all; Student, Parent 403 all | planned |
-| TC-TRN-09-A20 | Tenant isolation | Assignment of tenant A absent from tenant B's list; tenant B cannot reference tenant A's student, trip or stop ids (404) | planned |
-| TC-TRN-09-E01 | Web Admin: Assign Transport (student, trip, stop, fee 1200) | Toast "Student transport created!"; row shows student, route, stop and 1,200 | planned |
-| TC-TRN-09-E02 | Web: pick a stop with a fee | Fee field auto-fills with the stop fee and the green hint appears | planned |
-| TC-TRN-09-E03 | Web: choose a trip whose vehicle has a pricing plan | "Pricing Plan (optional)" appears; choosing a plan fills the fee | planned |
-| TC-TRN-09-E04 | Web: assign the same student to the same trip | Toast "Failed to create student transport"; no second row | planned |
-| TC-TRN-09-E05 | Web: edit fee and stop | Row shows the new values | planned |
-| TC-TRN-09-E06 | Web: delete via "Delete Transport Assignment" | Toast "Student transport deleted!"; row removed | planned |
-| TC-TRN-09-E07 | Web Staff | "Assign Transport" and Edit visible; Delete hidden | planned |
-| TC-TRN-09-E08 | Mobile Admin (`/students/transport`): Assign Transport with student, trip, stop, pricing plan | Toast "Assigned"; card shows plan name and fee | planned |
-| TC-TRN-09-E09 | Mobile (hub screen): Add Assignment with fee 0 | Rejected by the form (fee must be greater than 0) | planned |
-| TC-TRN-09-E10 | Mobile: Assign without selecting a student | Validation "Please select a student" | planned |
-| TC-TRN-09-E11 | Mobile: remove an assignment | Toast "Removed" | planned |
+| TC-TRN-09-A01 | Admin `POST /students/student-transport/` student S, trip T, stop P (fees 1200), `fee_per_term` 1200 | 201 with nested student, trip.route, trip.vehicle, stop and `pricing` null; `fee_per_term` 1200.0 | passing |
+| TC-TRN-09-A02 | Create without `fee_per_term` for a stop with fees 1200 | 201; `fee_per_term` 1200.0 | passing |
+| TC-TRN-09-A03 | Create without `fee_per_term` for a stop with no fee | 400 "This stop has no default fee - enter the amount manually" | passing |
+| TC-TRN-09-A04 | Create with `fee_per_term:-1` or `0` | 422 | passing |
+| TC-TRN-09-A05 | Create the same (S, T) again | 422 "Student already has transport assignment for this trip" | passing |
+| TC-TRN-09-A06 | Create for the same student on a second trip | 201 (a student may have several assignments) | passing |
+| TC-TRN-09-A07 | Create with unknown student, trip, stop ids | 404 "Student not found", "Trip not found", "Route stop not found" | passing |
+| TC-TRN-09-A08 | Create with a stop from a different route than the trip | 400 "The selected stop does not belong to the route of the selected trip" | passing |
+| TC-TRN-09-A09 | Create with an active `pricing_id` | 201; `pricing` has `cycle_name`, `billing_cycle`, `amount`; fee is not taken from the plan | passing |
+| TC-TRN-09-A10 | Create with an inactive or unknown `pricing_id` | 404 "Transport pricing not found or inactive" | passing |
+| TC-TRN-09-A11 | Create with explicit `fee_per_term:0`; then `GET /students/student-transport/` | 422 (0 is rejected everywhere); a stop with fee 0 and no explicit fee gives 400 "no default fee"; no 500 | passing |
+| TC-TRN-09-A12 | `GET /students/student-transport/` | Array of all assignments for the tenant with nested objects | passing |
+| TC-TRN-09-A13 | `PATCH` `{fee_per_term: 1300}` | 200; fee 1300.0 | passing |
+| TC-TRN-09-A14 | `PATCH {"fee_per_term":0}`; `{"fee_per_term":-5}` | 422 each | passing |
+| TC-TRN-09-A15 | `PATCH` to an unknown trip or stop; unknown assignment id | 404 "Trip not found" or "Route stop not found"; 404 "Transport assignment not found" | passing |
+| TC-TRN-09-A16 | `PATCH {"pricing_id": null}` | 200; pricing cleared | passing |
+| TC-TRN-09-A17 | `DELETE` an assignment then `GET /student/{id}` | 204; the student has no assignments (200 with an empty list) | passing |
+| TC-TRN-09-A18 | `DELETE` unknown id | 404 "Transport assignment not found" | passing |
+| TC-TRN-09-A19 | Role matrix on POST, GET `/`, PATCH, DELETE | Admin 2xx; Staff 201 POST, 200 GET and PATCH, 403 DELETE; Teacher 403 all; Student, Parent 403 all | passing |
+| TC-TRN-09-A20 | Tenant isolation | Assignment of tenant A absent from tenant B's list; tenant B cannot reference tenant A's student, trip or stop ids (404) | passing |
+
+UI test cases (manual format):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-TRN-09-E01 | P1 | Web | Admin | Seeded student Ananya Reddy (Nursery), who has no transport assignment; Seeded route "Route 1 - Kukatpally" (5 stops, Kukatpally Bus Stand to Demo School Campus) | 1. Open /students/studenttransport (page "Student Transport").<br>2. Click "Assign Transport".<br>3. Choose Student "Ananya Reddy".<br>4. Choose the "Trip #1" whose Stop list shows Route 1 stops; choose Stop "#2 - KPHB Phase 1".<br>5. Keep Fee per Term 1200 (auto-filled) and click "Assign". | Toast "Student transport created!"; the row shows Ananya Reddy, Trip #1, Route 1 - Kukatpally, KPHB Phase 1 and Fee / Term 1,200. | planned |
+| TC-TRN-09-E02 | P2 | Web | Admin | Seeded student Ananya Reddy (Nursery), who has no transport assignment | 1. Open /students/studenttransport and click "Assign Transport".<br>2. Choose the Route 2 trip ("Trip #1" whose stops are Uppal Ring Road and so on).<br>3. Choose Stop "#2 - Habsiguda". | Fee per Term is filled with 1300 and the hint "Auto-filled from stop fee. You can edit it if needed." appears. | planned |
+| TC-TRN-09-E03 | P2 | Web | Admin | Seeded student Ananya Reddy (Nursery), who has no transport assignment; seeded plans for School Bus 2 (Annual 2026-27 14000, Half Yearly 2026-27 7500) | 1. Open the Assign Transport dialog.<br>2. Choose the Route 2 trip.<br>3. Open "Pricing Plan (optional)" and choose "Half Yearly 2026-27". | "Pricing Plan (optional)" appears only after the trip is chosen; choosing the plan sets Fee per Term to 7500 with the pricing-plan hint. | planned |
+| TC-TRN-09-E04 | P2 | Web | Admin | Seeded student Karthik Reddy (001), assigned to Route 1 - Kukatpally, stop Kukatpally Bus Stand, fee 4000 | 1. Open the Assign Transport dialog.<br>2. Choose Student Karthik Reddy, the Route 1 trip and Stop "#3 - JNTU Junction", fee 1000.<br>3. Click "Assign". | Toast "Failed to create student transport"; no second row for Karthik (same student and trip). | planned |
+| TC-TRN-09-E05 | P2 | Web | Admin | Assignment from TC-TRN-09-E01 exists | 1. Open /students/studenttransport.<br>2. Click Edit on the Ananya Reddy row.<br>3. In "Edit Assignment" choose Stop "#3 - JNTU Junction" and Fee 1100, then save. | Toast "Student transport updated!"; the row shows JNTU Junction and 1,100. | planned |
+| TC-TRN-09-E06 | P2 | Web | Admin | Assignment from TC-TRN-09-E01 exists | 1. Open /students/studenttransport.<br>2. Click Delete on the Ananya Reddy row.<br>3. Confirm in "Delete Transport Assignment". | Toast "Student transport deleted!"; the row is removed. | planned |
+| TC-TRN-09-E07 | P2 | Web | Staff | Seeded student Karthik Reddy (001), assigned to Route 1 - Kukatpally, stop Kukatpally Bus Stand, fee 4000 | 1. Sign in as Staff.<br>2. Open /students/studenttransport. | The 8 seeded assignments are listed; "Assign Transport" and Edit are shown; Delete is hidden. | planned |
+| TC-TRN-09-E08 | P1 | Mobile | Admin | Seeded student Ananya Reddy (Nursery), who has no transport assignment | 1. Sign in as Admin on mobile.<br>2. Open /students/transport ("Student Transport Assignments").<br>3. Tap "Assign Transport": Student Ananya Reddy, the Route 2 trip, Stop "#3 - Tarnaka", Pricing Plan "Annual 2026-27".<br>4. Enter Fee per Term 1100 and tap "Assign". | Toast "Assigned" with "Transport assignment created successfully"; the card shows the trip, Tarnaka, the plan and Fee / Term 1100. | planned |
+| TC-TRN-09-E09 | P3 | Mobile | Admin | Seeded student Ananya Reddy (Nursery), who has no transport assignment | 1. Open /transport (the seven-section Transport hub).<br>2. Tap "Student Transport", then "Add Assignment" (modal "New Assignment").<br>3. Choose Student Ananya Reddy, a trip and a stop; enter Fee Per Term (Rs) * 0.<br>4. Tap "Create". | Toast "Error" with "Enter a valid fee amount"; nothing is saved. | planned |
+| TC-TRN-09-E10 | P3 | Mobile | Admin | Seeded tenant qa_manual | 1. Open /students/transport and tap "Assign Transport".<br>2. Choose a trip and a stop but no student.<br>3. Tap "Assign". | Toast "Validation" with "Please select a student". | planned |
+| TC-TRN-09-E11 | P2 | Mobile | Admin | Assignment from TC-TRN-09-E08 exists | 1. Open /students/transport.<br>2. Tap "Delete" on the Ananya Reddy card and confirm. | Toast "Removed" with "Transport assignment removed"; the card disappears. | planned |
+| TC-TRN-09-E12 | P3 | Web | Teacher | Seeded tenant qa_manual | 1. Sign in as Teacher.<br>2. Open /students/studenttransport. | Message "Failed to load transport assignments: Permission not found in database: Teacher cannot list student_transport. Contact administrator to configure permissions."; no table. | planned |
 
 Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_transport_pricing_assignment.py.
 
@@ -660,12 +706,12 @@ Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_tr
 **Preconditions**: The student has at least one assignment (F09). For a parent, a student-parent link.
 
 **Steps, web**
-1. A Student opens `/students/studenttransport`: page "My Transport" with a card "Transport Assignment" showing Route, Timings, Vehicle, Pickup Stop, Pickup Time, Drop Time, Pricing Plan and Fee per Term. If none exists the card says so.
-2. A Parent sees "Children's Transport" with "Select Child" ("Child" dropdown, placeholder "Select child"); choosing a child shows a card titled "<name>'s Transport".
+1. A Student opens `/students/studenttransport`: page "My Transport" with a card "Transport Assignment" showing Route, Timings, Vehicle, Pickup Stop, Pickup Time, Drop Time, Pricing Plan and Fee per Term. If none exists the card says "No transport assignment found."
+2. A Parent sees "Children's Transport" with "Select Child" ("Child" dropdown, placeholder "Select child"); choosing a child shows a card titled "<name>'s Transport". A parent login with no linked child sees "Session outdated. Please log out and log back in."
 3. The sidebar and Students hub hide the "Student Transport" menu item, so navigation is by URL.
 
 **Steps, mobile**
-1. Student and parent roles: Transport tab shows "My Transport" and "View My Transport" (opens `/transport/student-transport`, title "My Transport" for a student or "Child Transport" for a parent, using the selected child). The `/students/transport` screen also supports these roles.
+1. Student and parent roles have no Transport tab or Dashboard module; the drawer entry Students > Student Transport opens `/transport/student-transport` (title "My Transport" for a student, "Child Transport" for a parent, using the child selected in the header; empty "No transport assignment found." or "Select a student from the header"). The `/students/transport` screen also supports these roles ("My Transport", "No transport assignment found").
 
 **Expected results**: Read-only display from `GET /students/student-transport/student/{id}`.
 
@@ -690,22 +736,27 @@ Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_tr
 | TC-TRN-10-U02 | Guard with role "Parent" and an unlinked child | 403 "You can only view transport for your own children" | passing |
 | TC-TRN-10-U03 | Guard with role "student" (lowercase) | Falls to the permission check (403 without `student_transport:read`) | passing |
 | TC-TRN-10-U04 | `get_transport_by_student_id` for a student without assignments | Empty list | passing |
-| TC-TRN-10-A01 | Student calls `GET /student/{own id}` after an assignment exists | 200 with the assignment, nested route, vehicle, stop | planned |
-| TC-TRN-10-A02 | Student calls it with another student's id | 403 | planned |
-| TC-TRN-10-A03 | Student with no assignment calls it with their own id | 200 with an empty list | planned |
-| TC-TRN-10-A04 | Parent calls it for a linked child | 200 | planned |
-| TC-TRN-10-A05 | Parent calls it for an unlinked student | 403 | planned |
-| TC-TRN-10-A06 | Admin and Staff call it for any student | 200 | planned |
-| TC-TRN-10-A07 | Teacher calls it | 403 (no `student_transport:read`) | planned |
-| TC-TRN-10-A08 | Unknown student id as Admin | 404 "Student not found" | planned |
-| TC-TRN-10-A09 | No token | 401 | planned |
-| TC-TRN-10-A10 | Tenant isolation: tenant B Admin requests tenant A's student id | 404 "Student not found" | planned |
-| TC-TRN-10-E01 | Web Student opens `/students/studenttransport` | "My Transport" card with Route, Timings, Vehicle, Pickup Stop, Pickup Time, Drop Time, Fee per Term | planned |
-| TC-TRN-10-E02 | Web Student with no assignment | Empty or "no assignment" message; no error toast loop | planned |
-| TC-TRN-10-E03 | Web Parent with two children | "Select Child" lists both; choosing one shows "<name>'s Transport" | planned |
-| TC-TRN-10-E04 | Web Student: look for the "Student Transport" sidebar item | Not present (hidden by the sidebar filter); the URL works | planned |
-| TC-TRN-10-E05 | Mobile Student: Transport tab, "View My Transport" | "My Transport" shows route, stop, timings, fee | planned |
-| TC-TRN-10-E06 | Mobile Parent: switch the selected child, open "View My Transport" | "Child Transport" shows the selected child's assignment | planned |
+| TC-TRN-10-A01 | Student calls `GET /student/{own id}` after an assignment exists | 200 with the assignment, nested route, vehicle, stop | passing |
+| TC-TRN-10-A02 | Student calls it with another student's id | 403 | passing |
+| TC-TRN-10-A03 | Student with no assignment calls it with their own id | 200 with an empty list | passing |
+| TC-TRN-10-A04 | Parent calls it for a linked child | 200 | passing |
+| TC-TRN-10-A05 | Parent calls it for an unlinked student | 403 | passing |
+| TC-TRN-10-A06 | Admin and Staff call it for any student | 200 | passing |
+| TC-TRN-10-A07 | Teacher calls it | 403 (no `student_transport:read`) | passing |
+| TC-TRN-10-A08 | Unknown student id as Admin | 404 "Student not found" | passing |
+| TC-TRN-10-A09 | No token | 401 | passing |
+| TC-TRN-10-A10 | Tenant isolation: tenant B Admin requests tenant A's student id | 404 "Student not found" | passing |
+
+UI test cases (manual format):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-TRN-10-E01 | P1 | Web | Student | Seeded student Karthik Reddy (001), assigned to Route 1 - Kukatpally, stop Kukatpally Bus Stand, fee 4000; first sign-in with the seeded temporary password asks for a new password | 1. Sign in on web as student 001.<br>2. Open /students/studenttransport. | Page "My Transport" with the card "Transport Assignment": Route 1 - Kukatpally, Vehicle School Bus 1, Pickup Stop Kukatpally Bus Stand, Pickup Time 07:00, Drop Time 17:15, Fee per Term 4000. | planned |
+| TC-TRN-10-E02 | P3 | Web | Student | Seeded student Ananya Reddy (Nursery), who has no transport assignment (student login is her admission number); first sign-in with the seeded temporary password asks for a new password | 1. Sign in on web as that student.<br>2. Open /students/studenttransport. | "My Transport" card "Transport Assignment" with "No transport assignment found."; no repeated error toasts. | planned |
+| TC-TRN-10-E03 | P2 | Web | Parent | Seeded parent of Harsha Raju (004, Route 2 - Uppal, Uppal Ring Road) and Tanvi Raju (005, Route 1 - Kukatpally, KPHB Phase 1); first sign-in with the seeded temporary password asks for a new password | 1. Sign in on web as that parent.<br>2. Open /students/studenttransport.<br>3. In "Select Child" choose Harsha, then Tanvi. | "Children's Transport"; the Child dropdown lists both; "Harsha's Transport" shows Route 2 - Uppal, Uppal Ring Road; "Tanvi's Transport" shows Route 1 - Kukatpally, KPHB Phase 1. (A parent with no linked child sees "Session outdated. Please log out and log back in.") | planned |
+| TC-TRN-10-E04 | P3 | Web | Student | Seeded student Karthik Reddy (001), assigned to Route 1 - Kukatpally, stop Kukatpally Bus Stand, fee 4000; first sign-in with the seeded temporary password asks for a new password | 1. Sign in on web as student 001.<br>2. Expand Students in the sidebar.<br>3. Open /students/studenttransport by URL. | No "Student Transport" item is shown (hidden by the sidebar filter); the URL opens "My Transport". | planned |
+| TC-TRN-10-E05 | P1 | Mobile | Student | Seeded student Karthik Reddy (001), assigned to Route 1 - Kukatpally, stop Kukatpally Bus Stand, fee 4000; first sign-in with the seeded temporary password asks for a new password | 1. Sign in on mobile as student 001.<br>2. Open the drawer and choose Students > Student Transport (/transport/student-transport). | "My Transport" shows Route 1 - Kukatpally, Kukatpally Bus Stand, the timings and fee 4000. | planned |
+| TC-TRN-10-E06 | P2 | Mobile | Parent | Seeded parent of Harsha Raju (004, Route 2 - Uppal, Uppal Ring Road) and Tanvi Raju (005, Route 1 - Kukatpally, KPHB Phase 1); first sign-in with the seeded temporary password asks for a new password | 1. Sign in on mobile as that parent.<br>2. Select Tanvi in the header student switcher.<br>3. Open the drawer and choose Students > Student Transport.<br>4. Switch to Harsha. | "Child Transport" shows Tanvi's assignment (Route 1 - Kukatpally, KPHB Phase 1), then Harsha's (Route 2 - Uppal, Uppal Ring Road). Without a selected child it says "Select a student from the header". | planned |
 
 Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_transport_pricing_assignment.py.
 
@@ -721,11 +772,11 @@ Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_tr
 
 **Steps, web**
 1. Open `/transport/studentTrips` (hidden from the demo menu). Title "Student Transport Assignments", search "Search by name or admission number...", status filter ("All Status", "Active", "Inactive"; "Select Status").
-2. "Add Assignment": "Trip" ("Select Trip"), "Student" ("Select Student"), "Stop" ("Select Stop"; stops of every route), "Fee Term" ("Select Fee Term"), "Fee Per Term". Columns Trip, Student, Stop, Fee Term, Fee Per Term, Active.
+2. "Add Assignment" opens "Add Assignment": "Trip" ("Select Trip"), "Student" ("Select Student"), "Stop" ("Select Stop"; stops of every route), "Fee Term" ("Select Fee Term"), "Fee Per Term", buttons "Cancel" and "Add Assignment". Columns S.No., Trip, Student, Stop, Fee Term, Fee Per Term, Active, Actions; "Export". Toasts "Student trip created!", "Student trip updated!", "Failed to update student trip".
 3. The request sends `fee_term_id`, which the API ignores. The "Active" column reads a field that does not exist. Editing calls `PUT /students/student-transport/{id}`, which does not exist.
 
 **Steps, mobile**
-1. `/transport` stack hub "Student Trips" (title "Student Transport Assignments"): "Add New", search "Search by name or admission number...", status filter "Filter by status", "Select student", "Select trip", "Fee Per Term *" (placeholder "Enter amount"). Messages "Student transport assignment created successfully", "...updated successfully", "...deleted successfully", "Fee per term must be a positive number" and the required-field errors.
+1. `/transport` stack hub "Student Trips" (title "Student Transport Assignments"): "Add New" opens "Add Transport Assignment" with "Trip *" ("Select trip"), "Student *" ("Select student"), "Stop *" ("Select a trip first"), "Fee Per Term *" (placeholder "Enter amount"), buttons "Cancel" and "Create"; search "Search by name or admission number...", status filter "Filter by status". Messages "Student transport assignment created successfully", "...updated successfully", "...deleted successfully", "Fee per term must be a positive number" and the required-field errors.
 
 **Expected results**: Create, list and delete work against the student-transport endpoints; edit from the web fails; the status filter has no effect (no `is_active`).
 
@@ -746,16 +797,21 @@ Implemented in (phase 1 unit tests): backend/tests/unit/transport/test_phase1_tr
 |---|---|---|---|
 | TC-TRN-11-U01 | Web wrapper `updateStudentTrip(id, body)` | Targets `PUT /students/student-transport/{id}` (documents the non-routed call) | passing |
 | TC-TRN-11-U02 | Status filter predicate on rows without `is_active` | "Active" filter returns no rows; "Inactive" returns all | blocked: status filter predicate is inline in the web student trips page; needs the helper exported |
-| TC-TRN-11-A01 | `POST /students/student-transport/` with an extra `fee_term_id` | 201; `fee_term_id` absent from the response (silently ignored) | planned |
-| TC-TRN-11-A02 | `PUT /students/student-transport/{id}` | 405 | planned |
-| TC-TRN-11-A03 | `GET /students/student-transport/{id}` (single get) | 405 (only PATCH and DELETE exist on that path) | planned |
-| TC-TRN-11-A04 | `GET /student-trips/` and `/api/v1/student-trips/` | 404 | planned |
-| TC-TRN-11-A05 | `PATCH` and `DELETE` through the same screens' paths | As F09 | planned |
-| TC-TRN-11-E01 | Web Admin: open `/transport/studentTrips`, Add Assignment with trip, student, stop, fee | Row created; Active column shows inactive | planned |
-| TC-TRN-11-E02 | Web: edit a row and save | Fails with the hook's error toast ("Failed to update student trip") because the PUT is not routed | planned |
-| TC-TRN-11-E03 | Web: use the status filter "Active" | No rows (field missing) | planned |
-| TC-TRN-11-E04 | Mobile Admin: Add New with student, trip and fee 1500 | Toast "Student transport assignment created successfully" | planned |
-| TC-TRN-11-E05 | Mobile: Add New with fee 0 | Error "Fee per term must be a positive number" | planned |
+| TC-TRN-11-A01 | `POST /students/student-transport/` with an extra `fee_term_id` | 201; `fee_term_id` absent from the response (silently ignored) | passing |
+| TC-TRN-11-A02 | `PUT /students/student-transport/{id}` | 405 | passing |
+| TC-TRN-11-A03 | `GET /students/student-transport/{id}` (single get) | 405 (only PATCH and DELETE exist on that path) | passing |
+| TC-TRN-11-A04 | `GET /student-trips/` and `/api/v1/student-trips/` | 404 | passing |
+| TC-TRN-11-A05 | `PATCH` and `DELETE` through the same screens' paths | As F09 | passing |
+
+UI test cases (manual format):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-TRN-11-E01 | P1 | Web | Admin | Seeded student Ananya Reddy (Nursery), who has no transport assignment; Seeded route "Route 2 - Uppal" (4 stops) | 1. Open /transport/studentTrips ("Student Transport Assignments").<br>2. Click "Add Assignment".<br>3. Choose a Trip (Route 2), Student Ananya Reddy, Stop Habsiguda; leave Fee Term; enter Fee Per Term 1300.<br>4. Click "Add Assignment". | Toast "Student trip created!"; the row appears and its Active column shows inactive (field missing). | planned |
+| TC-TRN-11-E02 | P2 | Web | Admin | Assignment from TC-TRN-11-E01 exists | 1. Open /transport/studentTrips.<br>2. Edit the Ananya Reddy row (fee 1350) and save. | Expected: the change is saved. Today the save calls PUT /students/student-transport/{id} (405) and shows "Failed to update student trip". | blocked: web Student Trips edit uses a non-routed PUT (Known gaps 11) |
+| TC-TRN-11-E03 | P3 | Web | Admin | Seeded student Karthik Reddy (001), assigned to Route 1 - Kukatpally, stop Kukatpally Bus Stand, fee 4000 | 1. Open /transport/studentTrips.<br>2. Choose "Active" in the status filter. | No rows are listed (is_active does not exist); "Inactive" lists all. | planned |
+| TC-TRN-11-E04 | P2 | Mobile | Admin | Seeded student Ananya Reddy (Nursery), who has no transport assignment | 1. Sign in as Admin on mobile.<br>2. Open /transport (the seven-section Transport hub).<br>3. Tap "Student Trips", then "Add New" (modal "Add Transport Assignment").<br>4. Choose Trip (Route 1), Student Ananya Reddy, Stop KPHB Phase 1; Fee Per Term * 1500.<br>5. Tap "Create". | Toast "Student transport assignment created successfully"; the card appears. Remove it afterwards (TC-TRN-09-E11 style). | planned |
+| TC-TRN-11-E05 | P3 | Mobile | Admin | Seeded student Ananya Reddy (Nursery), who has no transport assignment | 1. Open Student Trips on mobile and tap "Add New".<br>2. Choose trip, student and stop; enter Fee Per Term 0.<br>3. Tap "Create". | Toast "Error" with "Fee per term must be a positive number". | planned |
 
 Implemented in (phase 1 unit tests): web/src/__tests__/transport/studentTripsApi.test.ts.
 
@@ -796,12 +852,17 @@ Implemented in (phase 1 unit tests): web/src/__tests__/transport/studentTripsApi
 | TC-TRN-12-U01 | Matcher over fee types "Bus Fee", "Tuition", category "Transport Charges" | "Bus Fee" and the transport category match; "Tuition" does not | blocked: fee-type matcher and first-match selection are inline in web/src/pages/students/StudentTransportPage.tsx; needs the helper exported |
 | TC-TRN-12-U02 | Mapping list [Tuition 5000, Bus Fee 1500] | Selected transport fee is 1500 | blocked: fee-type matcher and first-match selection are inline in web/src/pages/students/StudentTransportPage.tsx; needs the helper exported |
 | TC-TRN-12-U03 | Mapping list with no transport-like type | `transportFee` is null; field stays as the stop or manual value | blocked: fee-type matcher and first-match selection are inline in web/src/pages/students/StudentTransportPage.tsx; needs the helper exported |
-| TC-TRN-12-A01 | Create an assignment with fee 1200; read `GET /fee/` student mappings and fee transactions for the student | No new mapping or transaction exists | planned |
-| TC-TRN-12-A02 | Delete the assignment; repeat the fee reads | Fee data unchanged | planned |
-| TC-TRN-12-A03 | Fee collection summary report before and after creating the assignment (`GET /reports/fees/collection-summary`) | Identical totals | planned |
-| TC-TRN-12-A04 | `GET /students/student-transport/` after PATCH fee to 1300 | `fee_per_term` 1300.0 only here | planned |
-| TC-TRN-12-E01 | Web Admin: select a student with a "Bus Fee" mapping of 1500 in Assign Transport | Fee field prefilled 1500 with the student-source hint | planned |
-| TC-TRN-12-E02 | Web Admin: assign transport, then open the student in Fee Collection | No transport charge appears unless separately mapped | planned |
+| TC-TRN-12-A01 | Create an assignment with fee 1200; read `GET /fee/` student mappings and fee transactions for the student | No new mapping or transaction exists | passing |
+| TC-TRN-12-A02 | Delete the assignment; repeat the fee reads | Fee data unchanged | passing |
+| TC-TRN-12-A03 | Fee collection summary report before and after creating the assignment (`GET /reports/fees/collection-summary`) | Identical totals | passing |
+| TC-TRN-12-A04 | `GET /students/student-transport/` after PATCH fee to 1300 | `fee_per_term` 1300.0 only here | passing |
+
+UI test cases (manual format):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-TRN-12-E01 | P1 | Web | Admin | Seeded student Ananya Reddy (Nursery), who has no transport assignment; she has a fee mapping whose type or category name contains Transport or Bus (none is seeded: add one in Fee first) | 1. Open /students/studenttransport and click "Assign Transport".<br>2. Choose Student Ananya Reddy. | Fee per Term is prefilled with the mapping's total fee and the hint "Auto-loaded from the student's assigned transport fee (...)" appears. | planned |
+| TC-TRN-12-E02 | P2 | Web | Admin | Assignment from TC-TRN-09-E01 exists | 1. Click "Fee" > "Fee Collection" and open Ananya Reddy.<br>2. Compare her fee lines with those before TC-TRN-09-E01. | No transport charge, mapping or term amount was added by the assignment. | planned |
 
 ---
 
@@ -827,3 +888,6 @@ Differences between `docs/modules/transport.md` (or the UI) and the code, plus d
 16. No capacity field, no stop-in-route validation, no GPS or trip logs, and no fee integration (F12). The `student_trips` table is unused.
 17. Mobile `/students/transport` and the web assign dialog use different fee prefill rules (mobile has no student-mapping prefill); the hub screen on mobile has no pricing picker.
 18. Role comparisons in the student-transport read are exact strings (`Student`, `Parent`); a differently spelled role takes the permission path and fails with 403.
+19. Web Student Transport trip options are labelled only "Trip #<n>"; trips with the same number (both seeded trips are 1) cannot be told apart until the stop list loads.
+20. Web form checks seen 2026-10-07: Add Trip sends `driver_id: ""` when no driver is chosen (422, toast "[object Object]"); Add Pricing sends without a vehicle (422, toast "Failed to create pricing: [object Object]", dialog closes); Add Stop does not enforce "Up Journey Time *". The Teacher role's menu lists Students > Student Transport, which only shows a permission error.
+21. Mobile Vehicles screen showed "No Vehicles Found" for Teacher on 2026-10-07 although `GET /masters/vehicles/` returns the vehicles for that role (Admin sees them).

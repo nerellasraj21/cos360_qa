@@ -2,7 +2,7 @@
 
 How the COS360 platform is set up and administered: the platform super admin who bootstraps the system, signs in, manages plans and creates schools (tenants); the default roles, permissions and menus each new school receives; the tenant administrator who manages school settings, user accounts, roles and permissions; and the cross-tenant rules that keep one school's data away from another. Tenants share one database and one schema, separated by `tenant_id` and row-level security. Tenant-user sign-in, profiles and sessions are in `docs/features/auth.md` (AUTH). Module rules and gotchas: `docs/modules/tenants-and-admin.md`; system design: `docs/architecture.md`, `docs/permissions.md`. Conventions and test case IDs: `docs/testing/strategy.md`, `docs/features/README.md`.
 
-_Last verified against code: 2026-10-02_
+_Last verified against code: 2026-10-07_
 
 ## Roles
 
@@ -10,13 +10,15 @@ _Last verified against code: 2026-10-02_
 |---|---|
 | Super admin (platform) | Account in `public.super_admin_users`, token with `user_type: "super_admin"`. Bootstraps the platform, manages super admin accounts, plans, plan resources, tenants (create, activate or deactivate, change plan), reads any tenant's users, students, stats, roles, reports and adds role permissions there, checks system health. No web or mobile screen works for it |
 | Admin | Tenant administrator. Seeded with every action of the tenant's plan plus `role_management:*`. Manages school settings, user accounts, custom roles and role permissions, menus and the seeding endpoint |
-| Staff | No access to any feature of this module (all admin endpoints answer 403), except that `GET /admin/role-mgmt/roles/` answers any authenticated user |
+| Staff | No access to any feature of this module (all admin endpoints answer 403, including `GET /admin/role-mgmt/roles/`, which needs `role_management:list`) |
 | Teacher | Same as Staff |
 | Student | Same as Staff |
 | Parent | Same as Staff |
 | Custom roles | Can be given any `resource:action` through role permission management; no seed |
 
 Test fixtures used below: the QA tenant `qa_school` provisioned from the `Full` plan with the demo menu catalog (70 menus), one QA login per role and one QA super admin (credentials from `backend/.env.test`, never written in documents), a second tenant `qa_school_b` created by the test setup through `POST /super_admin/system/tenants/`, and a plan `Lite` created by the tests (resources `academic_years:[read,list]` and `students:[list]`, one plan menu `/dashboard`). "Header" means the `cschema` request header. Counts that depend on the permission catalog (`permission_catalog.py`) are stated for the catalog at the verification date. Menu catalog and plan-menu rows have no delete endpoint; tests that create them remove them directly in `cos360_test`.
+
+UI test cases (the 8-column tables) run on the manual-test tenant `qa_manual` (`docs/testing/test-environment.md`): web started with `VITE_DEFAULT_TENANT=qa_manual` on `http://localhost:5174`, mobile with the organisation `qa_manual`. It has the `Full` plan and demo menu catalog, active year 2026-2027, only the five system roles, the QA role logins (`qa_admin`, `qa_staff`, `qa_teacher`, `qa_student`, `qa_parent`; not linked to staff, student or parent records), 30 seeded students with parent logins (for example Karthik Reddy 001, Advik Mehta 002, Saanvi Iyer 003, Harsha Raju 004, Tanvi Raju 005) and 9 seeded staff (for example Lakshmi Narayana Rao, Sunitha Reddy, Venkatesh Kumar). Seeded logins keep the temporary password until their first sign-in (AUTH F04). Data a case creates uses names starting with "QA ".
 
 ## Feature index
 
@@ -89,9 +91,9 @@ The decision order in `initialize_super_admin_system` (password setting, existin
 | TC-TEN-01-U03 | `check_super_admin_status` with both tables and 1 user; with only `super_admin_users`; with none | `initialized`, ready true; `not_initialized`, missing `["super_admin_audit"]`, ready false; `not_initialized`, both missing, count 0 | passing |
 | TC-TEN-01-A01 | `GET /super_admin/setup/status` on the QA database, no token and no header | 200; `system_status` "initialized"; `tables_exist` `["super_admin_audit","super_admin_users"]`; `missing_tables` `[]`; `super_admin_count` at least 1; `ready_for_login` true | passing |
 | TC-TEN-01-A02 | `POST /super_admin/setup/initialize` with the environment password unset (test app configured without it) | 400 "Set SUPER_ADMIN_INITIAL_PASSWORD in the server environment before running setup" | passing |
-| TC-TEN-01-A03 | `POST /super_admin/setup/initialize` with the password set while the QA super admin exists | 409 "Super Admin system is already initialized" | blocked: the test API runs without SUPER_ADMIN_INITIAL_PASSWORD, so the 409 branch is unreachable and the server cannot be restarted |
-| TC-TEN-01-A04 | `POST /super_admin/setup/initialize` against an empty throwaway database (no super admin rows, app role as in production) | per code 201 with `initial_credentials.username` "superadmin", `email` "superadmin@cos360.com", `password` equal to the environment value, `login_endpoint` "POST /api/v1/super_admin/auth/login"; if the app role lacks DDL rights the result is 500 "Failed to initialize Super Admin system: ..." and is recorded as a known gap | blocked: needs an empty throwaway database and the creation of a super admin, which the task forbids |
-| TC-TEN-01-A05 | After A04, log in as `superadmin` | 200; the database row has `requires_password_change` true | blocked: depends on TC-TEN-01-A04 (needs the creation of a super admin) |
+| TC-TEN-01-A03 | `POST /super_admin/setup/initialize` with the password set while the QA super admin exists | 409 "Super Admin system is already initialized" | skipped: blocked: the test API runs without SUPER_ADMIN_INITIAL_PASSWORD, so the 409 branch is unreachable and the serv... |
+| TC-TEN-01-A04 | `POST /super_admin/setup/initialize` against an empty throwaway database (no super admin rows, app role as in production) | per code 201 with `initial_credentials.username` "superadmin", `email` "superadmin@cos360.com", `password` equal to the environment value, `login_endpoint` "POST /api/v1/super_admin/auth/login"; if the app role lacks DDL rights the result is 500 "Failed to initialize Super Admin system: ..." and is recorded as a known gap | skipped: blocked: needs an empty throwaway database and the creation of a super admin, which the task forbids |
+| TC-TEN-01-A05 | After A04, log in as `superadmin` | 200; the database row has `requires_password_change` true | skipped: blocked: depends on TC-TEN-01-A04 (needs the creation of a super admin) |
 | TC-TEN-01-A06 | `GET /super_admin/setup/status` with a tenant Admin token | 200 (no authentication check; documents the gap) | passing |
 
 Implemented in: `backend/tests/unit/tenants_admin/test_ten_super_admin.py`.
@@ -153,9 +155,9 @@ Not available.
 | TC-TEN-02-A01 | Login as the QA super admin | 200; `access_token`, `refresh_token`, `token_type` "bearer", `expires_in` 86400, `user_type` "super_admin" | passing |
 | TC-TEN-02-A02 | Wrong password | 401 "Invalid credentials" | passing |
 | TC-TEN-02-A03 | Unknown username | 401 "Invalid credentials" (same body as A02) | passing |
-| TC-TEN-02-A04 | Register a throwaway super admin (F03), fail five logins, then log in correctly | attempts 1 to 5: 401; attempt 6 with the right password: 423 | blocked: needs a throwaway super admin and the task forbids creating super admins; failing five logins on the shared QA account would lock it |
-| TC-TEN-02-A05 | After A04 set `account_locked_until` to the past in the database, log in | 200; `failed_login_attempts` 0 | blocked: needs a throwaway super admin and the task forbids creating super admins; failing five logins on the shared QA account would lock it |
-| TC-TEN-02-A06 | Deactivate the throwaway account (F03), log in with the right password | 403 "Account is deactivated" | blocked: needs a throwaway super admin and the task forbids creating super admins; failing five logins on the shared QA account would lock it |
+| TC-TEN-02-A04 | Register a throwaway super admin (F03), fail five logins, then log in correctly | attempts 1 to 5: 401; attempt 6 with the right password: 423 | skipped: blocked: needs a throwaway super admin and the task forbids creating super admins; |
+| TC-TEN-02-A05 | After A04 set `account_locked_until` to the past in the database, log in | 200; `failed_login_attempts` 0 | skipped: blocked: needs a throwaway super admin and the task forbids creating super admins; |
+| TC-TEN-02-A06 | Deactivate the throwaway account (F03), log in with the right password | 403 "Account is deactivated" | skipped: blocked: needs a throwaway super admin and the task forbids creating super admins; |
 | TC-TEN-02-A07 | Use the super admin access token on `GET /super_admin/auth/profile` | 200 | passing |
 | TC-TEN-02-A08 | Use the super admin refresh token as bearer on `GET /super_admin/auth/profile` | 401 "Invalid token type" | passing |
 | TC-TEN-02-A09 | Send the super admin refresh token to `POST /auth/refresh` with header `qa_school` | 401 "Your session is out of date. Please log in again." | passing |
@@ -164,7 +166,7 @@ Not available.
 | TC-TEN-02-A12 | Role matrix: Admin, Staff, Teacher, Student, Parent tokens on `GET /super_admin/auth/profile` | 403 "Super Admin access required" for each | passing |
 | TC-TEN-02-A13 | `GET /super_admin/auth/profile` with no token | 401 "Authorization header missing or invalid" | passing |
 | TC-TEN-02-A14 | Tenant `qa_school` Admin credentials posted to `/super_admin/auth/login` | 401 "Invalid credentials" | passing |
-| TC-TEN-02-A15 | After a successful login query `super_admin_audit` | a row with action `LOGIN`, resource `authentication` and the client IP | blocked: super_admin_audit rows cannot be read through the API and the database must not be touched |
+| TC-TEN-02-A15 | After a successful login query `super_admin_audit` | a row with action `LOGIN`, resource `authentication` and the client IP | skipped: blocked: super_admin_audit rows cannot be read through the API and the database must not be touched |
 | TC-TEN-02-A16 | Login body without `password` | 422 naming `password` | passing |
 
 Implemented in: `backend/tests/unit/tenants_admin/test_ten_super_admin.py`.
@@ -223,22 +225,22 @@ New accounts appear in `public.super_admin_users` with a bcrypt hash; profile ed
 | TC-TEN-03-U05 | `create_super_admin` with an existing username, then an existing email (fake session) | HTTPException 400 "Username already exists"; 400 "Email already exists" | passing |
 | TC-TEN-03-U06 | `change_password` with the wrong current password | HTTPException 400 "Current password is incorrect"; hash unchanged | passing |
 | TC-TEN-03-U07 | `change_password` success | new hash verifies; `requires_password_change` false | passing |
-| TC-TEN-03-A01 | Register `qa_sa_2` (valid body) as the QA super admin | 201; body lacks any password field; `failed_login_attempts` 0; `requires_password_change` false | blocked: creating a super admin is forbidden by the task rules (no delete endpoint exists) |
+| TC-TEN-03-A01 | Register `qa_sa_2` (valid body) as the QA super admin | 201; body lacks any password field; `failed_login_attempts` 0; `requires_password_change` false | skipped: blocked: creating a super admin is forbidden by the task rules (no delete endpoint exists) |
 | TC-TEN-03-A02 | Register the same username again | 400 "Username already exists" | passing |
 | TC-TEN-03-A03 | Register a new username with the first account's email | 400 "Email already exists" | passing |
 | TC-TEN-03-A04 | Register with username `ab`, password `short7!`, email `x` (three calls) | 422 each, naming the field | passing |
-| TC-TEN-03-A05 | Log in as `qa_sa_2` | 200 | blocked: depends on TC-TEN-03-A01 (creating a super admin is forbidden) |
+| TC-TEN-03-A05 | Log in as `qa_sa_2` | 200 | skipped: blocked: depends on TC-TEN-03-A01 (creating a super admin is forbidden) |
 | TC-TEN-03-A06 | Register with a tenant Admin token, then with no token | 403 "Super Admin access required"; 401 "Authorization header missing or invalid" | passing |
 | TC-TEN-03-A07 | `GET /super_admin/auth/profile` as `qa_sa_2` | 200; `username` "qa_sa_2" | passing |
 | TC-TEN-03-A08 | `PUT /super_admin/auth/profile` `{"full_name":"QA Second"}` | 200; name updated; `updated_at` later | passing |
-| TC-TEN-03-A09 | `PUT` with the first account's email | 400 "Email already exists" | blocked: needs a second super admin whose email can be taken, and creating super admins is forbidden |
-| TC-TEN-03-A10 | `PUT {"is_active": false}` on itself, then log in again | update 200; login 403 "Account is deactivated" | blocked: deactivating the shared QA super admin would lock the suite out and a throwaway one cannot be created |
-| TC-TEN-03-A11 | `POST /super_admin/auth/change-password` with the right current password and `Brand#New9` | 200 `{"message":"Password changed successfully"}` | blocked: a successful password change would alter the shared QA super admin and a throwaway one cannot be created |
-| TC-TEN-03-A12 | After A11 log in with the old and the new password | 401; 200 | blocked: a successful password change would alter the shared QA super admin and a throwaway one cannot be created |
+| TC-TEN-03-A09 | `PUT` with the first account's email | 400 "Email already exists" | skipped: blocked: needs a second super admin whose email can be taken, and creating super admins is forbidden |
+| TC-TEN-03-A10 | `PUT {"is_active": false}` on itself, then log in again | update 200; login 403 "Account is deactivated" | skipped: blocked: deactivating the shared QA super admin would lock the suite out and a throwaway one cannot be created |
+| TC-TEN-03-A11 | `POST /super_admin/auth/change-password` with the right current password and `Brand#New9` | 200 `{"message":"Password changed successfully"}` | skipped: blocked: a successful password change would alter the shared QA super admin and a throwaway one cannot be created |
+| TC-TEN-03-A12 | After A11 log in with the old and the new password | 401; 200 | skipped: blocked: a successful password change would alter the shared QA super admin and a throwaway one cannot be created |
 | TC-TEN-03-A13 | Change password with a wrong current password | 400 "Current password is incorrect" | passing |
 | TC-TEN-03-A14 | New password of 7 characters; of 8 characters | 422; 200 | passing |
 | TC-TEN-03-A15 | Role matrix: Admin, Staff, Teacher, Student, Parent tokens on all four endpoints | 403 "Super Admin access required" for each | passing |
-| TC-TEN-03-A16 | Audit rows after A01, A08, A11 | actions `CREATE`, `UPDATE`, `PASSWORD_CHANGE` exist | blocked: super_admin_audit rows cannot be read through the API and the database must not be touched |
+| TC-TEN-03-A16 | Audit rows after A01, A08, A11 | actions `CREATE`, `UPDATE`, `PASSWORD_CHANGE` exist | skipped: blocked: super_admin_audit rows cannot be read through the API and the database must not be touched |
 
 Implemented in: `backend/tests/unit/tenants_admin/test_ten_super_admin.py`.
 
@@ -311,7 +313,7 @@ Update-statement building from the optional parameters (fake session); `tenant_c
 | TC-TEN-04-A14 | `PUT ...?is_active=false`, then `POST /super_admin/system/tenants/` with that plan | update 200; provisioning 404 "Plan not found or inactive" (F07) | passing |
 | TC-TEN-04-A15 | Role matrix: Admin, Staff, Teacher, Student, Parent tokens on the four endpoints | 403 "Super Admin access required" for each | passing |
 | TC-TEN-04-A16 | No token on `GET /super_admin/plans/` | 401 "Authorization header missing or invalid" | passing |
-| TC-TEN-04-A17 | Audit rows after A01, A06, A08, A11 | actions `CREATE_PLAN`, `LIST_PLANS`, `VIEW_PLAN`, `UPDATE_PLAN` present (with `old_values` and `new_values` for the update) | blocked: super_admin_audit rows cannot be read through the API and the database must not be touched |
+| TC-TEN-04-A17 | Audit rows after A01, A06, A08, A11 | actions `CREATE_PLAN`, `LIST_PLANS`, `VIEW_PLAN`, `UPDATE_PLAN` present (with `old_values` and `new_values` for the update) | skipped: blocked: super_admin_audit rows cannot be read through the API and the database must not be touched |
 
 Implemented in: `backend/tests/unit/tenants_admin/test_ten_super_admin.py`.
 
@@ -377,11 +379,11 @@ Add and remove branching: duplicate detection, last-action row deletion, remaini
 | TC-TEN-05-A08 | Delete an action that does not exist on an existing resource | 404 "Resource 'students:update' not found for this plan" (plan `Lite` has `students:[list]`) | passing |
 | TC-TEN-05-A09 | All three endpoints with a random plan uuid | 404 "Plan with ID <id> not found" each | passing |
 | TC-TEN-05-A10 | POST without `action_name` | 422 naming `action_name` | passing |
-| TC-TEN-05-A11 | Add `qa_widgets:read` to `Full`, then log in as the `qa_school` Admin | the login `permissions` do not contain `qa_widgets` (plan edits do not propagate until re-applied); remove the resource again afterwards | blocked: adding a resource to the Full plan is forbidden by the task rules and no other plan can be created (TEN-PLAN-CREATE) |
+| TC-TEN-05-A11 | Add `qa_widgets:read` to `Full`, then log in as the `qa_school` Admin | the login `permissions` do not contain `qa_widgets` (plan edits do not propagate until re-applied); remove the resource again afterwards | skipped: blocked: adding a resource to the Full plan is forbidden by the task rules and no other plan can be created (T... |
 | TC-TEN-05-A12 | `impact.affected_tenants` for a plan used by exactly one tenant | 1 | passing |
 | TC-TEN-05-A13 | Role matrix: Admin, Staff, Teacher, Student, Parent tokens on the three endpoints | 403 "Super Admin access required" for each | passing |
 | TC-TEN-05-A14 | No token | 401 "Authorization header missing or invalid" | passing |
-| TC-TEN-05-A15 | Audit rows after A02, A05, A01 | `ADD_PLAN_RESOURCE`, `REMOVE_PLAN_RESOURCE`, `VIEW_PLAN_RESOURCES` with `affected_tenants` in the details | blocked: super_admin_audit rows cannot be read through the API and the database must not be touched |
+| TC-TEN-05-A15 | Audit rows after A02, A05, A01 | `ADD_PLAN_RESOURCE`, `REMOVE_PLAN_RESOURCE`, `VIEW_PLAN_RESOURCES` with `affected_tenants` in the details | skipped: blocked: super_admin_audit rows cannot be read through the API and the database must not be touched |
 
 Implemented in: `backend/tests/unit/tenants_admin/test_ten_super_admin.py`.
 
@@ -399,12 +401,12 @@ Catalog import and plan-menu links have no HTTP endpoint (service `CatalogServic
 A tenant and its roles (F07). Rows created through the endpoints are shared (catalog) or tenant-scoped (links).
 
 ### Steps, web
-No screen. The Administration dashboard (`/admin`) shows cards for the children of the "Administration" menu from the login menu.
+No screen. The Administration dashboard (`/admin`) shows "ADMINISTRATION SECTIONS" with cards for the children of the "Administration" menu from the login menu ("Users", "School Settings" on the demo catalog).
 
 ### Steps, mobile
-1. Open the Administration tab and the card "Menu Management" (`/admin/menu`, needs `menu_management`).
-2. The screen "Menu Management" ("Configure sidebar navigation items") lists the menus ("No menu items configured" with "Add Menu Item" when empty).
-3. The add form has Name (placeholder "e.g. Reports", required), Path ("e.g. /reports"), Icon ("e.g. bar-chart"), Order ("e.g. 1") and Active. Edit, delete (confirm "Delete Menu Item") and the active toggle call routes that do not exist (see Known gaps).
+1. On Home tap the module "Administration" (`/admin`: "SYSTEM OVERVIEW" counts Staff, Students, Roles, Menus, then the cards "User Management", "Role Management", "Permission Management", "Menu Management", "School Settings", "Announcements"; cards the user cannot open show "No access - contact admin"), then the card "Menu Management" (`/admin/menu`, needs `menu_management`).
+2. The screen "Menu Management" ("Configure sidebar navigation items") lists the catalog menus by name, each with an active switch, an edit button and a delete button ("No menu items configured" with "Add Menu Item" when empty).
+3. The "+" button at the top right opens the add form: Name (placeholder "e.g. Reports", required), Path ("e.g. /reports"), Icon ("e.g. bar-chart"), Order ("e.g. 1") and Active. Create, edit, delete (confirm "Delete Menu Item") and the active toggle fail: create gets 422 and the others call routes that do not exist (see Known gaps).
 
 ### Expected results
 `GET /auth/menus/` returns every row of the shared `public.menus` catalog (all schools see the same list). Created menus are visible to every tenant. A role-menu link makes the menu appear in that role's login menu at the next login.
@@ -442,8 +444,8 @@ No screen. The Administration dashboard (`/admin`) shows cards for the children 
 | TC-TEN-06-U05 | `import_menus` item with `parent_url` of an L0 menu | child `parent_id` equals the L0 menu id; `display_order` copied | passing |
 | TC-TEN-06-U06 | `ensure_full_plan` on an empty plan table | plan `Full` created; one resource row per resource of `ALL_ADMIN` (66) with the union of its actions | passing |
 | TC-TEN-06-U07 | `ensure_full_plan` called twice | no duplicate resource rows or plan-menu links | passing |
-| TC-TEN-06-A01 | `POST /auth/menus/` as Admin `{"name":"QA Menu","url":"/qa-menu","level":"L0"}` | 201; `{id, name, url, level, parent_id: null}` | blocked: POST /auth/menus/ writes to the shared menu catalog, which the task forbids modifying, and menu rows have no delete endpoint |
-| TC-TEN-06-A02 | Create a child with `parent_id` of the menu from A01 and `level` "L1" | 201; `parent_id` equals the parent id | blocked: POST /auth/menus/ writes to the shared menu catalog, which the task forbids modifying, and menu rows have no delete endpoint |
+| TC-TEN-06-A01 | `POST /auth/menus/` as Admin `{"name":"QA Menu","url":"/qa-menu","level":"L0"}` | 201; `{id, name, url, level, parent_id: null}` | skipped: blocked: POST /auth/menus/ writes to the shared menu catalog, which the task forbids modifying, and menu rows ... |
+| TC-TEN-06-A02 | Create a child with `parent_id` of the menu from A01 and `level` "L1" | 201; `parent_id` equals the parent id | skipped: blocked: POST /auth/menus/ writes to the shared menu catalog, which the task forbids modifying, and menu rows ... |
 | TC-TEN-06-A03 | Create without `level` (the mobile payload shape) | 422 naming `level` | passing |
 | TC-TEN-06-A04 | Create with `parent_id` of a random uuid | 400 (foreign key violation mapped by the error handler); no row created | passing |
 | TC-TEN-06-A05 | Create with `level` "L10" (3 characters) | non-2xx (database length error); no row created | passing |
@@ -459,11 +461,16 @@ No screen. The Administration dashboard (`/admin`) shows cards for the children 
 | TC-TEN-06-A15 | Link created with `can_view` false, Staff logs in | "QA Menu" absent | passing |
 | TC-TEN-06-A16 | Role matrix on `GET /auth/permissions/` and `POST /auth/permissions/` | Admin 200 and 201; other roles 403 (`permission_management`) | passing |
 | TC-TEN-06-A17 | No token on the four endpoints | 401 "Authorization header missing or invalid" each | passing |
-| TC-TEN-06-E01 | Mobile: Admin opens Administration > "Menu Management" | the menu list loads; header "Menu Management" | planned |
-| TC-TEN-06-E02 | Mobile: tap add, enter Name "QA Mobile Menu", save | error toast "Failed to create menu item" (the request lacks `level`; documents the gap) | planned |
-| TC-TEN-06-E03 | Mobile: submit the add form with an empty Name | toast "Menu name is required" | planned |
-| TC-TEN-06-E04 | Mobile: Staff opens `/admin/menu` | Access Denied from `ScreenAccessGate` (needs `menu_management`) | planned |
-| TC-TEN-06-E05 | Web: Admin opens `/admin` | cards for the Administration children ("Users", "School Settings" on the demo catalog); no menu editing screen exists | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-TEN-06-E01 | P1 | Mobile | Admin | Signed in on mobile with the QA Admin login (`qa_manual`) | 1. On Home tap "Administration".<br>2. Tap the card "Menu Management". | Screen "Menu Management" ("Configure sidebar navigation items") lists Dashboard, Billing Admin, Masters, Students and the other catalog menus, each with a switch, an edit and a delete button; a "+" button at the top right | planned |
+| TC-TEN-06-E02 | P3 | Mobile | Admin | TC-TEN-06-E01 done | 1. Tap "+".<br>2. Enter "QA Mobile Menu" in Name.<br>3. Save. | Error toast "Failed to create menu item" (the request has no `level`, the API answers 422; Known gaps 8); no "QA Mobile Menu" row | planned |
+| TC-TEN-06-E03 | P3 | Mobile | Admin | TC-TEN-06-E01 done | 1. Tap "+".<br>2. Leave Name empty.<br>3. Save. | Toast "Menu name is required"; no request | planned |
+| TC-TEN-06-E04 | P2 | Mobile | Staff | Signed in on mobile as Staff | 1. On Home tap "Administration".<br>2. Open `/admin/menu` by URL. | The card "Menu Management" shows "No access - contact admin"; the screen shows "Access Denied" with "You don't have permission to view this screen. Please contact your administrator." | planned |
+| TC-TEN-06-E05 | P2 | Web | Admin | Signed in as Admin on web | 1. Open Administration (`/admin`). | "ADMINISTRATION SECTIONS" shows the cards "Users" and "School Settings"; there is no menu editing screen on web | planned |
 
 Implemented in: `backend/tests/unit/tenants_admin/test_ten_provisioning.py`.
 
@@ -531,24 +538,24 @@ In one transaction: a `tenants` row (active), the roles Admin, Teacher, Student,
 | TC-TEN-07-A02 | `GET /auth/academic-years` with header `qa_school_b` | one year, title per the date rule, `is_active` true | passing |
 | TC-TEN-07-A03 | Log in as `b_admin` with that year | 200; role "Admin"; `permissions` has 276 actions in total and `role_management` with all five actions | passing |
 | TC-TEN-07-A04 | List roles of the new tenant (Admin of `qa_school_b`) | five roles named Admin, Parent, Staff, Student, Teacher with `is_system_role` true and `is_custom_role` false | passing |
-| TC-TEN-07-A05 | Create without a body | 201; `admin_user_id` null; no user rows | skipped: tenant cap of 3 qa_tmp tenants reached by earlier runs, no tenant of this shape |
-| TC-TEN-07-A06 | `client_name=QA_School_C%20` (capitals, trailing space) | 201; `tenant.client_name` `qa_school_c` | skipped: tenant cap of 3 qa_tmp tenants reached by earlier runs, no tenant of this shape |
+| TC-TEN-07-A05 | Create without a body | 201; `admin_user_id` null; no user rows | skipped: tenant cap of 3 qa_tmp tenants reached |
+| TC-TEN-07-A06 | `client_name=QA_School_C%20` (capitals, trailing space) | 201; `tenant.client_name` `qa_school_c` | skipped: tenant cap of 3 qa_tmp tenants reached |
 | TC-TEN-07-A07 | `client_name=a` | 400 "client_name must be 2-63 characters of lowercase letters, digits, hyphen or underscore" | passing |
 | TC-TEN-07-A08 | `client_name=-abc` and `client_name=ab c` | 400 each | passing |
-| TC-TEN-07-A09 | `client_name` of 63 characters; of 64 characters; of 2 characters | 201; 400; 201 (delete the created tenants afterwards) | skipped: tenant cap of 3 qa_tmp tenants reached by earlier runs, no tenant of this shape |
+| TC-TEN-07-A09 | `client_name` of 63 characters; of 64 characters; of 2 characters | 201; 400; 201 (delete the created tenants afterwards) | skipped: tenant cap of 3 qa_tmp tenants reached |
 | TC-TEN-07-A10 | Create `qa_school_b` again; then `QA_SCHOOL_B` | 409 "Tenant already exists" for both | passing |
-| TC-TEN-07-A11 | Unknown plan uuid; deactivated plan | 404 "Plan not found or inactive" for both | xfail: TEN-PLAN-CREATE (POST /super_admin/plans/ answers 500, so a deactivated plan cannot be built) |
-| TC-TEN-07-A12 | Plan with no resources | 409 "The tenant's plan has no resources configured"; no tenant row for that name | xfail: TEN-PLAN-CREATE (POST /super_admin/plans/ answers 500, so a plan without resources cannot be built) |
+| TC-TEN-07-A11 | Unknown plan uuid; deactivated plan | 404 "Plan not found or inactive" for both | passing |
+| TC-TEN-07-A12 | Plan with no resources | 409 "The tenant's plan has no resources configured"; no tenant row for that name | passing |
 | TC-TEN-07-A13 | Body with `username` and empty `password` | 400 "admin_username and admin_password go together" | passing |
 | TC-TEN-07-A14 | Body with `username` and no `password` key | 422 naming `password` | passing |
-| TC-TEN-07-A15 | Body with empty `username` and empty `password` | 201; no Admin created | skipped: tenant cap of 3 qa_tmp tenants reached by earlier runs, no tenant of this shape |
+| TC-TEN-07-A15 | Body with empty `username` and empty `password` | 201; no Admin created | skipped: tenant cap of 3 qa_tmp tenants reached |
 | TC-TEN-07-A16 | Missing `client_name`; `plan_id=abc` | 422 each | passing |
-| TC-TEN-07-A17 | Admin password `abc` (3 characters) | 201 (no length rule; documents behaviour) | skipped: tenant cap of 3 qa_tmp tenants reached by earlier runs, no tenant of this shape |
-| TC-TEN-07-A18 | Query `users.password_hash` of `b_admin` | starts with `$2` (bcrypt); not equal to the plain password | blocked: users.password_hash cannot be read through the API and the database must not be touched |
+| TC-TEN-07-A17 | Admin password `abc` (3 characters) | 201 (no length rule; documents behaviour) | skipped: tenant cap of 3 qa_tmp tenants reached |
+| TC-TEN-07-A18 | Query `users.password_hash` of `b_admin` | starts with `$2` (bcrypt); not equal to the plain password | skipped: blocked: users.password_hash cannot be read through the API and the database must not be touched |
 | TC-TEN-07-A19 | `b_admin` and `qa_school` Admin share a username in the two tenants | both allowed (unique per tenant) | passing |
 | TC-TEN-07-A20 | Role matrix: Admin, Staff, Teacher, Student, Parent tokens | 403 "Super Admin access required" for each | passing |
 | TC-TEN-07-A21 | No token | 401 "Authorization header missing or invalid" | passing |
-| TC-TEN-07-A22 | Audit row after A01 | action `CREATE_TENANT`; details have `roles` 5, `permissions` 455, `role_menu_links` 243, `admin_created` true | blocked: super_admin_audit rows cannot be read through the API and the database must not be touched |
+| TC-TEN-07-A22 | Audit row after A01 | action `CREATE_TENANT`; details have `roles` 5, `permissions` 455, `role_menu_links` 243, `admin_created` true | skipped: blocked: super_admin_audit rows cannot be read through the API and the database must not be touched |
 | TC-TEN-07-A23 | Users of `qa_school` listed with its Admin token after A01 | no user of `qa_school_b` appears (isolation) | passing |
 | TC-TEN-07-A24 | Student and Parent menus in the new tenant (log in as a created student) | menu paths limited to the 15 allowlist URLs | passing |
 
@@ -612,11 +619,11 @@ Missing roles, permission rows and menu links are inserted; existing rows are le
 | TC-TEN-08-A02 | Call it twice and count `resource_permissions` and `role_menu_permissions` rows before and after | row counts unchanged; response numbers identical | passing |
 | TC-TEN-08-A03 | Set `is_granted` false for Staff `students:list` (F15), then reseed | the row stays false | passing |
 | TC-TEN-08-A04 | Delete Staff's `students:list` row (F15 delete), then reseed | the row exists again with `is_granted` true | passing |
-| TC-TEN-08-A05 | Add `student_attendance:read_own` to `Full` (F05), reseed, Student logs in | Student's permissions include `student_attendance:read_own`; Staff's do not | blocked: adding student_attendance:read_own to the Full plan is forbidden by the task rules and no other plan can be created (TEN-PLAN-CREATE) |
+| TC-TEN-08-A05 | Add `student_attendance:read_own` to `Full` (F05), reseed, Student logs in | Student's permissions include `student_attendance:read_own`; Staff's do not | skipped: blocked: adding student_attendance:read_own to the Full plan is forbidden by the task rules and no other plan ... |
 | TC-TEN-08-A06 | Reseed as Staff, Teacher, Student, Parent | 403 "Admin access required" for each | passing |
 | TC-TEN-08-A07 | Custom role `Registrar` holding `role_management:*` calls the endpoint | 403 "Admin access required" | passing |
-| TC-TEN-08-A08 | Tenant whose `plan_id` is NULL (fixture) | 409 "Tenant has no plan assigned" | blocked: a tenant with a NULL plan_id cannot be produced through the API |
-| TC-TEN-08-A09 | Tenant on a plan with no resources | 409 "The tenant's plan has no resources configured" | xfail: TEN-PLAN-CREATE (POST /super_admin/plans/ answers 500, so a plan without resources cannot be built) |
+| TC-TEN-08-A08 | Tenant whose `plan_id` is NULL (fixture) | 409 "Tenant has no plan assigned" | skipped: blocked: a tenant with a NULL plan_id cannot be produced through the API |
+| TC-TEN-08-A09 | Tenant on a plan with no resources | 409 "The tenant's plan has no resources configured" | passing |
 | TC-TEN-08-A10 | No token (header only) | 401 "Authorization header missing or invalid" | passing |
 | TC-TEN-08-A11 | Reseed in `qa_school`, then count rows of `qa_school_b` | `qa_school_b` counts unchanged | passing |
 | TC-TEN-08-A12 | System role descriptions after reseed | Admin "System administrator with full access", Student "Student with limited read access" etc. unchanged by a second run | passing |
@@ -638,7 +645,7 @@ Super admin token only.
 Tenants (F07) and plans (F04, F05).
 
 ### Steps, web
-1. The page `/superorg` (route `/_app/superorg`, page "Super Admin Dashboard", tabs "Tenants", "System Health", "System Logs", "Plans") can be opened by a signed-in tenant user. Its data calls go to `/super-admin/...` and `/organizations/...`, paths that do not exist on the backend, and it carries a tenant token, so no tenant or plan data loads and creating or editing fails. There is no super admin sign-in on web.
+1. The page `/superorg` (route `/_app/superorg`, page "Super Admin Dashboard", "Manage tenants, monitor system health, and oversee platform operations", tabs "Tenants (0)", "System Health", "System Logs", "Plans (0)"; the Tenants tab shows "Tenant Management", "Create Tenant", "Search tenants..." and "No tenants found") can be opened by a signed-in tenant user. Its data calls go to `/super-admin/...` and `/organizations/...`, paths that do not exist on the backend, and it carries a tenant token, so no tenant or plan data loads and creating or editing fails. There is no super admin sign-in on web.
 
 ### Steps, mobile
 Not available.
@@ -681,26 +688,31 @@ Stale permission and menu-link selection in `sync_to_plan`; `change_plan` error 
 | TC-TEN-09-A02 | `?is_active=false` after deactivating `qa_school_b` | only inactive tenants; `pagination.total` 1 | passing |
 | TC-TEN-09-A03 | `?limit=1&offset=0` with two tenants | one row; `has_more` true; `?limit=1&offset=1` gives `has_more` false | passing |
 | TC-TEN-09-A04 | `?limit=0` | 200; empty `tenants` | passing |
-| TC-TEN-09-A05 | `?limit=-1` | 500 "Failed to retrieve tenants: ..." (documents behaviour) | xfail: TEN-NEG-LIMIT (a negative limit on GET /super_admin/system/tenants/ reaches the database and answers 500 instead of a 4xx validation error) |
+| TC-TEN-09-A05 | `?limit=-1` | 500 "Failed to retrieve tenants: ..." (documents behaviour) | known defect: TEN-NEG-LIMIT: a negative limit on GET /super_admin/system/tenants/ reaches the database and answers 500 inste... |
 | TC-TEN-09-A06 | `PUT /super_admin/system/tenants/{qa_school_b}/activate` | 200 "Tenant deactivated successfully"; `is_active` false | passing |
 | TC-TEN-09-A07 | After A06 `POST /auth/login` with header `qa_school_b` | 404 "Tenant 'qa_school_b' not found or inactive" | passing |
 | TC-TEN-09-A08 | After A06 a `qa_school_b` access token on `GET /admin/users/` | 401 "Invalid connection" | passing |
 | TC-TEN-09-A09 | Toggle again | 200 "Tenant activated successfully"; login works again | passing |
 | TC-TEN-09-A10 | Activate with a random uuid; with `abc` | 404 "Tenant with ID <id> not found"; 422 | passing |
-| TC-TEN-09-A11 | `PUT .../tenants/{qa_school_b}/plan?plan_id=<Lite>` | 200 "Plan assigned and permissions synchronized"; `old_plan_id` Full; `plan_name` the Lite name; `permissions` 18; `role_menu_links` 5; `permissions_removed` 437; `role_menu_links_removed` 235 | xfail: TEN-PLAN-CREATE (POST /super_admin/plans/ answers 500, so no second plan (Lite) can be created to move a tenant to) |
-| TC-TEN-09-A12 | After A11 log in as the `qa_school_b` Admin | `permissions` contain `academic_years:[list,read]`, `students:[list]` and `role_management` (five actions) only | xfail: TEN-PLAN-CREATE (POST /super_admin/plans/ answers 500, so no second plan (Lite) can be created to move a tenant to) |
-| TC-TEN-09-A13 | After A11 count users and custom roles of `qa_school_b` | unchanged (only permissions and menu links were pruned) | xfail: TEN-PLAN-CREATE (POST /super_admin/plans/ answers 500, so no second plan (Lite) can be created to move a tenant to) |
-| TC-TEN-09-A14 | Custom role in `qa_school_b` with `fee_types:read` before A11 | the row is gone after A11 | xfail: TEN-PLAN-CREATE (POST /super_admin/plans/ answers 500, so no second plan (Lite) can be created to move a tenant to) |
-| TC-TEN-09-A15 | After A11 move back to `Full` | Admin permissions return to 276; the previously revoked or custom rows do not return | xfail: TEN-PLAN-CREATE (POST /super_admin/plans/ answers 500, so no second plan (Lite) can be created to move a tenant to) |
+| TC-TEN-09-A11 | `PUT .../tenants/{qa_school_b}/plan?plan_id=<Lite>` | 200 "Plan assigned and permissions synchronized"; `old_plan_id` Full; `plan_name` the Lite name; `permissions` 18; `role_menu_links` 5; `permissions_removed` 437; `role_menu_links_removed` 235 | passing |
+| TC-TEN-09-A12 | After A11 log in as the `qa_school_b` Admin | `permissions` contain `academic_years:[list,read]`, `students:[list]` and `role_management` (five actions) only | passing |
+| TC-TEN-09-A13 | After A11 count users and custom roles of `qa_school_b` | unchanged (only permissions and menu links were pruned) | passing |
+| TC-TEN-09-A14 | Custom role in `qa_school_b` with `fee_types:read` before A11 | the row is gone after A11 | passing |
+| TC-TEN-09-A15 | After A11 move back to `Full` | Admin permissions return to 276; the previously revoked or custom rows do not return | passing |
 | TC-TEN-09-A16 | Add `qa_widgets:read` to `Lite`, then `PUT .../plan?plan_id=<Lite>` for the tenant already on `Lite` | Admin gains `qa_widgets:read` (re-application propagates plan edits) | passing |
-| TC-TEN-09-A17 | Change plan with a random plan uuid; with an inactive plan | 404 "Plan not found or inactive" | xfail: TEN-PLAN-CREATE (POST /super_admin/plans/ answers 500, so an inactive plan cannot be built) |
+| TC-TEN-09-A17 | Change plan with a random plan uuid; with an inactive plan | 404 "Plan not found or inactive" | passing |
 | TC-TEN-09-A18 | Change plan for a random tenant uuid | 404 "Tenant not found" | passing |
-| TC-TEN-09-A19 | Move the tenant to a plan with no resources | 409 "The tenant's plan has no resources configured"; `plan_id` unchanged | xfail: TEN-PLAN-CREATE (POST /super_admin/plans/ answers 500, so a plan without resources cannot be built) |
+| TC-TEN-09-A19 | Move the tenant to a plan with no resources | 409 "The tenant's plan has no resources configured"; `plan_id` unchanged | passing |
 | TC-TEN-09-A20 | Missing `plan_id` | 422 naming `plan_id` | passing |
 | TC-TEN-09-A21 | Role matrix: Admin, Staff, Teacher, Student, Parent tokens on the three endpoints | 403 "Super Admin access required" for each | passing |
 | TC-TEN-09-A22 | No token | 401 "Authorization header missing or invalid" | passing |
-| TC-TEN-09-A23 | Audit rows after A01, A06, A11 | `LIST_TENANTS` (with `filter_active` and `count`), `TOGGLE_TENANT_STATUS` (`old_status`, `new_status`, `client_name`), `ASSIGN_TENANT_PLAN` (the full result) | blocked: super_admin_audit rows cannot be read through the API and the database must not be touched |
-| TC-TEN-09-E01 | Web: Admin of `qa_school` opens `/superorg` | page "Super Admin Dashboard" with tabs "Tenants", "System Health", "System Logs", "Plans"; no tenant rows load (documents the gap) | planned |
+| TC-TEN-09-A23 | Audit rows after A01, A06, A11 | `LIST_TENANTS` (with `filter_active` and `count`), `TOGGLE_TENANT_STATUS` (`old_status`, `new_status`, `client_name`), `ASSIGN_TENANT_PLAN` (the full result) | skipped: blocked: super_admin_audit rows cannot be read through the API and the database must not be touched |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-TEN-09-E01 | P1 | Web | Admin | Signed in as Admin on web | 1. Open `/superorg` by URL.<br>2. Click the tabs "System Health" and "Plans (0)". | Page "Super Admin Dashboard" with tabs "Tenants (0)", "System Health", "System Logs", "Plans (0)"; the Tenants tab shows "No tenants found"; no tenant or plan data loads on any tab (Known gaps 14) | planned |
 
 Implemented in: `backend/tests/unit/tenants_admin/test_ten_tenants_system.py`.
 
@@ -790,7 +802,7 @@ Action list parsing and the skip counting in the POST handler; the `is_active` f
 | TC-TEN-10-A23 | Role matrix: Admin, Staff, Teacher, Student, Parent tokens on all eight endpoints | 403 "Super Admin access required" for each | passing |
 | TC-TEN-10-A24 | No token on the eight endpoints | 401 "Authorization header missing or invalid" | passing |
 | TC-TEN-10-A25 | Read `qa_school_b` data with a super admin token after `qa_school_b` is deactivated | 200 (inactive tenants remain readable) | passing |
-| TC-TEN-10-A26 | After A14 query `super_admin_audit` | no row for this action (documents that tenant-data calls are not audited) | blocked: super_admin_audit rows cannot be read through the API and the database must not be touched |
+| TC-TEN-10-A26 | After A14 query `super_admin_audit` | no row for this action (documents that tenant-data calls are not audited) | skipped: blocked: super_admin_audit rows cannot be read through the API and the database must not be touched |
 
 Implemented in: `backend/tests/unit/tenants_admin/test_ten_tenant_data.py`.
 
@@ -847,7 +859,7 @@ Not available.
 | TC-TEN-11-A02 | `GET /api/v1/super_admin/system/health` as the QA super admin | 200; `total_tenants` at least 2; `active_tenants` at most `total_tenants`; `database_status` "connected"; `timestamp` present | passing |
 | TC-TEN-11-A03 | Deactivate `qa_school_b`, repeat A02 | `active_tenants` drops by 1; `total_tenants` unchanged | passing |
 | TC-TEN-11-A04 | `GET /api/v1/super_admin/auth/health` | 200; same shape as A02 | passing |
-| TC-TEN-11-A05 | `GET /api/v1/super_admin/system/usage-stats` | 500 today (response serialisation); intended 200 with `system_overview` counts equal to the tenant counts; an audit row `VIEW_USAGE_STATS` exists | xfail: TEN-USAGE-STATS (GET /super_admin/system/usage-stats answers 500 because the payload holds a SQL func.now() object that cannot be JSON-encoded) |
+| TC-TEN-11-A05 | `GET /api/v1/super_admin/system/usage-stats` | 500 today (response serialisation); intended 200 with `system_overview` counts equal to the tenant counts; an audit row `VIEW_USAGE_STATS` exists | known defect: TEN-USAGE-STATS: GET /super_admin/system/usage-stats answers 500 because the payload holds a SQL func.now() ob... |
 | TC-TEN-11-A06 | `GET /api/v1/health/status`, `/health/metrics`, `/health/metrics/summary`, `/health/metrics/health` with header `qa_school` | 404 each (router not mounted) | passing |
 | TC-TEN-11-A07 | `POST /api/v1/health/metrics/alerts/configure` with a JSON body | 404 (router not mounted) | passing |
 | TC-TEN-11-A08 | Role matrix on the three super admin endpoints: Admin, Staff, Teacher, Student, Parent | 403 "Super Admin access required" for each | passing |
@@ -864,20 +876,21 @@ API tests implemented in: `backend/tests/api/tenants_admin/test_f11_monitoring.p
 Keep the school's identity details (name, contacts, address, board, academic year text) and its logo and principal signature images.
 
 ### Roles and permissions
-`school_settings:read` to view and `school_settings:update` to save and upload. Admin holds both (when the plan lists the resource); Staff, Teacher, Student, Parent hold none by default, so every endpoint answers 403 for them. The sidebar entry is hidden for Teacher and Student by the client and is not in the Student and Parent menus (allowlist); Staff sees the entry but its calls are denied.
+`school_settings:read` to view and `school_settings:update` to save and upload. Admin holds both (when the plan lists the resource); Staff, Teacher, Student, Parent hold none by default, so every endpoint answers 403 for them. On web the entry Administration > School Settings is shown to Admin, Staff and Teacher (the web client does not hide it for Teacher) and is never in the Student and Parent menus (allowlist); Staff and Teacher see the entry but its calls are denied. On mobile the Administration screen shows the card to every role that opens it, marked "No access - contact admin" without the permission.
 
 ### Preconditions
 A tenant whose plan includes `school_settings` (it is in the Admin catalog). The record is created on the first save or upload.
 
 ### Steps, web
 1. Open the sidebar entry Administration > School Settings (demo catalog; elsewhere Masters > "School Registration" injected by the client), route `/settings/school`, page "School Settings" ("Manage school registration and identity information"). The badge "Not configured yet" shows when no record exists.
-2. Basic Information: "School Name", "Contact No." and "Alt. Contact No." (placeholders 9900099000 and 9999900000, 10 characters), "School Email", "School Board" (list "-- Select Board --", CBSE, ICSE, State Board, IGCSE, IB, Custom; "Custom Board Name" appears for Custom), "Academic Year" (placeholder 2026-27), "Installation Date".
-3. Address: "Street Address", "City", "District", "State", "PIN Code" (6 characters), "Country" (default India).
+2. Basic Information: "School Name" (placeholder "e.g. Greenfield High School"), "Contact No." and "Alt. Contact No." (placeholders 9900099000 and 9999900000, 10 characters), "School Email" ("school@example.com"), "School Board" (list "-- Select Board --", CBSE, ICSE, State Board, IGCSE, IB, Custom; "Custom Board Name" appears for Custom), "Academic Year" (placeholder 2026-27), "Installation Date".
+3. Address: "Street Address" ("Akshara Nagar"), "City" and "District" ("Nizamabad"), "State" ("Telangana"), "PIN Code" (6 characters, "503001"), "Country" (India).
 4. Press "Save Settings" ("Saving..." while waiting). Toasts "School settings saved successfully" or "Failed to save school settings".
 5. Images: boxes "School Logo" and "Principal Signature", each with an "Upload" button and the hint "JPG, PNG, WebP" and "Max 2 MB". Toasts "School logo uploaded successfully", "Principal signature uploaded successfully", "Failed to upload school logo", "Failed to upload signature".
+6. A user without `school_settings:read` who opens the page (Staff or Teacher from the sidebar, any role by URL) sees a loading spinner for several seconds while the denied request is retried, then the empty form with "Not configured yet"; saving gives "Failed to save school settings".
 
 ### Steps, mobile
-1. Open the Administration tab and the card "School Settings" (`/admin/school-settings`, needs `school_settings:read`).
+1. On Home tap the module "Administration", then the card "School Settings" (`/admin/school-settings`, needs `school_settings:read`).
 2. Branding: "School Logo" and "Principal Signature" pickers (JPEG or PNG only); toasts "Uploaded: School logo has been updated." and "Uploaded: Principal signature has been updated.", failures "Upload Failed".
 3. "Basic Information": "School Name *", "Contact Number", "Alternate Contact Number", "School Email", "School Board" (placeholder "e.g. CBSE, State Board"), "Academic Year" ("e.g. 2025-2026"), "Installation Date" ("YYYY-MM-DD"). "Address": "Address", "City", "District", "State", "Pin Code", "Country".
 4. Tap "Save Settings" ("Saving..."). An empty name shows "School name is required"; success "Saved: School settings have been updated."
@@ -920,7 +933,7 @@ Upload validation (extension, size boundary, file naming, URL building) with an 
 | TC-TEN-12-U06 | `upsert_settings` on an existing record with a payload that omits `city` | `city` set to `None`; image URLs unchanged | passing |
 | TC-TEN-12-U07 | Web zod schema: contact `12345`, `1234567890`, `""`; pin `12345`, `123456`; email `a@b`, `a@b.co` | invalid, valid, valid; invalid, valid; invalid, valid | blocked: the zod schema is not exported from web/src/pages/settings/SchoolSettings.tsx |
 | TC-TEN-12-U08 | `SchoolSettingsUpdate()` | valid; all fields `None` | passing |
-| TC-TEN-12-A01 | `GET /school-settings` as Admin on a tenant with no record (use `qa_school_b`) | 404 "School settings not configured yet." | skipped: tenant cap of 3 qa_tmp tenants reached by earlier runs, no tenant of this shape |
+| TC-TEN-12-A01 | `GET /school-settings` as Admin on a tenant with no record (use `qa_school_b`) | 404 "School settings not configured yet." | skipped: tenant cap of 3 qa_tmp tenants reached |
 | TC-TEN-12-A02 | `PUT /school-settings` as Admin with all 13 fields | 200; body echoes them with `id`; `image_url` null | passing |
 | TC-TEN-12-A03 | `GET /school-settings` | 200; same values | passing |
 | TC-TEN-12-A04 | `PUT` with only `school_name` | 200; every other of the 13 fields null; `image_url` unchanged | passing |
@@ -928,33 +941,39 @@ Upload validation (extension, size boundary, file naming, URL building) with an 
 | TC-TEN-12-A06 | `PUT` with `contact_no` "abc", `pin_code` "12", `school_email` "x" | 200 and stored (no server-side format validation) | passing |
 | TC-TEN-12-A07 | `PUT` with `installation_date` "2026-13-45" | 422 | passing |
 | TC-TEN-12-A08 | `POST /school-settings/upload-image` with a 100 KB PNG | 200; `image_url` `/media/<tenant_id>/school/images/school_image_url.png`; file exists on disk | passing |
-| TC-TEN-12-A09 | `GET` the media URL from A08 with no token | 200 image bytes (public) | xfail: TEN-MEDIA-CSCHEMA (GET /media/<tenant>/... without a cschema header returns 400 instead of serving the file publicly) |
+| TC-TEN-12-A09 | `GET` the media URL from A08 with no token | 200 image bytes (public) | known defect: TEN-MEDIA-CSCHEMA: GET /media/<tenant>/... |
 | TC-TEN-12-A10 | `upload-signature` with a JPG | 200; `principal_signature_url` ends `school_principal_signature_url.jpg` | passing |
 | TC-TEN-12-A11 | Upload `logo.gif` | 400 "Only jpg, png, webp files are allowed" | passing |
 | TC-TEN-12-A12 | Upload a 2,097,153-byte PNG; a 2,097,152-byte PNG | 400 "File size must not exceed 2 MB"; 200 | passing |
 | TC-TEN-12-A13 | Upload a file named `x.PNG` | 200; stored URL ends with lowercase `.png` | passing |
 | TC-TEN-12-A14 | Upload PNG then JPG | URL changes to `.jpg`; the `.png` file remains on disk | passing |
 | TC-TEN-12-A15 | Upload with the field named `file` instead of `photo` | 422 | passing |
-| TC-TEN-12-A16 | Upload on a tenant with no record | 200; record created with only the image field set | skipped: tenant cap of 3 qa_tmp tenants reached by earlier runs, no tenant of this shape |
+| TC-TEN-12-A16 | Upload on a tenant with no record | 200; record created with only the image field set | skipped: tenant cap of 3 qa_tmp tenants reached |
 | TC-TEN-12-A17 | Role matrix on `GET /school-settings` (`school_settings:read`) | Admin 200; Staff, Teacher, Student, Parent 403 "Permission not found in database: <role> cannot read school_settings. Contact administrator to configure permissions." | passing |
 | TC-TEN-12-A18 | Role matrix on `PUT` and both uploads (`school_settings:update`) | Admin 200; the other four roles 403 | passing |
 | TC-TEN-12-A19 | No token (header only) | 401 "Authorization header missing or invalid" | passing |
 | TC-TEN-12-A20 | `qa_school` saved, `qa_school_b` reads | `qa_school_b` gets 404 (or its own values); never `qa_school`'s | passing |
 | TC-TEN-12-A21 | Media paths of the two tenants | contain different tenant ids | passing |
-| TC-TEN-12-E01 | Web: Admin opens Administration > School Settings on a tenant with no record | page "School Settings" with badge "Not configured yet"; Country shows India | planned |
-| TC-TEN-12-E02 | Web: fill School Name "QA Public School", Contact No. 9900099000, PIN Code 503001, choose board CBSE, press "Save Settings" | toast "School settings saved successfully"; badge gone after reload; values persist | planned |
-| TC-TEN-12-E03 | Web: Contact No. `12345`; PIN Code `12` | field messages "Must be exactly 10 digits" and "Must be exactly 6 digits"; no request | planned |
-| TC-TEN-12-E04 | Web: School Email `abc` | message "Invalid email address" | planned |
-| TC-TEN-12-E05 | Web: choose School Board "Custom" | field "Custom Board Name" appears; saved value is the typed name | planned |
-| TC-TEN-12-E06 | Web: upload a PNG as "School Logo" | toast "School logo uploaded successfully"; image preview shown | planned |
-| TC-TEN-12-E07 | Web: upload a 3 MB PNG | toast "Failed to upload school logo" | planned |
-| TC-TEN-12-E08 | Web: upload "Principal Signature" JPG | toast "Principal signature uploaded successfully" | planned |
-| TC-TEN-12-E09 | Web: Teacher and Student sidebars | no School Settings entry | planned |
-| TC-TEN-12-E10 | Web: Staff opens `/settings/school` by URL | the page opens (no route guard); the settings call is denied with 403 so the badge "Not configured yet" shows; pressing "Save Settings" gives the toast "Failed to save school settings" | planned |
-| TC-TEN-12-E11 | Mobile: Admin opens Administration > "School Settings" | screen "School Settings" with Branding, Basic Information, Address sections | planned |
-| TC-TEN-12-E12 | Mobile: clear "School Name *" and tap "Save Settings" | error toast "School name is required" | planned |
-| TC-TEN-12-E13 | Mobile: fill the name and tap "Save Settings" | toast "Saved" with "School settings have been updated." | planned |
-| TC-TEN-12-E14 | Mobile: Staff opens `/admin/school-settings` | Access Denied from `ScreenAccessGate` | planned |
+
+UI test cases (whether `qa_manual` already has a school settings record depends on the seed; E01 needs a clean state, the others work either way; note the values present before a case and restore them afterwards):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-TEN-12-E01 | P2 | Web | Admin | A tenant with no school settings record (`qa_manual` rebuilt with `--no-seed`, or `qa_school`, which had none on 2026-10-07); signed in as Admin | 1. Open Administration > "School Settings". | Page "School Settings" ("Manage school registration and identity information") with the badge "Not configured yet"; empty fields show their placeholders; Country shows India | planned |
+| TC-TEN-12-E02 | P1 | Web | Admin | Signed in as Admin | 1. Open Administration > "School Settings".<br>2. Enter "QA Public School" in "School Name".<br>3. Enter "9900099000" in "Contact No.".<br>4. Enter "503001" in "PIN Code".<br>5. Choose "CBSE" in "School Board".<br>6. Click "Save Settings".<br>7. Reload the page. | Button shows "Saving..." then toast "School settings saved successfully"; after reload the badge "Not configured yet" is gone and the four values are shown | planned |
+| TC-TEN-12-E03 | P3 | Web | Admin | On "School Settings" as Admin | 1. Enter "12345" in "Contact No.".<br>2. Enter "12" in "PIN Code".<br>3. Click "Save Settings". | Field messages "Must be exactly 10 digits" and "Must be exactly 6 digits"; no request | planned |
+| TC-TEN-12-E04 | P3 | Web | Admin | On "School Settings" as Admin | 1. Enter "abc" in "School Email".<br>2. Click "Save Settings". | Field message "Invalid email address"; no request | planned |
+| TC-TEN-12-E05 | P3 | Web | Admin | On "School Settings" as Admin; School Name filled | 1. Choose "Custom" in "School Board".<br>2. Enter "QA Board" in "Custom Board Name".<br>3. Click "Save Settings".<br>4. Reload. | "Custom Board Name" appears after step 1; after reload the board shows QA Board | planned |
+| TC-TEN-12-E06 | P2 | Web | Admin | On "School Settings" as Admin; a PNG under 2 MB on disk ("qa_logo.png") | 1. Click "Upload" in "School Logo".<br>2. Choose qa_logo.png. | Toast "School logo uploaded successfully"; the logo preview is shown | planned |
+| TC-TEN-12-E07 | P3 | Web | Admin | On "School Settings" as Admin; a 3 MB PNG on disk | 1. Click "Upload" in "School Logo".<br>2. Choose the 3 MB file. | Toast "Failed to upload school logo"; the previous logo stays | planned |
+| TC-TEN-12-E08 | P2 | Web | Admin | On "School Settings" as Admin; a JPG under 2 MB ("qa_sign.jpg") | 1. Click "Upload" in "Principal Signature".<br>2. Choose qa_sign.jpg. | Toast "Principal signature uploaded successfully"; the signature preview is shown | planned |
+| TC-TEN-12-E09 | P2 | Web | Student | Seeded student Karthik Reddy (001), password set (AUTH F04); then the Raju parent (seeded parent of 004 and 005) | 1. Sign in as 001 and read the sidebar.<br>2. Log out, sign in as the Raju parent and read the sidebar. | Neither sidebar has Administration or School Settings (only Dashboard, Students, Fee, Exam) | planned |
+| TC-TEN-12-E10 | P3 | Web | Staff | Signed in as Staff | 1. Open Administration > "School Settings" (or `/settings/school`).<br>2. Wait until the spinner stops.<br>3. Click "Save Settings". | A spinner for several seconds, then the empty form with "Not configured yet" even if the school has settings (the read is denied); step 3 gives "Failed to save school settings" | planned |
+| TC-TEN-12-E11 | P1 | Mobile | Admin | Signed in on mobile as Admin | 1. On Home tap "Administration".<br>2. Tap the card "School Settings". | Screen "School Settings" with the sections Branding ("School Logo", "Principal Signature"), "Basic Information" and "Address", and the button "Save Settings" | planned |
+| TC-TEN-12-E12 | P3 | Mobile | Admin | TC-TEN-12-E11 done | 1. Clear "School Name *".<br>2. Tap "Save Settings". | Error toast "School name is required"; nothing saved | planned |
+| TC-TEN-12-E13 | P2 | Mobile | Admin | TC-TEN-12-E11 done | 1. Enter "QA Public School Mobile" in "School Name *".<br>2. Tap "Save Settings". | Button shows "Saving..." then toast "Saved" with "School settings have been updated."; web shows the new name | planned |
+| TC-TEN-12-E14 | P2 | Mobile | Staff | Signed in on mobile as Staff | 1. Open `/admin/school-settings` by URL. | "Access Denied" with "You don't have permission to view this screen. Please contact your administrator." | planned |
+| TC-TEN-12-E15 | P3 | Web | Teacher | Signed in as Teacher | 1. Expand "Administration" in the sidebar.<br>2. Click "School Settings". | The entry is listed for Teacher; the page shows a spinner, then the empty form with "Not configured yet"; "Save Settings" gives "Failed to save school settings" | planned |
 
 Implemented in: `backend/tests/unit/tenants_admin/test_ten_tenancy_settings.py` (U01-U06, U08).
 
@@ -973,14 +992,14 @@ Users exist (QA tenant: one per role plus fixtures). For destructive tests the t
 
 ### Steps, web
 1. Open Administration > Users (route `/admin/users`). Without `user_management:list` the page shows "Access Denied" and "You don't have permission to view users."
-2. The page "User Management" ("View and manage all user accounts across the organization") shows a badge with the count ("N users"), a search box (placeholder "Search username or email...", debounced 400 ms), the filters "All Roles" and "All Status" (Active, Inactive), and a table with Username, Email, Role, Entity, Status and Actions, 20 rows per page with "Page X of Y" and previous and next buttons.
-3. Actions per row: View (button title "View", dialog "User Details": Username, Email, Role, Status, Entity Type, Entity Name, Created), Edit (title "Edit", dialog "Edit User": Username, Email with placeholder "Optional", Active switch, buttons "Cancel" and "Save Changes"), Reset Password (title "Reset Password", dialog "Reset Password": "Set a new password for <username>.", "New Password" with placeholder "Min 8 characters", "Confirm Password", button "Reset Password"). Edit and Reset appear only with `user_management:update`.
+2. The page "User Management" ("View and manage all user accounts across the organization") shows a badge with the count ("N users"), a search box (placeholder "Search username or email...", debounced 400 ms), the filters "All Roles" and "All Status" (Active, Inactive), and a table with Username, Email, Role, Entity, Status and Actions, 20 rows per page with "Page X of Y" and previous and next buttons. A search or filter that matches nothing shows the badge "0 users" and "No users found".
+3. Actions per row: View (button title "View", dialog "User Details": Username, Email, Role, Status, Entity Type, Entity Name, Created), Edit (title "Edit", dialog "Edit User": Username, Email with placeholder "Optional", Active switch, buttons "Cancel" and "Save Changes"), Reset Password (title "Reset Password", dialog "Reset Password": "Set a new password for <username>.", "New Password" with placeholder "Min 8 characters", "Confirm Password", buttons "Cancel" and "Reset Password"). The "User Details" fields show "-" when empty; Created is always empty. Edit and Reset appear only with `user_management:update`.
 4. Edit sends only changed fields; saving with no change just closes the dialog. Toasts: "User updated successfully", "Failed to update user", "Password reset successfully", "Failed to reset password". The reset button stays disabled until the password has 8 or more characters and both fields match ("Passwords do not match").
 5. Changing a user's role has no screen (API only).
 
 ### Steps, mobile
-1. Open the Administration tab, card "User Management" (`/admin/users`, needs `user_management`). Without it an Access Denied panel appears.
-2. The screen "User Management" shows "USER CATEGORIES" cards (Staff Members, Students, Parents, Roles & Permissions) and "SYSTEM LOGIN ACCOUNTS": a search box (placeholder "Search by username, name..."), role chips ("All Roles" and one per role from the filter options) and one card per account (name or username, "@username", role, entity type, status dot, edit button); page arrows and "page / total pages" at 20 per page. There is no status filter.
+1. On Home tap the module "Administration", then the card "User Management" (`/admin/users`, needs `user_management`). Without it the card shows "No access - contact admin" and the screen shows "Access Denied" with "You don't have permission to view this screen. Please contact your administrator."
+2. The screen "User Management" shows "USER CATEGORIES" cards (Staff Members "Teachers, admin staff & support", Students "Enrolled students across all classes", Parents "Parent accounts linked to students", each with a count, and Roles & Permissions) and "SYSTEM LOGIN ACCOUNTS": a search box (placeholder "Search by username, name..."), role chips ("All Roles" and one per role from the filter options) and one card per account (name or username, "@username", role, entity type, status dot, edit button); page arrows and "page / total pages" at 20 per page. There is no status filter.
 3. Tap the edit button: a sheet with the tabs "Details" (Username *, Email, Active switch, "Cancel", "Save Changes") and "Reset Password" ("New Password *" placeholder "Min 8 characters", button "Reset Password"; there is no confirmation field). Toasts: "User updated successfully", "Failed to update user", "Password reset successfully", "Failed to reset password"; local messages "Username is required" and "New password must be at least 8 characters".
 
 ### Expected results
@@ -1071,24 +1090,29 @@ The list reflects the database; edits change `users.username`, `users.email`, `u
 | TC-TEN-13-A38 | No token (header only) on every endpoint | 401 "Authorization header missing or invalid" | passing |
 | TC-TEN-13-A39 | Tenant isolation: `GET /admin/users/{id}` with a `qa_school_b` user id and a `qa_school` token | 404 "User with ID <id> not found"; the list never contains `qa_school_b` users | passing |
 | TC-TEN-13-A40 | Custom role holding `user_management:list` and `read` only | list and detail 200; `PATCH` 403 | passing |
-| TC-TEN-13-E01 | Web: Admin opens Administration > Users | table with the QA users; badge "N users" equals the total | planned |
-| TC-TEN-13-E02 | Web: type `qa_` in the search box | after about 400 ms only matching rows remain; page reset to 1 | planned |
-| TC-TEN-13-E03 | Web: choose "Student" in the role filter and "Inactive" in the status filter | rows narrow accordingly; empty result shows "No users found" | planned |
-| TC-TEN-13-E04 | Web: click View on a student user | dialog "User Details" with Entity Type "Student" and the student's name | planned |
-| TC-TEN-13-E05 | Web: Edit a temp user, change the Email, "Save Changes" | toast "User updated successfully"; row shows the new email | planned |
-| TC-TEN-13-E06 | Web: Edit with a username already in use | toast "Failed to update user" | planned |
-| TC-TEN-13-E07 | Web: Edit, switch Active off, save | row status becomes Inactive; that user can no longer log in | planned |
-| TC-TEN-13-E08 | Web: Reset Password with `Reset#2026` twice | toast "Password reset successfully"; the user can log in with it | planned |
-| TC-TEN-13-E09 | Web: Reset Password with mismatching confirmation | text "Passwords do not match"; the button stays disabled | planned |
-| TC-TEN-13-E10 | Web: more than 20 users, next page button | "Page 2 of N" and the next rows | planned |
-| TC-TEN-13-E11 | Web: Staff opens `/admin/users` | "Access Denied" with the permission message | planned |
-| TC-TEN-13-E12 | Web: custom role with only `user_management:list` | list visible; no Edit or Reset Password buttons | planned |
-| TC-TEN-13-E13 | Mobile: Admin opens Administration > "User Management" | category cards and the "SYSTEM LOGIN ACCOUNTS" list | planned |
-| TC-TEN-13-E14 | Mobile: tap the "Teacher" role chip | only Teacher accounts listed | planned |
-| TC-TEN-13-E15 | Mobile: edit a temp user, change Email, "Save Changes" | toast "User updated successfully" | planned |
-| TC-TEN-13-E16 | Mobile: "Reset Password" tab with 7 characters | toast "New password must be at least 8 characters" | planned |
-| TC-TEN-13-E17 | Mobile: "Reset Password" tab with a valid password | toast "Password reset successfully" | planned |
-| TC-TEN-13-E18 | Mobile: Staff opens `/admin/users` | Access Denied from `ScreenAccessGate` | planned |
+
+UI test cases (edits use seeded staff logins, never the QA role logins; restore every changed value at the end of the case):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-TEN-13-E01 | P1 | Web | Admin | Signed in as Admin (`qa_manual`) | 1. Open Administration > "Users". | Page "User Management" ("View and manage all user accounts across the organization"); badge "N users" equals the total; 20 rows sorted by username (seeded students 001, 002 ... first); "Page 1 of N" | planned |
+| TC-TEN-13-E02 | P2 | Web | Admin | On Administration > "Users" | 1. Type "qa_" in "Search username or email...".<br>2. Wait about half a second. | Only qa_admin, qa_parent, qa_staff, qa_student, qa_teacher remain; the pager is back on page 1 | planned |
+| TC-TEN-13-E03 | P3 | Web | Admin | On Administration > "Users" | 1. Choose "Student" in "All Roles".<br>2. Choose "Inactive" in "All Status".<br>3. Clear the filters and type "QA Nobody" in the search box. | Step 1 lists only Student accounts; step 2 narrows to inactive students (none on a fresh seed: "0 users" and "No users found"); step 3 shows "0 users" and "No users found" | planned |
+| TC-TEN-13-E04 | P2 | Web | Admin | On Administration > "Users" | 1. Search "001".<br>2. Click "View" on the row 001. | Dialog "User Details": Username 001, Role Student, Status Active, Entity Type student, Entity Name Karthik Reddy | planned |
+| TC-TEN-13-E05 | P1 | Web | Admin | Seeded staff Lakshmi Narayana Rao; note the current email | 1. Search Lakshmi Narayana Rao's username.<br>2. Click "Edit".<br>3. Change "Email" to "qa.lakshmi@example.com".<br>4. Click "Save Changes".<br>5. Edit again and restore the original email. | Toast "User updated successfully"; the row shows qa.lakshmi@example.com; after step 5 the original email is back | planned |
+| TC-TEN-13-E06 | P3 | Web | Admin | Seeded staff Sunitha Reddy | 1. Click "Edit" on Sunitha Reddy's row.<br>2. Change "Username" to "qa_staff".<br>3. Click "Save Changes". | Toast "Failed to update user" (username already exists); the row is unchanged | planned |
+| TC-TEN-13-E07 | P2 | Web | Admin | Seeded staff Venkatesh Kumar with a known password (AUTH F04 or TC-AUTH-12-E02) | 1. "Edit" Venkatesh Kumar.<br>2. Switch "Active" off and click "Save Changes".<br>3. In another browser sign in as Venkatesh Kumar.<br>4. Back as Admin, switch "Active" on again and save. | Row Status becomes Inactive; step 3 gives "Invalid Credentials"; after step 4 the login works again | planned |
+| TC-TEN-13-E08 | P1 | Web | Admin | Seeded staff Venkatesh Kumar | 1. Click "Reset Password" on his row.<br>2. Enter "QA Reset 2026" in "New Password" and "Confirm Password".<br>3. Click "Reset Password".<br>4. Sign in as Venkatesh Kumar with "QA Reset 2026" in another browser. | Toast "Password reset successfully"; the sign-in succeeds without the set-password page | planned |
+| TC-TEN-13-E09 | P3 | Web | Admin | On Administration > "Users" | 1. Click "Reset Password" on any seeded staff row.<br>2. Enter "QA Reset 2026" and "QA Reset 2027".<br>3. Click "Cancel". | Text "Passwords do not match"; the "Reset Password" button stays disabled; nothing changes | planned |
+| TC-TEN-13-E10 | P3 | Web | Admin | More than 20 users (true on `qa_manual`) | 1. Open Administration > "Users".<br>2. Click the next-page button. | "Page 2 of N" with the next 20 users | planned |
+| TC-TEN-13-E11 | P2 | Web | Staff | Signed in as Staff | 1. Open Administration > "Users". | "Access Denied" with "You don't have permission to view users." | planned |
+| TC-TEN-13-E12 | P3 | Web | Admin | Custom role "QA Viewer" with only `user_management:list` and `read` (TEN F14, F15); a seeded staff login moved to it with `PUT /admin/users/{id}/role` | 1. Sign in as that user.<br>2. Open Administration > "Users". | The list is shown with "View" only; no "Edit" or "Reset Password" buttons | planned |
+| TC-TEN-13-E13 | P1 | Mobile | Admin | Signed in on mobile as Admin | 1. On Home tap "Administration".<br>2. Tap the card "User Management". | "USER CATEGORIES" with Staff Members 9, Students 30, Parents (count) and Roles & Permissions; "SYSTEM LOGIN ACCOUNTS" with "Search by username, name...", role chips "All Roles", Admin, Parent, Staff, Student, Teacher, and cards such as "Karthik Reddy @001 - Student"; pager "1 / N" | planned |
+| TC-TEN-13-E14 | P2 | Mobile | Admin | TC-TEN-13-E13 done | 1. Tap the role chip "Teacher". | Only accounts with the Teacher role are listed (qa_teacher among them) | planned |
+| TC-TEN-13-E15 | P2 | Mobile | Admin | TC-TEN-13-E13 done; note Sunitha Reddy's email | 1. Search "Sunitha".<br>2. Tap the edit button on her card.<br>3. On "Details" change "Email" to "qa.sunitha.m@example.com".<br>4. Tap "Save Changes".<br>5. Restore the original email. | Toast "User updated successfully"; the card shows the new email until restored | planned |
+| TC-TEN-13-E16 | P3 | Mobile | Admin | TC-TEN-13-E13 done | 1. Tap edit on a seeded staff card.<br>2. Open the tab "Reset Password".<br>3. Enter "QA12345" in "New Password *".<br>4. Tap "Reset Password". | Toast "New password must be at least 8 characters"; no request | planned |
+| TC-TEN-13-E17 | P2 | Mobile | Admin | TC-TEN-13-E13 done | 1. Tap edit on Venkatesh Kumar's card.<br>2. Open "Reset Password".<br>3. Enter "QA Reset 2027".<br>4. Tap "Reset Password". | Toast "Password reset successfully"; Venkatesh Kumar can sign in with QA Reset 2027 | planned |
+| TC-TEN-13-E18 | P2 | Mobile | Staff | Signed in on mobile as Staff | 1. On Home tap "Administration".<br>2. Open `/admin/users` by URL. | The card "User Management" shows "No access - contact admin"; the screen shows "Access Denied" with "You don't have permission to view this screen. Please contact your administrator." | planned |
 
 Implemented in: `backend/tests/unit/tenants_admin/test_ten_admin_roles_users.py` (U01-U10).
 
@@ -1100,21 +1124,21 @@ API tests implemented in: `backend/tests/api/tenants_admin/test_f13_users.py`.
 Let the tenant administrator list roles, create custom roles (for example "Librarian"), rename or re-describe them and delete unused ones, while the five system roles stay protected.
 
 ### Roles and permissions
-`role_management:create`, `read`, `update`, `delete`, `list`. Admin gets all five from the seed (also when its plan does not list the resource). Other roles have none by default. Exception: `GET /admin/role-mgmt/roles/` has its permission check disabled, so any authenticated user can list roles. The legacy `/auth/roles/roles/` endpoints need `role_management:create` and `list`.
+`role_management:create`, `read`, `update`, `delete`, `list`. Admin gets all five from the seed (also when its plan does not list the resource). Other roles have none by default. `GET /admin/role-mgmt/roles/` needs `role_management:list` (its permission check was restored on 2026-10-02). The legacy `/auth/roles/roles/` endpoints need `role_management:create` and `list`.
 
 ### Preconditions
 The tenant's system roles exist (F07, F08). Custom roles are created here.
 
 ### Steps, web
-1. Open Masters > Roles and Permissions (route `/masters/rolespermissions`, page "Roles & Permissions": "Manage user roles and their access permissions across the system"; the demo catalog entry is named "Roles and Permissions"). The page decides rights with a hard-coded role (`admin`), so every user who opens it sees the buttons "Add Role", "Bulk Create" and "Add Permission"; the backend still enforces permissions.
+1. Open Masters > Roles and Permissions (route `/masters/rolespermissions`, page "Roles & Permissions": "Manage user roles and their access permissions across the system"; the demo catalog entry is named "Roles and Permissions"). The page decides rights with a hard-coded role (`admin`), so every user who opens it sees the buttons "Add Role", "Bulk Create" and "Add Permission"; the backend still enforces permissions (a Staff user sees an empty roles table because the list is denied).
 2. Tab "Roles" (card "User Roles Management": "Create, edit, and delete user roles in the system"): table Role Name, Description ("No description" when empty), Status, Created, Actions (edit and delete icons; delete is disabled for the role named "Admin").
-3. "Add Role" opens the dialog "Create Role" ("Add a new role to the system"): "Role Name" (placeholder "e.g., Librarian"), "Description" (placeholder "Role description (optional)"), "Active". Submit: toast "Role created successfully" or "Failed to create role: <detail>".
+3. "Add Role" opens the dialog "Create Role" ("Add a new role to the system"): "Role Name" (placeholder "e.g., Librarian"), "Description" (placeholder "Role description (optional)"), "Active", buttons "Cancel" and "Create". Create: toast "Role created successfully" or "Failed to create role: <detail>".
 4. The edit icon opens "Edit Role" ("Update the role information") and the delete icon opens the confirmation "Delete Role" ("Are you sure you want to delete this role? This action cannot be undone.", button "Delete"). Both call routes that do not exist on the backend (`/admin/role-mgmt/roles/{id}`), so they fail with "Failed to update role: ..." and "Failed to delete role: ..." (Known gaps).
 5. The tabs "Permissions" and "Permission Matrix" are F15.
 
 ### Steps, mobile
-1. Administration tab > "Role Management" or "Permission Management" (both open `/masters/rolespermissions`, "Roles & Permissions": "Manage user roles and access permissions"; tabs "Roles", "Permissions", "Matrix").
-2. "Add Role": fields "Role Name *" (placeholder "Enter role name"), "Description" (placeholder "Enter role description"), "Active". Local message "Role name is required". Toasts "Role Created: Role created successfully.", "Create Failed".
+1. Home > "Administration" > card "Role Management" or "Permission Management" (both open `/masters/rolespermissions`, "Roles & Permissions": "Manage user roles and access permissions"; tabs "Roles", "Permissions", "Matrix").
+2. "Add Role" opens the dialog "Add Role": fields "Role Name *" (placeholder "Enter role name"), "Description" (placeholder "Enter role description"), "Active", buttons "Cancel" and "Create". The Roles tab lists numbered role cards with status, description and "Created:" date. Local message "Role name is required". Toasts "Role Created: Role created successfully.", "Create Failed".
 3. Edit and delete fail as on web ("Update Failed", "Delete Failed").
 4. Without read or list permission on the screen resource: "Access Denied" and "You don't have permission to view roles and permissions".
 
@@ -1124,7 +1148,7 @@ Custom roles are rows in `roles` with `is_custom_role` true and `is_system_role`
 ### API endpoints
 | Method and path | Request fields | Permission |
 |---|---|---|
-| `GET /admin/role-mgmt/roles/` | none | none (any authenticated user) |
+| `GET /admin/role-mgmt/roles/` | none | `role_management:list` |
 | `POST /admin/role-mgmt/` | `name` (2 to 50), `description` (up to 200) | `role_management:create` |
 | `PUT /admin/role-mgmt/{role_id}` | `name`, `description`, `is_active` (ignored) | `role_management:update` |
 | `DELETE /admin/role-mgmt/{role_id}` | query `force` (default false) | `role_management:delete` |
@@ -1161,14 +1185,14 @@ Custom roles are rows in `roles` with `is_custom_role` true and `is_system_role`
 | TC-TEN-14-U08 | `delete_role` handler with 2 assigned users and `force` False | HTTPException 400 with the "Cannot delete role ... 2 users are assigned ..." text | passing |
 | TC-TEN-14-U09 | `validate_role_deletion` with a five-column role row | returns `can_delete: true` with a role summary (timestamps and `is_active` are synthesised, as in the roles list) | passing (KG-1 fixed 2026-10-02) |
 | TC-TEN-14-A01 | `GET /admin/role-mgmt/roles/` as Admin | 200; five system roles plus custom ones sorted by name (case-insensitive); `total_roles` equals the length; `tenant_id` present; every role `is_active` true | passing |
-| TC-TEN-14-A02 | Same call as Staff, Teacher, Student, Parent | 200 for each (no permission check; documents the gap) | passing |
+| TC-TEN-14-A02 | Same call as Staff, Teacher, Student, Parent | 403 for each; detail `Permission not found in database: <role> cannot list role_management. Contact administrator to configure permissions.` | passing |
 | TC-TEN-14-A03 | `permission_count` for Admin on a fresh `Full` tenant | 276 | passing |
 | TC-TEN-14-A04 | `POST /admin/role-mgmt/` `{"name":"QA Librarian","description":"QA custom role"}` | 201; `message` "Role created successfully"; `role.is_system_role` false; `permission_count` 0; `user_count` 0; `next_steps` has 3 items | passing |
 | TC-TEN-14-A05 | Create `Admin`, `Staff` | 422 with "Cannot create system role" in the detail | passing |
 | TC-TEN-14-A06 | Create `admin` | 400 "Role with name 'admin' already exists in this tenant" | passing |
 | TC-TEN-14-A07 | Create `qa librarian` after A04 | 400 "Role with name 'qa librarian' already exists in this tenant" | passing |
 | TC-TEN-14-A08 | Create names `x`, `Bad!`, 51 characters | 422 each | passing |
-| TC-TEN-14-A09 | Create with a 100-character description; with 101 | 201; 500 "Failed to create role: ..." and no row created | xfail: TEN-ROLE-DESC-LEN (a 101-200 character description passes the schema but fails in the database with 500) |
+| TC-TEN-14-A09 | Create with a 100-character description; with 101 | 201; 500 "Failed to create role: ..." and no row created | known defect: TEN-ROLE-DESC-LEN: a 101-200 character description passes the schema but fails in the database with 500 |
 | TC-TEN-14-A10 | Create the same name in `qa_school_b` | 201 (per-tenant uniqueness) | passing |
 | TC-TEN-14-A11 | Role matrix on `POST /admin/role-mgmt/` | Admin 201; Staff, Teacher, Student, Parent 403 "Permission not found in database: <role> cannot create role_management. Contact administrator to configure permissions." | passing |
 | TC-TEN-14-A12 | `PUT /admin/role-mgmt/{custom}` `{"name":"QA Librarian Senior","description":"Updated"}` | 200; `changes_made` has `name` and `description` with old and new | passing |
@@ -1182,8 +1206,8 @@ Custom roles are rows in `roles` with `is_custom_role` true and `is_system_role`
 | TC-TEN-14-A20 | `DELETE /admin/role-mgmt/{custom}` for an unused role | 200; `message` "Role 'QA Librarian Senior' deleted successfully"; `impact_summary.permissions_removed` equals the role's rows; role gone from the list | passing |
 | TC-TEN-14-A21 | `DELETE` on Admin, Staff, Teacher, Student, Parent roles | 403 "Cannot delete system role '<name>'. System roles are protected." each | passing |
 | TC-TEN-14-A22 | `DELETE` a custom role assigned to one user, no `force` | 400 "Cannot delete role '<name>'. 1 users are assigned to this role. Reassign users to different roles first, or use force=true to override."; role remains | passing |
-| TC-TEN-14-A23 | `DELETE ...?force=true` on the same role | 500 "Failed to delete role: ..." (users.role_id cannot be NULL); the role and the user keep their state | xfail: TEN-ROLE-FORCE-DELETE (DELETE with force=true on a role with users answers 500 because users.role_id cannot be NULL) |
-| TC-TEN-14-A24 | `DELETE` a custom role that has a role-menu link (F06) | 500 "Failed to delete role: ..." (foreign key); role remains | xfail: TEN-ROLE-FORCE-DELETE (deleting a role that still has a role-menu link answers 500 (foreign key) instead of a client error) |
+| TC-TEN-14-A23 | `DELETE ...?force=true` on the same role | 500 "Failed to delete role: ..." (users.role_id cannot be NULL); the role and the user keep their state | known defect: TEN-ROLE-FORCE-DELETE: DELETE with force=true on a role with users answers 500 because users.role_id cannot be... |
+| TC-TEN-14-A24 | `DELETE` a custom role that has a role-menu link (F06) | 500 "Failed to delete role: ..." (foreign key); role remains | known defect: TEN-ROLE-FORCE-DELETE: deleting a role that still has a role-menu link answers 500 (foreign key) instead of a ... |
 | TC-TEN-14-A25 | `DELETE` on a random uuid | 404 "Role with ID <id> not found" | passing |
 | TC-TEN-14-A26 | Role matrix on `DELETE` of an unused custom role (a fresh role per caller) | Admin 200; Staff, Teacher, Student, Parent 403 (`role_management:delete`) and the role remains | passing |
 | TC-TEN-14-A27 | `GET /admin/role-mgmt/{custom}/delete-validation` | 200 with `can_delete` true and a role summary | passing |
@@ -1195,16 +1219,21 @@ Custom roles are rows in `roles` with `is_custom_role` true and `is_system_role`
 | TC-TEN-14-A33 | `GET /auth/roles/roles/` as Admin; as Staff | 200 with the roles list; 403 | passing |
 | TC-TEN-14-A34 | No token on every endpoint of this feature | 401 "Authorization header missing or invalid" | passing |
 | TC-TEN-14-A35 | Tenant isolation: roles of `qa_school_b` listed with a `qa_school` token | none of them appear; `DELETE` of a `qa_school_b` role id with a `qa_school` token gives 404 | passing |
-| TC-TEN-14-E01 | Web: Admin opens Masters > Roles and Permissions | page "Roles & Permissions"; tab "Roles" lists the five system roles; delete icon of Admin disabled | planned |
-| TC-TEN-14-E02 | Web: "Add Role", name "E2E Librarian", description "E2E", submit | toast "Role created successfully"; new row with an Active badge | planned |
-| TC-TEN-14-E03 | Web: "Add Role" with name "Admin" | toast "Failed to create role:" containing "Cannot create system role 'Admin'" | planned |
-| TC-TEN-14-E04 | Web: edit the new role, change the description, save | toast "Failed to update role:" (client calls a missing route; documents the gap) | planned |
-| TC-TEN-14-E05 | Web: delete the new role, confirm "Delete" | toast "Failed to delete role:"; role still listed (documents the gap) | planned |
-| TC-TEN-14-E06 | Web: Staff opens `/masters/rolespermissions` | the page and buttons render, the list loads (roles list is unguarded), "Add Role" then fails with 403 | planned |
-| TC-TEN-14-E07 | Mobile: Admin opens Administration > "Role Management" | screen "Roles & Permissions" with tabs "Roles", "Permissions", "Matrix" | planned |
-| TC-TEN-14-E08 | Mobile: "Add Role" with an empty name | message "Role name is required" | planned |
-| TC-TEN-14-E09 | Mobile: "Add Role" with name "E2E Mobile Role" | toast "Role Created" | planned |
-| TC-TEN-14-E10 | Mobile: Staff opens `/masters/rolespermissions` | "Access Denied" with "You don't have permission to view roles and permissions" | planned |
+
+UI test cases (custom roles created here cannot be deleted from either client (Known gaps 9); remove them afterwards with `DELETE /admin/role-mgmt/{role_id}`):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-TEN-14-E01 | P2 | Web | Admin | Signed in as Admin (`qa_manual`, only the five system roles) | 1. Open Masters > "Roles and Permissions". | Page "Roles & Permissions" with "Add Role", "Bulk Create", "Add Permission" and the tabs "Roles", "Permissions", "Permission Matrix"; card "User Roles Management" lists Admin, Parent, Staff, Student, Teacher with descriptions, an "Active" badge and the edit and delete icons; the delete icon of Admin is disabled | planned |
+| TC-TEN-14-E02 | P1 | Web | Admin | TC-TEN-14-E01 done; no role "QA Web Librarian" | 1. Click "Add Role".<br>2. Enter "QA Web Librarian" in "Role Name" and "QA custom role" in "Description".<br>3. Click "Create". | Toast "Role created successfully"; the row QA Web Librarian appears with an "Active" badge | planned |
+| TC-TEN-14-E03 | P3 | Web | Admin | TC-TEN-14-E01 done | 1. Click "Add Role".<br>2. Enter "Admin" in "Role Name".<br>3. Click "Create". | Toast starting "Failed to create role:" containing "Cannot create system role 'Admin'"; no new row | planned |
+| TC-TEN-14-E04 | P3 | Web | Admin | TC-TEN-14-E02 done | 1. Click the edit icon of QA Web Librarian.<br>2. In "Edit Role" change the description to "QA updated".<br>3. Save. | Toast starting "Failed to update role:"; the description is unchanged (the client calls a missing route; Known gaps 9) | planned |
+| TC-TEN-14-E05 | P3 | Web | Admin | TC-TEN-14-E02 done | 1. Click the delete icon of QA Web Librarian.<br>2. In "Delete Role" click "Delete". | Toast starting "Failed to delete role:"; the role is still listed (Known gaps 9) | planned |
+| TC-TEN-14-E06 | P3 | Web | Staff | Signed in as Staff | 1. Open Masters > "Roles and Permissions".<br>2. Click "Add Role", enter "QA Staff Role", click "Create". | The heading and the buttons "Add Role", "Bulk Create", "Add Permission" render (hard-coded admin view), but the roles table stays empty because the list is denied; step 2 gives a toast starting "Failed to create role:" | planned |
+| TC-TEN-14-E07 | P2 | Mobile | Admin | Signed in on mobile as Admin | 1. On Home tap "Administration".<br>2. Tap "Role Management". | Screen "Roles & Permissions" ("Manage user roles and access permissions") with tabs "Roles", "Permissions", "Matrix", the button "Add Role" and numbered role cards (1 Admin ...) | planned |
+| TC-TEN-14-E08 | P3 | Mobile | Admin | TC-TEN-14-E07 done | 1. Tap "Add Role".<br>2. Leave "Role Name *" empty.<br>3. Tap "Create". | Message "Role name is required"; no request | planned |
+| TC-TEN-14-E09 | P1 | Mobile | Admin | TC-TEN-14-E07 done; no role "QA Mobile Role" | 1. Tap "Add Role".<br>2. Enter "QA Mobile Role" in "Role Name *".<br>3. Tap "Create". | Toast "Role Created" ("Role created successfully."); the card QA Mobile Role appears | planned |
+| TC-TEN-14-E10 | P2 | Mobile | Staff | Signed in on mobile as Staff | 1. Open `/masters/rolespermissions` by URL. | "Access Denied" with "You don't have permission to view roles and permissions" | planned |
 
 Implemented in: `backend/tests/unit/tenants_admin/test_ten_admin_roles_users.py`.
 
@@ -1222,14 +1251,14 @@ Role-management endpoints (`/admin/role-mgmt/...`): `role_management:read` (view
 A role to edit (a custom role from F14 for destructive tests; system roles only when the test restores them). QA tests use the resource name `qa_widgets` for new pairs.
 
 ### Steps, web
-1. Open Masters > Roles and Permissions (F14). Tab "Permissions" (card "Resource Permissions": "Manage individual permissions for roles and resources") has "Filter by Role:" (default "All Roles"), a table Resource, Action, Status, Actions (edit and delete icons), "Rows per page" and page buttons.
-2. "Add Permission" opens "Create Permission": "Role", "Resource", "Action" (lists from the dropdown endpoints) and the switch "Permission Granted"; toasts "Permission created successfully" and "Failed to create permission: <detail>". The edit icon opens "Edit Permission" ("Update the permission settings"; toast "Permission updated successfully"); only the granted switch has an effect because the backend update reads only `is_granted`. The delete icon opens "Delete Permission" showing Role, Resource, Action, Status (toast "Permission deleted successfully").
-3. "Bulk Create" opens "Bulk Create Permissions": choose "Role", add rows with Resource, Action and "Granted"; toast "Permissions created successfully".
+1. Open Masters > Roles and Permissions (F14). Tab "Permissions" (card "Resource Permissions": "Manage individual permissions for roles and resources") has "Filter by Role:" (default "All Roles"), a table Role, Resource, Action, Status, Actions (resource names shown with spaces, for example "academic years"; edit and delete icons), "Rows per page" and page buttons.
+2. "Add Permission" opens "Create Permission" ("Add a new permission for a role"): "Role" ("Select role"), "Resource" ("Select resource"), "Action" ("Select action") (lists from the dropdown endpoints), the switch "Permission Granted" and the buttons "Cancel" and "Create"; toasts "Permission created successfully" and "Failed to create permission: <detail>". The edit icon opens "Edit Permission" ("Update the permission settings"; toast "Permission updated successfully"); only the granted switch has an effect because the backend update reads only `is_granted`. The delete icon opens "Delete Permission" showing Role, Resource, Action, Status (toast "Permission deleted successfully").
+3. "Bulk Create" opens "Bulk Create Permissions" ("Create multiple permissions for a role at once"): choose "Role", add rows under "Permissions" with Resource, Action and "Granted", then "Create Permissions"; toast "Permissions created successfully".
 4. Tab "Permission Matrix" ("View permissions across all roles and resources in a matrix format"): one row per role, one column per resource, disabled checkboxes per action; "No Permission Matrix Data" when empty.
 5. Changes reach the API at once; the affected users' UI changes after their next login.
 
 ### Steps, mobile
-1. Open `/masters/rolespermissions` (Administration > "Permission Management") and use the tabs "Permissions" (buttons "Add Permission", "Bulk Create"; dialogs with "Role *", "Resource *", "Action *", "Permission Granted") and "Matrix" (totals "Total Permissions", "Resources", "Roles").
+1. Open `/masters/rolespermissions` (Home > "Administration" > "Permission Management") and use the tabs "Permissions" (buttons "Add Permission", "Bulk Create", role chips under "Filter by Role:" starting with "All Roles"; dialogs with "Role *", "Resource *", "Action *", "Permission Granted") and "Matrix" (totals "Total Permissions", "Resources", "Roles").
 2. Messages: "All fields are required", "Please select a role and add at least one permission"; toasts "Permission Created", "Permission Updated", "Permission Deleted", "Permissions Created" and the matching "... Failed" texts.
 
 ### Expected results
@@ -1302,8 +1331,8 @@ A role to edit (a custom role from F14 for destructive tests; system roles only 
 | TC-TEN-15-A04 | Same call with `is_granted=false` | 200 "Permission updated successfully"; `old_value` true; `new_value` false | passing |
 | TC-TEN-15-A05 | A user of the custom role calls `GET /admin/users/`; grant `user_management:list` through A03-style PUT; call again; revoke; call again | 403, then 200, then 403 with the same access token (no re-login needed on the API) | passing |
 | TC-TEN-15-A06 | PUT without `is_granted`; with `is_granted=maybe` | 422 each | passing |
-| TC-TEN-15-A07 | PUT with a resource of 50 characters; with 51 | 200; 500 "Failed to update role permission: ..." | xfail: TEN-NAME-LENGTH (an over-long resource name fails in the database and answers 500 instead of a validation error) |
-| TC-TEN-15-A08 | PUT with an action of 30 characters; with 31 | 200; 500 | xfail: TEN-NAME-LENGTH (an over-long action name fails in the database and answers 500 instead of a validation error) |
+| TC-TEN-15-A07 | PUT with a resource of 50 characters; with 51 | 200; 500 "Failed to update role permission: ..." | known defect: TEN-NAME-LENGTH: an over-long resource name fails in the database and answers 500 instead of a validation error |
+| TC-TEN-15-A08 | PUT with an action of 30 characters; with 31 | 200; 500 | known defect: TEN-NAME-LENGTH: an over-long action name fails in the database and answers 500 instead of a validation error |
 | TC-TEN-15-A09 | PUT for a random role uuid | 404 "Role with ID <id> not found" | passing |
 | TC-TEN-15-A10 | Admin grants its own role `qa_widgets:read` (not in the plan) | 200 (plan not enforced); revoke afterwards | passing |
 | TC-TEN-15-A11 | `POST .../permissions/bulk` with three permissions, one existing | 200 "Bulk permission update completed successfully"; `created_permissions` 2; `updated_permissions` 1; `total_changes` 3 | passing |
@@ -1347,19 +1376,24 @@ A role to edit (a custom role from F14 for destructive tests; system roles only 
 | TC-TEN-15-A49 | No token on all fifteen resource-permission endpoints | 401 "Authorization header missing or invalid" | passing |
 | TC-TEN-15-A50 | Tenant isolation: permission ids, role ids and resources of `qa_school_b` used with a `qa_school` token | 404 or empty results; the matrix lists only `qa_school` roles | passing |
 | TC-TEN-15-A51 | After a grant, the user's next login | `permissions` includes the pair; the old login response did not | passing |
-| TC-TEN-15-E01 | Web: Admin opens the "Permissions" tab | table lists permission rows; "Filter by Role:" defaults to "All Roles" | planned |
-| TC-TEN-15-E02 | Web: filter by the custom role | only its rows | planned |
-| TC-TEN-15-E03 | Web: "Add Permission", pick role, resource, action, granted on, submit | toast "Permission created successfully"; the row appears | planned |
-| TC-TEN-15-E04 | Web: edit the permission, switch off "Permission Granted", save | toast "Permission updated successfully"; Status shows revoked | planned |
-| TC-TEN-15-E05 | Web: delete the permission, confirm | toast "Permission deleted successfully"; row gone | planned |
-| TC-TEN-15-E06 | Web: "Bulk Create" with two rows | toast "Permissions created successfully"; both rows listed | planned |
-| TC-TEN-15-E07 | Web: tab "Permission Matrix" | a table with a row per role and a column per resource; Admin row has the most checked boxes | planned |
-| TC-TEN-15-E08 | Web: grant a permission to the Staff role, then log in as Staff | the new control or page appears only after the new login | planned |
-| TC-TEN-15-E09 | Web: duplicate permission | toast "Failed to create permission:" with "already exists for role" | planned |
-| TC-TEN-15-E10 | Mobile: Admin opens `/masters/rolespermissions`, tab "Permissions" | list loads | planned |
-| TC-TEN-15-E11 | Mobile: "Add Permission" with nothing selected | message "All fields are required" | planned |
-| TC-TEN-15-E12 | Mobile: "Add Permission" with role, resource, action | toast "Permission Created" | planned |
-| TC-TEN-15-E13 | Mobile: tab "Matrix" | totals "Total Permissions", "Resources" and "Roles" shown | planned |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-TEN-15-E01 | P2 | Web | Admin | Signed in as Admin | 1. Open Masters > "Roles and Permissions".<br>2. Click the tab "Permissions". | Card "Resource Permissions" ("Manage individual permissions for roles and resources"); "Filter by Role:" shows "All Roles"; columns Role, Resource, Action, Status, Actions; resources shown with spaces (for example "academic years") | planned |
+| TC-TEN-15-E02 | P2 | Web | Admin | TC-TEN-14-E02 done (QA Web Librarian, no permissions yet) | 1. On "Permissions" choose "QA Web Librarian" in "Filter by Role:". | No rows (the role has no permissions); choosing "Staff" lists only Staff rows | planned |
+| TC-TEN-15-E03 | P1 | Web | Admin | TC-TEN-14-E02 done | 1. Click "Add Permission".<br>2. Choose "QA Web Librarian" in "Role", "students" in "Resource", "list" in "Action".<br>3. Leave "Permission Granted" on.<br>4. Click "Create". | Toast "Permission created successfully"; filtered by QA Web Librarian the row students / list appears as granted | planned |
+| TC-TEN-15-E04 | P2 | Web | Admin | TC-TEN-15-E03 done | 1. Click the edit icon of the QA Web Librarian students / list row.<br>2. In "Edit Permission" switch off "Permission Granted".<br>3. Save. | Toast "Permission updated successfully"; Status shows the row as not granted | planned |
+| TC-TEN-15-E05 | P2 | Web | Admin | TC-TEN-15-E03 done | 1. Click the delete icon of that row.<br>2. In "Delete Permission" (Role, Resource, Action, Status shown) confirm. | Toast "Permission deleted successfully"; the row is gone | planned |
+| TC-TEN-15-E06 | P2 | Web | Admin | TC-TEN-14-E02 done | 1. Click "Bulk Create".<br>2. Choose "QA Web Librarian" in "Role".<br>3. Add the rows students / read and staff / list, both "Granted".<br>4. Click "Create Permissions". | Toast "Permissions created successfully"; both rows listed for QA Web Librarian | planned |
+| TC-TEN-15-E07 | P3 | Web | Admin | Signed in as Admin | 1. Click the tab "Permission Matrix". | "View permissions across all roles and resources in a matrix format": a row per role, a column per resource, disabled checkboxes; the Admin row has the most checked boxes | planned |
+| TC-TEN-15-E08 | P2 | Web | Admin | Browser A signed in as Staff on Administration > "Users" ("Access Denied") | 1. In browser B as Admin, "Add Permission": Role "Staff", Resource "user_management", Action "list", granted, "Create".<br>2. In browser A reload Administration > "Users".<br>3. In browser A log out and sign in as Staff again, open Administration > "Users".<br>4. As Admin delete the new row again. | After step 2 still "Access Denied" (permission map is a login snapshot); after step 3 the user list loads | planned |
+| TC-TEN-15-E09 | P3 | Web | Admin | TC-TEN-15-E06 done | 1. "Add Permission" with Role "QA Web Librarian", Resource "students", Action "read".<br>2. Click "Create". | Toast starting "Failed to create permission:" with "already exists for role" | planned |
+| TC-TEN-15-E10 | P2 | Mobile | Admin | Signed in on mobile as Admin | 1. Home > "Administration" > "Permission Management".<br>2. Tap the tab "Permissions". | Buttons "Add Permission" and "Bulk Create", role chips under "Filter by Role:" starting with "All Roles", and the permission list | planned |
+| TC-TEN-15-E11 | P3 | Mobile | Admin | TC-TEN-15-E10 done | 1. Tap "Add Permission".<br>2. Select nothing.<br>3. Save. | Message "All fields are required"; no request | planned |
+| TC-TEN-15-E12 | P1 | Mobile | Admin | TC-TEN-14-E09 done (QA Mobile Role) | 1. Tap "Add Permission".<br>2. Choose "QA Mobile Role" under "Role *", "students" under "Resource *", "list" under "Action *".<br>3. Save. | Toast "Permission Created"; filtering by QA Mobile Role shows students / list | planned |
+| TC-TEN-15-E13 | P3 | Mobile | Admin | TC-TEN-15-E10 done | 1. Tap the tab "Matrix". | Totals "Total Permissions", "Resources" and "Roles" with the per-role grid | planned |
 
 Implemented in: `backend/tests/unit/tenants_admin/test_ten_admin_roles_users.py`.
 
@@ -1426,16 +1460,21 @@ All tenant endpoints. The behaviour is observed through the endpoints of F13, F1
 | TC-TEN-16-A08 | Token of `qa_school` with header `qa_school_b` on any tenant endpoint | 403 "Tenant does not match your session" | passing |
 | TC-TEN-16-A09 | Deactivate `qa_school_b`: login, `/auth/academic-years`, and an existing token | 404; 404; 401 "Invalid connection" | passing |
 | TC-TEN-16-A10 | Reactivate `qa_school_b` | all three work again | passing |
-| TC-TEN-16-A11 | Database check as the API role: `SELECT count(*) FROM users` in a session with no tenant | 0 | blocked: these cases run SQL as the API database role and the task forbids touching the database directly (row-level security is covered by tests/integration/test_tenant_*.py) |
-| TC-TEN-16-A12 | Database check: `INSERT INTO users (...)` in a session with no tenant | fails with a NOT NULL violation on `tenant_id` | blocked: these cases run SQL as the API database role and the task forbids touching the database directly (row-level security is covered by tests/integration/test_tenant_*.py) |
-| TC-TEN-16-A13 | Database check: `SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user` | `false`, `false` | blocked: these cases run SQL as the API database role and the task forbids touching the database directly (row-level security is covered by tests/integration/test_tenant_*.py) |
-| TC-TEN-16-A14 | Every tenant table has `relrowsecurity` and `relforcerowsecurity` true (existing integration test) | all true | blocked: these cases run SQL as the API database role and the task forbids touching the database directly (row-level security is covered by tests/integration/test_tenant_*.py) |
+| TC-TEN-16-A11 | Database check as the API role: `SELECT count(*) FROM users` in a session with no tenant | 0 | skipped: blocked: these cases run SQL as the API database role and the task forbids touching the database directly (row... |
+| TC-TEN-16-A12 | Database check: `INSERT INTO users (...)` in a session with no tenant | fails with a NOT NULL violation on `tenant_id` | skipped: blocked: these cases run SQL as the API database role and the task forbids touching the database directly (row... |
+| TC-TEN-16-A13 | Database check: `SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user` | `false`, `false` | skipped: blocked: these cases run SQL as the API database role and the task forbids touching the database directly (row... |
+| TC-TEN-16-A14 | Every tenant table has `relrowsecurity` and `relforcerowsecurity` true (existing integration test) | all true | skipped: blocked: these cases run SQL as the API database role and the task forbids touching the database directly (row... |
 | TC-TEN-16-A15 | Super admin `GET /super_admin/tenant-data/{qa_school}/users/` | only `qa_school` users, although the super admin has no tenant | passing |
 | TC-TEN-16-A16 | Super admin tenant-data call for `qa_school_b` while the session of the previous call was for `qa_school` | each response contains only the path tenant's rows | passing |
-| TC-TEN-16-A17 | A new tenant (F07) and a data read before any row exists | empty lists, not another tenant's rows | skipped: tenant cap of 3 qa_tmp tenants reached by earlier runs, no tenant of this shape |
-| TC-TEN-16-E01 | Web: log in on host `localhost` (default tenant `qa_school`) with the `qa_school_b` Admin credentials | banner "Invalid Credentials" | planned |
-| TC-TEN-16-E02 | Mobile: organisation `qa_school_b`, `b_admin` credentials, active year | sign-in succeeds; Administration > User Management lists only `b_admin` | planned |
-| TC-TEN-16-E03 | Mobile: organisation `qa_school_b`, a `qa_school` user's credentials | banner "Invalid Credentials" | planned |
+| TC-TEN-16-A17 | A new tenant (F07) and a data read before any row exists | empty lists, not another tenant's rows | skipped: tenant cap of 3 qa_tmp tenants reached |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-TEN-16-E01 | P2 | Web | Admin | Web started for `qa_manual`; the `qa_school_b` Admin login `b_admin` exists only in `qa_school_b` (API test setup) | 1. Open `/login`.<br>2. Enter "b_admin" and its password.<br>3. Click "Login". | Banner "Invalid Credentials"; no session (logins are per tenant) | planned |
+| TC-TEN-16-E02 | P1 | Mobile | Admin | QA Admin login exists in both `qa_manual` and `qa_school` | 1. Sign in on mobile with organisation "qa_manual" as Admin.<br>2. Home > "Administration" > "User Management"; note the Students count (30).<br>3. Log out, sign in with organisation "qa_school" as Admin, open the same screen. | Each tenant shows only its own accounts: `qa_manual` lists the seeded students (Karthik Reddy @001 ...); `qa_school` lists none of them | planned |
+| TC-TEN-16-E03 | P2 | Mobile | Parent | The Raju parent (seeded parent of 004 and 005, email login, password set through AUTH F04) exists only in `qa_manual` | 1. On mobile enter organisation "qa_school" and tap "Continue".<br>2. Sign in with the Raju parent email and its `qa_manual` password. | Banner "Invalid Credentials" | planned |
 
 Implemented in: `backend/tests/unit/tenants_admin/test_ten_tenancy_settings.py`.
 
@@ -1493,17 +1532,17 @@ The Admin role check in `seed_caste_data`; idempotence of each seeder with a fak
 | TC-TEN-17-U01 | `seed_caste_data` handler with role `Staff` (fake session) | HTTPException 403 "Only administrators can seed data" | passing |
 | TC-TEN-17-U02 | `seed_caste_data` twice with a fake session that already holds the rows | second call creates 0 castes and 0 sub-castes | passing |
 | TC-TEN-17-U03 | `check_role_plan_permission_with_error` called with role `None` | HTTPException 403 "Permission not found in database: None cannot ..." | passing |
-| TC-TEN-17-A01 | `POST /auth/seed/permission-data` with header only | 201; `message` "Permission data seeded successfully" | blocked: the seeders write platform-wide public master data (role templates, plan menu links, locations) which the task forbids |
-| TC-TEN-17-A02 | Repeat A01 | 201; `details.role_templates_created` `[]` | blocked: the seeders write platform-wide public master data (role templates, plan menu links, locations) which the task forbids |
+| TC-TEN-17-A01 | `POST /auth/seed/permission-data` with header only | 201; `message` "Permission data seeded successfully" | skipped: blocked: the seeders write platform-wide public master data (role templates, plan menu links, locations) which... |
+| TC-TEN-17-A02 | Repeat A01 | 201; `details.role_templates_created` `[]` | skipped: blocked: the seeders write platform-wide public master data (role templates, plan menu links, locations) which... |
 | TC-TEN-17-A03 | `GET /auth/seed/verify-permission-data` with header only | 200; keys `role_templates`, `academic_menu`, `menu_actions`, `permission_templates`, `plan_access`; five role templates | passing |
-| TC-TEN-17-A04 | `POST /auth/seed/location-data` with header only | 201; `message` "Location data seeded successfully"; second call creates 0 states | blocked: the seeders write platform-wide public master data (role templates, plan menu links, locations) which the task forbids |
+| TC-TEN-17-A04 | `POST /auth/seed/location-data` with header only | 201; `message` "Location data seeded successfully"; second call creates 0 states | skipped: blocked: the seeders write platform-wide public master data (role templates, plan menu links, locations) which... |
 | TC-TEN-17-A05 | `POST /auth/seed/caste-data` as Admin | 201; `message` "Caste data seeded successfully"; castes General, OBC, SC, ST, EWS exist in the tenant | passing |
 | TC-TEN-17-A06 | Same call again | 201; `details.total_castes` 0 and `details.total_sub_castes` 0 | passing |
 | TC-TEN-17-A07 | Same call as Staff, Teacher, Student, Parent | 403 "Only administrators can seed data" each | passing |
 | TC-TEN-17-A08 | Same call with no token (header only) | 401 "Authorization header missing or invalid" | passing |
 | TC-TEN-17-A09 | `GET /admin/role-mgmt/test/` with header `qa_school` and no token | 404 (route removed 2026-10-02) | passing |
 | TC-TEN-17-A10 | `GET /admin/role-mgmt/debug-roles/` as Staff | 404 (route removed 2026-10-02) | passing |
-| TC-TEN-17-A11 | Same call with a garbage bearer token | 200 with an `error` field | passing |
+| TC-TEN-17-A11 | Same call with a garbage bearer token | 404 or 405 (route removed) | passing |
 | TC-TEN-17-A12 | `GET /superadmin/organizations/` as Admin and as the QA super admin | 403 for both | passing |
 | TC-TEN-17-A13 | `GET /superadmin/organizations/1`, `PUT`, `DELETE` and `POST /superadmin/organizations/` as Admin | 403 (or 422 for an invalid body) | passing |
 | TC-TEN-17-A14 | `GET /superadmin/organizations/<uuid>` | 422 (integer id required) | passing |

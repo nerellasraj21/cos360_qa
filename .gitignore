@@ -9,3 +9,7 @@ reports/*.json
 reports/junit.xml
 reports/*.txt
 reports/*.png
+reports/*.log
+reports/*.err
+reports/full_backup/
+reports/design/

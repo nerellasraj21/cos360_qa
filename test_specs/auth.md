@@ -2,7 +2,7 @@
 
 Authentication and session handling for every tenant user of COS360: how a user picks the organisation (tenant) and academic year, signs in with a username, email or staff phone number, is forced to replace a temporary password on first login, receives a permission map and a role-based menu, keeps a session across reloads and app restarts, renews expired access tokens, switches between children (parents), views and edits their own profile, changes their password, and signs out. It also covers the API-only access-validation helpers. Platform super admin sign-in and tenant-admin password resets belong to `docs/features/tenants-and-admin.md` (TEN). Module rules and gotchas: `docs/modules/auth.md`; system design: `docs/architecture.md`, `docs/permissions.md`. Conventions and test case IDs: `docs/testing/strategy.md`, `docs/features/README.md`.
 
-_Last verified against code: 2026-10-02_
+_Last verified against code: 2026-10-07_
 
 ## Roles
 
@@ -17,6 +17,8 @@ _Last verified against code: 2026-10-02_
 | Anonymous | Organisation detection, academic year list, login, set-password (with change-password token), refresh (with refresh token), logout (with token) |
 
 Test fixtures used below: the QA tenant `qa_school`, one QA login per role (credentials from `backend/.env.test`, never written in documents), a second tenant `qa_school_b` created by the test setup through `POST /super_admin/system/tenants/`, and two academic years in `qa_school` (one active, one not). "Header" means the `cschema` request header.
+
+UI test cases (the 8-column tables) run on the manual-test tenant `qa_manual` (`docs/testing/test-environment.md`): web started with `VITE_DEFAULT_TENANT=qa_manual` on `http://localhost:5174`, mobile with the organisation `qa_manual`. Its data (`scripts/qa/setup_manual_tenant.py` plus `scripts/seed_demo_data.py`): plan `Full` with the demo menu catalog, active academic year 2026-2027, the QA role logins (`qa_admin`, `qa_staff`, `qa_teacher`, `qa_student`, `qa_parent`; `is_first_login` FALSE; the QA Student and Parent logins are not linked to any student and the QA logins have no staff record), 30 seeded students with parents (for example Karthik Reddy 001, Advik Mehta 002, Saanvi Iyer 003, siblings Harsha Raju 004 and Tanvi Raju 005; student login = admission number, parent login = email or `<admission number>.father` / `.mother`), and 9 seeded staff (for example Lakshmi Narayana Rao, Sunitha Reddy, Venkatesh Kumar). Seeded student, parent and staff logins still have the temporary password and are forced to change it at first sign-in (F04). The `Full` plan grants no `profile` permissions (Known gaps 8). Cases that need more data say so and use names starting with "QA ".
 
 ## Feature index
 
@@ -103,24 +105,29 @@ Web: the login page loads the academic years of the tenant named by the hostname
 | TC-AUTH-01-U13 | `extract_client_name` with strict off, no usable host, fallback off | raises HTTPException 400 "No valid tenant specified. Please provide 'cschema' header" | passing |
 | TC-AUTH-01-U14 | Web `getTenantFromHostname`: `school1.abc.com`, `www.school1.abc.com`, `localhost`, `127.0.0.1` | `school1`; `school1`; default tenant; `127` | passing |
 | TC-AUTH-01-U15 | `TenantService.get_tenant_id` caches a hit for 60 s and drops a miss (fake clock, fake session) | second call inside 60 s does not query; call after 61 s queries again; a miss is not cached | passing |
-| TC-AUTH-01-A01 | `GET /auth/academic-years` with header `cschema: qa_school`, no token | 200; JSON array of `{id, title, is_active}` | planned |
-| TC-AUTH-01-A02 | Same call with header `QA_School` | 200; same list (header sanitised) | planned |
-| TC-AUTH-01-A03 | Header `no_such_school` | 404; detail "Tenant 'no_such_school' not found or inactive" | planned |
-| TC-AUTH-01-A04 | Header `!!!` | request rejected, no data returned (status 500 today, intended 400 "Invalid 'cschema' header") | planned |
-| TC-AUTH-01-A05 | No header and no token | request rejected, no data returned (status 500 today, intended 400 "Tenant must be specified via 'cschema' header") | planned |
-| TC-AUTH-01-A06 | Header `qa school` (with a space) | 404 for tenant `qaschool` (documents that spaced names cannot be addressed) | planned |
-| TC-AUTH-01-A07 | Deactivate `qa_school_b` (TEN F09), then `GET /auth/academic-years` with header `qa_school_b` | 404 "Tenant 'qa_school_b' not found or inactive" | planned |
-| TC-AUTH-01-A08 | Admin token of `qa_school` plus header `qa_school_b` on `GET /admin/users/` | 403 "Tenant does not match your session" | planned |
-| TC-AUTH-01-A09 | Admin token of `qa_school` plus header `qa_school` | 200 | planned |
-| TC-AUTH-01-A10 | Admin token of `qa_school` with no header | 200; data belongs to `qa_school` | planned |
-| TC-AUTH-01-A11 | Token of `qa_school_b`, then deactivate `qa_school_b`, then `GET /admin/users/` in the same process | 401 "Invalid connection" | planned |
-| TC-AUTH-01-A12 | Valid signed token with no `tenant_id` claim (legacy token) | 401 "Your session is out of date. Please log in again." | planned |
-| TC-AUTH-01-A13 | Users with the same username in `qa_school` and `qa_school_b`; list users with each tenant's token | each list contains only its own tenant's user (tenant isolation) | planned |
-| TC-AUTH-01-E01 | Web: open `/login` on host `localhost` (default tenant `qa_school`) | the Academic Year select lists the `qa_school` years, the active one marked "(Current)" | planned |
-| TC-AUTH-01-E02 | Mobile: first launch, type `NoSuchSchool`, tap "Continue" | text "Organisation not found. Check the name and try again." shown; nothing stored; still on "Select Organization" | planned |
-| TC-AUTH-01-E03 | Mobile: type ` QA_School ` (spaces, capitals), tap "Continue" | sign-in form opens; "Organization Name" shows `qa_school` and is not editable | planned |
-| TC-AUTH-01-E04 | Mobile: on the sign-in form tap "Change Organization", enter `qa_school_b`, "Continue" | academic years of `qa_school_b` replace the previous ones | planned |
-| TC-AUTH-01-E05 | Mobile: stop the backend, tap "Continue" with a valid code | text "Could not reach the server. Check your connection and try again." | planned |
+| TC-AUTH-01-A01 | `GET /auth/academic-years` with header `cschema: qa_school`, no token | 200; JSON array of `{id, title, is_active}` | passing |
+| TC-AUTH-01-A02 | Same call with header `QA_School` | 200; same list (header sanitised) | passing |
+| TC-AUTH-01-A03 | Header `no_such_school` | 404; detail "Tenant 'no_such_school' not found or inactive" | passing |
+| TC-AUTH-01-A04 | Header `!!!` | request rejected, no data returned (status 500 today, intended 400 "Invalid 'cschema' header") | passing |
+| TC-AUTH-01-A05 | No header and no token | request rejected, no data returned (status 500 today, intended 400 "Tenant must be specified via 'cschema' header") | passing |
+| TC-AUTH-01-A06 | Header `qa school` (with a space) | 404 for tenant `qaschool` (documents that spaced names cannot be addressed) | passing |
+| TC-AUTH-01-A07 | Deactivate `qa_school_b` (TEN F09), then `GET /auth/academic-years` with header `qa_school_b` | 404 "Tenant 'qa_school_b' not found or inactive" | passing |
+| TC-AUTH-01-A08 | Admin token of `qa_school` plus header `qa_school_b` on `GET /admin/users/` | 403 "Tenant does not match your session" | passing |
+| TC-AUTH-01-A09 | Admin token of `qa_school` plus header `qa_school` | 200 | passing |
+| TC-AUTH-01-A10 | Admin token of `qa_school` with no header | 200; data belongs to `qa_school` | passing |
+| TC-AUTH-01-A11 | Token of `qa_school_b`, then deactivate `qa_school_b`, then `GET /admin/users/` in the same process | 401 "Invalid connection" | passing |
+| TC-AUTH-01-A12 | Valid signed token with no `tenant_id` claim (legacy token) | 401 "Your session is out of date. Please log in again." | passing |
+| TC-AUTH-01-A13 | Users with the same username in `qa_school` and `qa_school_b`; list users with each tenant's token | each list contains only its own tenant's user (tenant isolation) | passing |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-AUTH-01-E01 | P2 | Web | Admin | Signed out; web started with `VITE_DEFAULT_TENANT=qa_manual` on `localhost` | 1. Open `http://localhost:5174/login`.<br>2. Wait for the "Academic Year" field to load.<br>3. Open the "Academic Year" list. | The card "Welcome!" shows; "2026-2027 (Current)" is preselected; the list holds only `qa_manual` years and only 2026-2027 carries "(Current)"; "Login" is enabled | planned |
+| TC-AUTH-01-E02 | P3 | Mobile | Admin | Expo web app with no stored organisation (fresh browser profile or storage cleared) | 1. Open the mobile app at `/login`.<br>2. In "Organization" type "NoSuchSchool".<br>3. Tap "Continue". | Text "Organisation not found. Check the name and try again." appears under the field; the screen stays on "Select Organization"; no organisation is stored | planned |
+| TC-AUTH-01-E03 | P1 | Mobile | Admin | Expo web app with no stored organisation | 1. Open the mobile app at `/login`.<br>2. In "Organization" type " QA_Manual " (leading and trailing space, capitals).<br>3. Tap "Continue". | The form "Welcome Back!" ("Sign in to your account to continue") opens; "Organization Name" shows `qa_manual` and cannot be edited; "Academic Year" shows 2026-2027 | planned |
+| TC-AUTH-01-E04 | P2 | Mobile | Admin | TC-AUTH-01-E03 done; tenant `qa_school` exists | 1. On the sign-in form tap "Change Organization".<br>2. In "Organization" type "qa_school".<br>3. Tap "Continue".<br>4. Tap the "Academic Year" field. | Step 1 returns to "Select Organization"; after step 3 "Organization Name" shows `qa_school`; the picker lists only `qa_school` years (API test leftovers included) | planned |
+| TC-AUTH-01-E05 | P3 | Mobile | Admin | Expo web app with no stored organisation; browser devtools network set to Offline after the page loads | 1. Open the mobile app at `/login`.<br>2. Set the network to Offline.<br>3. In "Organization" type "qa_manual".<br>4. Tap "Continue". | Text "Could not reach the server. Check your connection and try again."; still on "Select Organization"; nothing stored | planned |
 
 Implemented in: `backend/tests/unit/auth/test_auth_tenant_detection.py` (U01-U13, U15); `web/src/__tests__/auth/tenantAndGuards.test.ts` (U14).
 
@@ -178,23 +185,28 @@ The year id and title are stored as `academic_year_id` and `academic_year_title`
 | TC-AUTH-02-U04 | `AcademicYearOption` serialisation of `{id, title, is_active}` | JSON has exactly those three keys | passing |
 | TC-AUTH-02-U05 | Web store initial value when `localStorage` holds id `371` or `abc` | entry removed; selected id is `""` | passing |
 | TC-AUTH-02-U06 | Mobile `applyAcademicYears` with `[]`, plain array, `{items:[...]}`, `{results:[...]}` | selected id `""`; active year id; same; same | blocked: applyAcademicYears is inline in mobile/app/login.tsx and not exported |
-| TC-AUTH-02-A01 | `GET /auth/academic-years` with two years (2025-2026 inactive, 2026-2027 active) | 200; order 2026-2027 first (start_date desc); `is_active` true only for 2026-2027 | planned |
-| TC-AUTH-02-A02 | Same call without any token | 200 (public endpoint) | planned |
-| TC-AUTH-02-A03 | Login with the id of the inactive year | 200; response `academic_year_title` is `2025-2026`; decoded access token has the same `academic_year_id` | planned |
-| TC-AUTH-02-A04 | Login without `academic_year_id` | 422; detail lists field `academic_year_id` | planned |
-| TC-AUTH-02-A05 | Login with `academic_year_id` "" | 422 | planned |
-| TC-AUTH-02-A06 | Login with a random UUID that is not a year of the tenant | 400 "Invalid academic year" | planned |
-| TC-AUTH-02-A07 | Login with year id of tenant `qa_school_b` against `qa_school` | 400 "Invalid academic year" (tenant isolation) | planned |
-| TC-AUTH-02-A08 | Wrong password plus random year UUID | 401 "Invalid Credentials" (password is checked first) | planned |
-| TC-AUTH-02-A09 | Login, then `POST /auth/refresh` | refresh response carries the same `academic_year_id` and `academic_year_title` | planned |
-| TC-AUTH-02-A10 | Years of `qa_school_b` listed with header `qa_school` | none of the `qa_school_b` titles appear | planned |
-| TC-AUTH-02-A11 | Admin login with the inactive year id, then list academic years (Masters) | the chosen year is the only one with `is_active` true (side effect made by the web client; reproduce with `PUT /masters/academic_years/{id}` `{is_active: true}`) | planned |
-| TC-AUTH-02-E01 | Web: open `/login` | select shows the active year preselected and labelled "(Current)"; button "Login" enabled after the list loads | planned |
-| TC-AUTH-02-E02 | Web: choose the older year, log in as Admin, open Masters > Academic Years | the older year is now active | planned |
-| TC-AUTH-02-E03 | Web: log in as Teacher with the older year | session works; the Masters academic year list still shows the same active year (only Admin activates) | planned |
-| TC-AUTH-02-E04 | Web: after login change the navbar "Year" dropdown and reload | the choice is kept (`academic-year-storage`) | planned |
-| TC-AUTH-02-E05 | Mobile: tap the "Academic Year" field | modal "Select Academic Year" lists years; active one has a "Current" badge; picking one closes it and shows its title | planned |
-| TC-AUTH-02-E06 | Mobile: tenant with no academic years, tap "Sign In" | text "Could not load academic years. Tap to retry." under the field | planned |
+| TC-AUTH-02-A01 | `GET /auth/academic-years` with two years (2025-2026 inactive, 2026-2027 active) | 200; order 2026-2027 first (start_date desc); `is_active` true only for 2026-2027 | passing |
+| TC-AUTH-02-A02 | Same call without any token | 200 (public endpoint) | passing |
+| TC-AUTH-02-A03 | Login with the id of the inactive year | 200; response `academic_year_title` is `2025-2026`; decoded access token has the same `academic_year_id` | passing |
+| TC-AUTH-02-A04 | Login without `academic_year_id` | 422; detail lists field `academic_year_id` | passing |
+| TC-AUTH-02-A05 | Login with `academic_year_id` "" | 422 | passing |
+| TC-AUTH-02-A06 | Login with a random UUID that is not a year of the tenant | 400 "Invalid academic year" | passing |
+| TC-AUTH-02-A07 | Login with year id of tenant `qa_school_b` against `qa_school` | 400 "Invalid academic year" (tenant isolation) | passing |
+| TC-AUTH-02-A08 | Wrong password plus random year UUID | 401 "Invalid Credentials" (password is checked first) | passing |
+| TC-AUTH-02-A09 | Login, then `POST /auth/refresh` | refresh response carries the same `academic_year_id` and `academic_year_title` | passing |
+| TC-AUTH-02-A10 | Years of `qa_school_b` listed with header `qa_school` | none of the `qa_school_b` titles appear | passing |
+| TC-AUTH-02-A11 | Admin login with the inactive year id, then list academic years (Masters) | the chosen year is the only one with `is_active` true (side effect made by the web client; reproduce with `PUT /masters/academic_years/{id}` `{is_active: true}`) | passing |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-AUTH-02-E01 | P1 | Web | Admin | Signed out; `qa_manual` active year 2026-2027 | 1. Open `/login`.<br>2. Wait until the "Academic Year" field stops loading.<br>3. Open the "Academic Year" list. | "2026-2027 (Current)" is preselected; the other years are listed without "(Current)"; "Login" is enabled once the list has loaded | planned |
+| TC-AUTH-02-E02 | P2 | Web | Admin | An inactive academic year "QA 2025-2026" exists (Masters > Academic Years) | 1. Open `/login`.<br>2. Choose "QA 2025-2026" in "Academic Year".<br>3. Sign in with the QA Admin login.<br>4. Open Masters > "Academic Years".<br>5. Log out, sign in again as Admin choosing "2026-2027 (Current)" to restore. | After step 4 "QA 2025-2026" is the only active year (the Admin login activated it for the tenant); after step 5 2026-2027 is active again | planned |
+| TC-AUTH-02-E03 | P2 | Web | Teacher | "QA 2025-2026" exists and is inactive; 2026-2027 active | 1. Open `/login`.<br>2. Choose "QA 2025-2026".<br>3. Sign in with the QA Teacher login.<br>4. Open Masters > "Academic Years". | Teacher lands on `/dashboard`; 2026-2027 is still the active year (only an Admin login activates the chosen year) | planned |
+| TC-AUTH-02-E04 | P3 | Web | Admin | Signed in as Admin; "QA 2025-2026" exists | 1. In the navbar "Year" dropdown choose "QA 2025-2026".<br>2. Reload the page. | The navbar still shows "QA 2025-2026" (kept in `academic-year-storage`); the tenant's active year is unchanged | planned |
+| TC-AUTH-02-E05 | P2 | Mobile | Admin | TC-AUTH-01-E03 done (sign-in form for `qa_manual` open) | 1. Tap the "Academic Year" field.<br>2. Tap "2026-2027". | Picker "Select Academic Year" lists the years; 2026-2027 carries the "Current" badge; after step 2 the picker closes and the field shows 2026-2027 | planned |
+| TC-AUTH-02-E06 | P3 | Mobile | Admin | A tenant with no academic years | 1. Enter that tenant's code in "Organization" and tap "Continue".<br>2. Fill "Username" and "Password".<br>3. Tap "Sign In". | Text "Could not load academic years. Tap to retry." under the field; no request to `/auth/login` | blocked: no tenant without academic years can be produced; provisioning (TEN F07) always creates one |
 
 Implemented in: `backend/tests/unit/auth/test_auth_login_schemas.py` (U01-U04); `web/src/__tests__/auth/academicYearStore.test.ts` (U05).
 
@@ -262,37 +274,42 @@ Response 200 body (`LoginResponse`): `user{id, username, email, is_active}`, `ro
 | TC-AUTH-03-U10 | Web `useAuthStore.login` with role `Student` and `entity_id` set | `studentId` equals `entity_id`; `isAuthenticated` true; `permissions` flattened to `{resource, action, is_granted:true}` rows | passing |
 | TC-AUTH-03-U11 | Web `useAuthStore.login` with role `Parent` and `user.parent_profile.students` of 2 | `selectedStudent` is the first; `studentId` is its id | passing |
 | TC-AUTH-03-U12 | Mobile login `validateForm`: empty username; 5-character password; empty organisation | messages "Username is required"; "Password must be at least 6 characters"; "Organization name is required" | blocked: validateForm is inline in mobile/app/login.tsx and not exported |
-| TC-AUTH-03-A01 | Login as Admin with username and active year | 200; `role.name` "Admin"; `token_type` "bearer"; `expires_in` 86400; `tenant_id` equals the tenant id; `client_name` `qa_school`; `user` has no password field | planned |
-| TC-AUTH-03-A02 | Login as each of Staff, Teacher, Student, Parent | 200 each; `role.name` matches; `entity_id` is the staff id for Staff and Teacher, student id for Student, parent id for Parent | planned |
-| TC-AUTH-03-A03 | Admin without a staff row | `entity_id` is null | planned |
-| TC-AUTH-03-A04 | Login with the user's email instead of username | 200 | planned |
-| TC-AUTH-03-A05 | Login with a staff member's phone number | 200 | planned |
-| TC-AUTH-03-A06 | Login with a student's admission number as username | 200; role Student | planned |
-| TC-AUTH-03-A07 | Wrong password | 401 "Invalid Credentials" | planned |
-| TC-AUTH-03-A08 | Unknown username | 401 "Invalid Credentials" (same body as A07) | planned |
-| TC-AUTH-03-A09 | Deactivated user with the correct password (set `is_active` false via TEN F13) | 401 "Invalid Credentials" | planned |
-| TC-AUTH-03-A10 | Username in different case (`ADMIN` when stored as `admin`) and with trailing space | 401 each (exact match) | planned |
-| TC-AUTH-03-A11 | Same username in `qa_school` and `qa_school_b` with different passwords; each password against each tenant | success only with the matching tenant's password; the other pairing gives 401 | planned |
-| TC-AUTH-03-A12 | Decode the access token | claims `sub`, `username`, `role`, `tenant_id`, `client_name`, `academic_year_id`, `academic_year_title`, `exp`, `token_type=access`; no `permissions`, no `user_type` | planned |
-| TC-AUTH-03-A13 | Body `client_name` equal to the header tenant | 200 | planned |
-| TC-AUTH-03-A14 | Body `client_name` of `qa_school_b` with header `qa_school` | 400 "Tenant does not match the request" | planned |
-| TC-AUTH-03-A15 | Body `client_name` of a name that does not exist | 401 "Invalid connection" | planned |
-| TC-AUTH-03-A16 | Empty username and empty password | 401 "Invalid Credentials" | planned |
-| TC-AUTH-03-A17 | Body missing `password` | 422 naming field `password` | planned |
-| TC-AUTH-03-A18 | Ten wrong passwords in a row, then the correct one | all ten return 401; the correct login returns 200 (no lockout, no 429) | planned |
-| TC-AUTH-03-A19 | Login without any header and token | request rejected before the endpoint (F01 rule) | planned |
-| TC-AUTH-03-A20 | Deactivate the user after login, call `GET /auth/available-resources` with the old access token | still 200 until expiry (documents that the token is not re-checked); `POST /auth/refresh` with the old refresh token gives 401 (F08) | planned |
-| TC-AUTH-03-E01 | Web: Admin logs in with valid credentials | lands on `/dashboard`; navbar shows the username | planned |
-| TC-AUTH-03-E02 | Web: wrong password | banner "Invalid Credentials"; stays on `/login` | planned |
-| TC-AUTH-03-E03 | Web: click the eye button | password field switches between hidden and visible; button label alternates "Show password" and "Hide password" | planned |
-| TC-AUTH-03-E04 | Web: log in as Staff, Teacher, Student, Parent in turn | each lands on `/dashboard` with the sidebar of its role (F06) | planned |
-| TC-AUTH-03-E05 | Web: while the request runs | button shows "Logging in..." and is disabled | planned |
-| TC-AUTH-03-E06 | Web: already logged in, open `/login` | redirected to `/dashboard` | planned |
-| TC-AUTH-03-E07 | Mobile: sign in as Admin with valid credentials | opens the tabs home | planned |
-| TC-AUTH-03-E08 | Mobile: tap "Sign In" with empty fields | messages "Username is required" and "Password is required" | planned |
-| TC-AUTH-03-E09 | Mobile: password of 5 characters | message "Password must be at least 6 characters"; no request is sent | planned |
-| TC-AUTH-03-E10 | Mobile: wrong password | red banner "Invalid Credentials" | planned |
-| TC-AUTH-03-E11 | Mobile: sign in as Student and as Parent | each lands on its tabs; the Parent has a selected child (F09) | planned |
+| TC-AUTH-03-A01 | Login as Admin with username and active year | 200; `role.name` "Admin"; `token_type` "bearer"; `expires_in` 86400; `tenant_id` equals the tenant id; `client_name` `qa_school`; `user` has no password field | passing |
+| TC-AUTH-03-A02 | Login as each of Staff, Teacher, Student, Parent | 200 each; `role.name` matches; `entity_id` is the staff id for Staff and Teacher, student id for Student, parent id for Parent | passing |
+| TC-AUTH-03-A03 | Admin without a staff row | `entity_id` is null | passing |
+| TC-AUTH-03-A04 | Login with the user's email instead of username | 200 | passing |
+| TC-AUTH-03-A05 | Login with a staff member's phone number | 200 | passing |
+| TC-AUTH-03-A06 | Login with a student's admission number as username | 200; role Student | passing |
+| TC-AUTH-03-A07 | Wrong password | 401 "Invalid Credentials" | passing |
+| TC-AUTH-03-A08 | Unknown username | 401 "Invalid Credentials" (same body as A07) | passing |
+| TC-AUTH-03-A09 | Deactivated user with the correct password (set `is_active` false via TEN F13) | 401 "Invalid Credentials" | passing |
+| TC-AUTH-03-A10 | Username in different case (`ADMIN` when stored as `admin`) and with trailing space | 401 each (exact match) | passing |
+| TC-AUTH-03-A11 | Same username in `qa_school` and `qa_school_b` with different passwords; each password against each tenant | success only with the matching tenant's password; the other pairing gives 401 | passing |
+| TC-AUTH-03-A12 | Decode the access token | claims `sub`, `username`, `role`, `tenant_id`, `client_name`, `academic_year_id`, `academic_year_title`, `exp`, `token_type=access`; no `permissions`, no `user_type` | passing |
+| TC-AUTH-03-A13 | Body `client_name` equal to the header tenant | 200 | passing |
+| TC-AUTH-03-A14 | Body `client_name` of `qa_school_b` with header `qa_school` | 400 "Tenant does not match the request" | passing |
+| TC-AUTH-03-A15 | Body `client_name` of a name that does not exist | 401 "Invalid connection" | passing |
+| TC-AUTH-03-A16 | Empty username and empty password | 401 "Invalid Credentials" | passing |
+| TC-AUTH-03-A17 | Body missing `password` | 422 naming field `password` | passing |
+| TC-AUTH-03-A18 | Ten wrong passwords in a row, then the correct one | all ten return 401; the correct login returns 200 (no lockout, no 429) | passing |
+| TC-AUTH-03-A19 | Login without any header and token | request rejected before the endpoint (F01 rule) | passing |
+| TC-AUTH-03-A20 | Deactivate the user after login, call `GET /auth/available-resources` with the old access token | still 200 until expiry (documents that the token is not re-checked); `POST /auth/refresh` with the old refresh token gives 401 (F08) | passing |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-AUTH-03-E01 | P1 | Web | Admin | Signed out; tenant `qa_manual` | 1. Open `/login`.<br>2. Keep "2026-2027 (Current)" in "Academic Year".<br>3. Enter the QA Admin username in "Username / Admission Number" and its password in "Password".<br>4. Click "Login". | Lands on `/dashboard` with "Welcome back, qa_admin (Admin)"; the navbar shows "qa_admin" and "Year 2026-2027" | planned |
+| TC-AUTH-03-E02 | P2 | Web | Staff | Signed out | 1. Open `/login`.<br>2. Enter the QA Staff username.<br>3. Enter "QA Wrong 999" in "Password".<br>4. Click "Login". | Red banner "Invalid Credentials"; the page stays on `/login`; no token stored | planned |
+| TC-AUTH-03-E03 | P3 | Web | Staff | Signed out | 1. Open `/login`.<br>2. Type "QA Secret 1" in "Password".<br>3. Click the eye button "Show password".<br>4. Click the eye button again. | After step 3 the text is readable and the button is labelled "Hide password"; after step 4 it is masked again and labelled "Show password" | planned |
+| TC-AUTH-03-E04 | P1 | Web | Staff | Signed out | 1. Open `/login`.<br>2. Sign in with the QA Staff login.<br>3. Note the page and the sidebar, then log out.<br>4. Repeat steps 1 to 3 with the QA Teacher, QA Student and QA Parent logins. | Each lands on `/dashboard` with "Welcome back, <username> (<Role>)"; Staff sees the full menu including Fee; Teacher sees no Fee; Student and Parent see only Dashboard, Students, Fee, Exam (F06) | planned |
+| TC-AUTH-03-E05 | P3 | Web | Admin | Signed out; devtools network throttled to "Slow 3G" | 1. Open `/login`.<br>2. Enter the QA Admin credentials.<br>3. Click "Login" and watch the button. | While the request runs the button reads "Logging in..." and is disabled | planned |
+| TC-AUTH-03-E06 | P2 | Web | Admin | Signed in as Admin | 1. Type `/login` in the address bar and press Enter. | Redirected to `/dashboard` | planned |
+| TC-AUTH-03-E07 | P1 | Mobile | Admin | TC-AUTH-01-E03 done (sign-in form for `qa_manual`) | 1. Enter the QA Admin username in "Username".<br>2. Enter its password in "Password".<br>3. Tap "Sign In". | Home "Dashboard" opens with "Good Morning, qa_admin" (greeting varies with the time) and the "Modules" list; bottom tabs Home, Settings, Alerts, Profile | planned |
+| TC-AUTH-03-E08 | P2 | Mobile | Admin | Sign-in form for `qa_manual` open | 1. Leave "Username" and "Password" empty.<br>2. Tap "Sign In". | Messages "Username is required" and "Password is required"; no request sent | planned |
+| TC-AUTH-03-E09 | P3 | Mobile | Admin | Sign-in form for `qa_manual` open | 1. Enter the QA Admin username.<br>2. Enter "12345" in "Password".<br>3. Tap "Sign In". | Message "Password must be at least 6 characters"; no request sent | planned |
+| TC-AUTH-03-E10 | P2 | Mobile | Staff | Sign-in form for `qa_manual` open | 1. Enter the QA Staff username.<br>2. Enter "QA Wrong 999" in "Password".<br>3. Tap "Sign In". | Red banner "Invalid Credentials"; the form stays open | planned |
+| TC-AUTH-03-E11 | P2 | Mobile | Student | Sign-in form for `qa_manual` open; seeded student Karthik Reddy (001) and the seeded parent of Harsha Raju (004) and Tanvi Raju (005) have already replaced their temporary passwords (F04) | 1. Sign in as 001 with its password.<br>2. Note the "Modules" list, then Profile tab > "Logout" > "Logout".<br>3. Enter "qa_manual", tap "Continue", sign in with the parent login of Harsha and Tanvi Raju. | Student Modules: Students, Exam Management, Fee Management; the parent sees the same modules and Harsha Raju selected as the current child (F09) | planned |
 
 Implemented in: `backend/tests/unit/auth/test_auth_login_service.py` (U01-U09); `web/src/__tests__/auth/authStore.test.ts` (U10, U11).
 
@@ -357,35 +374,40 @@ A user created by staff enrolment or student admission (which set the flag), or 
 | TC-AUTH-04-U06 | `set_password_first_login` with a deactivated user | HTTPException 401 "Invalid Credentials" | passing |
 | TC-AUTH-04-U07 | Role gate in `login_user`: names Staff, Teacher, Student, Parent vs Admin and a custom role | first-login check runs only for the four names | passing |
 | TC-AUTH-04-U08 | Mobile `validate()` with `""`, `"1234567"`, `"12345678"` and mismatching confirm | "New password is required"; "New password must be at least 8 characters"; "Please confirm your new password"; "New passwords do not match" | blocked: validate is inline in mobile/app/set-password.tsx and not exported |
-| TC-AUTH-04-A01 | Login as a Staff fixture with `is_first_login` TRUE | 200 body has `requires_password_change` true, `change_password_token`, `message`, `academic_year_id`, `academic_year_title`; no `access_token` | planned |
-| TC-AUTH-04-A02 | Same for Teacher, Student and Parent fixtures | same challenge for each role | planned |
-| TC-AUTH-04-A03 | Admin fixture with flag forced TRUE in the database | normal login (tokens issued, no challenge) | planned |
-| TC-AUTH-04-A04 | Challenge token decoded | `token_type=change_password`, claims `sub`, `username`, `role`, `tenant_id`, `client_name`, academic year; `exp` about 15 min | planned |
-| TC-AUTH-04-A05 | Use the challenge token as bearer on `GET /profile/staff/me` | 401 "Invalid token type" | planned |
-| TC-AUTH-04-A06 | `POST /auth/staff/set-password` with matching 10-character passwords | 200; `message` "Password updated successfully"; `access_token`, `refresh_token`, `menu`, `permissions`, `entity_id` present | planned |
-| TC-AUTH-04-A07 | After A06 log in with the old temporary password | 401 "Invalid Credentials" | planned |
-| TC-AUTH-04-A08 | After A06 log in with the new password | 200 with tokens and no challenge | planned |
-| TC-AUTH-04-A09 | Replay the same change-password token | 400 "Password has already been set. Please log in with your password." | planned |
-| TC-AUTH-04-A10 | `new_password` and `confirm_password` differ | 400 "Passwords do not match" (checked before the token) | planned |
-| TC-AUTH-04-A11 | `new_password` "short7!" (7 characters) | 422 on `new_password` | planned |
-| TC-AUTH-04-A12 | `new_password` of exactly 8 characters | 200 | planned |
-| TC-AUTH-04-A13 | Garbage string as `change_password_token` | 401 "Invalid or expired change-password token. Please login again." | planned |
-| TC-AUTH-04-A14 | Token that is 16 minutes old (token minted with a past `exp` in the test) | 401 "Invalid or expired change-password token. Please login again." | planned |
-| TC-AUTH-04-A15 | Deactivate the user after the challenge, then set the password | 401 "Invalid Credentials" | planned |
-| TC-AUTH-04-A16 | Deactivate the tenant after the challenge, then set the password | 401 "Invalid connection" | planned |
-| TC-AUTH-04-A17 | Set-password with header `cschema: qa_school_b` and a `qa_school` token | 200 for the `qa_school` user (token tenant wins; documents the missing header cross-check) | planned |
-| TC-AUTH-04-A18 | Challenge login with a wrong academic year id | 400 "Invalid academic year" (no challenge issued) | planned |
-| TC-AUTH-04-A19 | Role denial matrix: set-password for a token minted for each of the five roles | works for Staff, Teacher, Student, Parent; the Admin case cannot occur through login | planned |
-| TC-AUTH-04-E01 | Web: log in as the first-login Staff fixture | redirected to `/set-password`; page title "Set Your Password" | planned |
-| TC-AUTH-04-E02 | Web: enter a 10-character password twice, press "Set Password" | signed in and taken to `/`; sidebar visible | planned |
-| TC-AUTH-04-E03 | Web: enter different passwords | banner "Passwords do not match" | planned |
-| TC-AUTH-04-E04 | Web: open `/set-password` directly in a new tab with no token | panel "Session expired or invalid" with button "Back to Login" | planned |
-| TC-AUTH-04-E05 | Web: after success log out and log in with the new password | normal login, no password page | planned |
-| TC-AUTH-04-E06 | Mobile: sign in as the first-login Student fixture | screen "Set New Password" | planned |
-| TC-AUTH-04-E07 | Mobile: password "1234567" | message "New password must be at least 8 characters" | planned |
-| TC-AUTH-04-E08 | Mobile: mismatching confirmation | message "New passwords do not match" | planned |
-| TC-AUTH-04-E09 | Mobile: valid new password, tap "Set Password" | opens the tabs signed in | planned |
-| TC-AUTH-04-E10 | Mobile: first-login Parent completes the flow | tabs open and the first child is selected (F09) | planned |
+| TC-AUTH-04-A01 | Login as a Staff fixture with `is_first_login` TRUE | 200 body has `requires_password_change` true, `change_password_token`, `message`, `academic_year_id`, `academic_year_title`; no `access_token` | passing |
+| TC-AUTH-04-A02 | Same for Teacher, Student and Parent fixtures | same challenge for each role | passing |
+| TC-AUTH-04-A03 | Admin fixture with flag forced TRUE in the database | normal login (tokens issued, no challenge) | passing |
+| TC-AUTH-04-A04 | Challenge token decoded | `token_type=change_password`, claims `sub`, `username`, `role`, `tenant_id`, `client_name`, academic year; `exp` about 15 min | passing |
+| TC-AUTH-04-A05 | Use the challenge token as bearer on `GET /profile/staff/me` | 401 "Invalid token type" | known defect: AUTH-NONACCESS-400: a change-password token sent as bearer without a cschema header gets 400 Tenant must be sp... |
+| TC-AUTH-04-A06 | `POST /auth/staff/set-password` with matching 10-character passwords | 200; `message` "Password updated successfully"; `access_token`, `refresh_token`, `menu`, `permissions`, `entity_id` present | passing |
+| TC-AUTH-04-A07 | After A06 log in with the old temporary password | 401 "Invalid Credentials" | passing |
+| TC-AUTH-04-A08 | After A06 log in with the new password | 200 with tokens and no challenge | passing |
+| TC-AUTH-04-A09 | Replay the same change-password token | 400 "Password has already been set. Please log in with your password." | passing |
+| TC-AUTH-04-A10 | `new_password` and `confirm_password` differ | 400 "Passwords do not match" (checked before the token) | passing |
+| TC-AUTH-04-A11 | `new_password` "short7!" (7 characters) | 422 on `new_password` | passing |
+| TC-AUTH-04-A12 | `new_password` of exactly 8 characters | 200 | passing |
+| TC-AUTH-04-A13 | Garbage string as `change_password_token` | 401 "Invalid or expired change-password token. Please login again." | passing |
+| TC-AUTH-04-A14 | Token that is 16 minutes old (token minted with a past `exp` in the test) | 401 "Invalid or expired change-password token. Please login again." | passing |
+| TC-AUTH-04-A15 | Deactivate the user after the challenge, then set the password | 401 "Invalid Credentials" | passing |
+| TC-AUTH-04-A16 | Deactivate the tenant after the challenge, then set the password | 401 "Invalid connection" | passing |
+| TC-AUTH-04-A17 | Set-password with header `cschema: qa_school_b` and a `qa_school` token | 200 for the `qa_school` user (token tenant wins; documents the missing header cross-check) | passing |
+| TC-AUTH-04-A18 | Challenge login with a wrong academic year id | 400 "Invalid academic year" (no challenge issued) | passing |
+| TC-AUTH-04-A19 | Role denial matrix: set-password for a token minted for each of the five roles | works for Staff, Teacher, Student, Parent; the Admin case cannot occur through login | passing |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-AUTH-04-E01 | P2 | Web | Staff | Seeded staff Sunitha Reddy has not signed in yet (login = her email, or phone when there is no email; `is_first_login` TRUE); temporary password from the staff service code; signed out | 1. Open `/login`.<br>2. Enter Sunitha Reddy's login and the temporary password.<br>3. Click "Login". | Redirected to `/set-password`; heading "Set Your Password" with "Create a new password to access your account."; fields "New Password" and "Confirm Password"; no dashboard | planned |
+| TC-AUTH-04-E02 | P1 | Web | Staff | TC-AUTH-04-E01 done (on `/set-password`) | 1. Enter "QA Pass 2026" in "New Password".<br>2. Enter "QA Pass 2026" in "Confirm Password".<br>3. Click "Set Password". | Button shows "Setting password..." then the user is signed in on `/` with the sidebar; the temporary password no longer works | planned |
+| TC-AUTH-04-E03 | P3 | Web | Staff | Another seeded staff member who has not signed in yet (for example Venkatesh Kumar) on `/set-password` (steps of TC-AUTH-04-E01) | 1. Enter "QA Pass 2026" in "New Password".<br>2. Enter "QA Pass 2027" in "Confirm Password".<br>3. Click "Set Password". | Banner "Passwords do not match"; still on `/set-password` | planned |
+| TC-AUTH-04-E04 | P3 | Web | Staff | Signed out; no change-password token in this tab | 1. Open a new browser tab.<br>2. Open `/set-password` directly. | Panel "Session expired or invalid" with "Please log in again with your temporary password." and the button "Back to Login" | planned |
+| TC-AUTH-04-E05 | P2 | Web | Staff | TC-AUTH-04-E02 done | 1. Open the avatar menu and click "Logout".<br>2. Sign in with Sunitha Reddy's login and "QA Pass 2026". | Normal login to `/dashboard`; the password page does not appear | planned |
+| TC-AUTH-04-E06 | P2 | Mobile | Student | Seeded student Saanvi Iyer (003) has not signed in yet (`is_first_login` TRUE); temporary password from the admission service code | 1. Open `/login`, enter "qa_manual", tap "Continue".<br>2. Enter "003" in "Username" and the temporary password.<br>3. Tap "Sign In". | Screen "Set New Password" with "Please set a new password for your account", fields "New Password" and "Confirm New Password" | planned |
+| TC-AUTH-04-E07 | P3 | Mobile | Student | TC-AUTH-04-E06 done | 1. Enter "1234567" in "New Password" and in "Confirm New Password".<br>2. Tap "Set Password". | Message "New password must be at least 8 characters"; no request sent | planned |
+| TC-AUTH-04-E08 | P3 | Mobile | Student | TC-AUTH-04-E06 done | 1. Enter "QA Pass 2026" in "New Password".<br>2. Enter "QA Pass 2027" in "Confirm New Password".<br>3. Tap "Set Password". | Message "New passwords do not match"; no request sent | planned |
+| TC-AUTH-04-E09 | P1 | Mobile | Student | TC-AUTH-04-E06 done | 1. Enter "QA Pass 2026" in both fields.<br>2. Tap "Set Password". | Home opens signed in (Modules Students, Exam Management, Fee Management); the next sign-in uses "QA Pass 2026" without the password screen | planned |
+| TC-AUTH-04-E10 | P2 | Mobile | Parent | The seeded parent login of Saanvi Iyer (003) (its email, or `003.father`) has not signed in yet | 1. Sign in with the father login and the temporary password.<br>2. On "Set New Password" enter "QA Pass 2026" twice.<br>3. Tap "Set Password".<br>4. Open `/parents/select-child`. | Home opens signed in; "Select Child" shows Saanvi Iyer as the current child | planned |
 
 Implemented in: `backend/tests/unit/auth/test_auth_login_service.py` (U01-U07).
 
@@ -407,7 +429,7 @@ A role with rows in `resource_permissions` (seeded by TEN F07 and F08, edited by
 
 ### Steps, mobile
 1. Log in (F03). `normalisePermissions` converts the map into a list stored in AsyncStorage `@auth/permissions_data`.
-2. Tabs, dashboard tiles and screens use `useAuth().hasPermission`. Screens guarded by `ScreenAccessGate` show an Access Denied panel when the check fails.
+2. Tabs, dashboard tiles and screens use `useAuth().hasPermission`. Screens guarded by `ScreenAccessGate` show "Access Denied" with "You don't have permission to view this screen. Please contact your administrator." when the check fails; the Administration screen shows "No access - contact admin" on the cards the user cannot open.
 3. As on web, new grants are visible only after the next login.
 
 ### Expected results
@@ -452,23 +474,28 @@ A role with rows in `resource_permissions` (seeded by TEN F07 and F08, edited by
 | TC-AUTH-05-U12 | Mobile `generateFallbackPatterns("fee_types","list")` | contains `fees_types:list`, `feetypes:list`, `fee_types:read`, `fee_types:read_own`, `fee_types:read_related` | passing |
 | TC-AUTH-05-U13 | Mobile `checkPermissionWithFallbacks` with only `student_attendance:read_related` for `student_attendance:list` | granted through the scoped fallback | passing |
 | TC-AUTH-05-U14 | Mobile `hasPermission` for role Teacher on `exam_marks:delete` | false (same matrix as web) | blocked: hasPermission is a closure inside AuthProvider (mobile/contexts/AuthContext.tsx); the teacher matrix it applies is covered by permissions.test.ts |
-| TC-AUTH-05-A01 | Login as Admin; compare `permissions` with `resource_permissions` rows where `is_granted` | equal sets; includes `role_management` with create, read, update, delete, list | planned |
-| TC-AUTH-05-A02 | Login as Staff, Teacher, Student, Parent | each map equals its role's granted rows; Teacher has no `fee_*`; Student has no plain `read` on `students` | planned |
-| TC-AUTH-05-A03 | Every action list in the response | sorted alphabetically | planned |
-| TC-AUTH-05-A04 | Set one of the role's permissions to `is_granted` false (TEN F15), log in again | that action is absent from `permissions` | planned |
-| TC-AUTH-05-A05 | Grant a new permission (TEN F15), call an endpoint needing it with the old token | 200 immediately (no re-login needed on the API); the old login response still lacks it | planned |
-| TC-AUTH-05-A06 | Revoke a permission, call the endpoint with the old token | 403 "Permission not found in database: <role> cannot <action> <resource>. Contact administrator to configure permissions." | planned |
-| TC-AUTH-05-A07 | Custom role with no grants, user logs in | 200; `permissions` is `{}`; `menu` is `[]` | planned |
-| TC-AUTH-05-A08 | Role matrix on `GET /admin/users/` (needs `user_management:list`) | Admin 200; Staff, Teacher, Student, Parent 403 | planned |
-| TC-AUTH-05-A09 | Permission map in the set-password response (F04) | equals the map a normal login returns afterwards | planned |
-| TC-AUTH-05-A10 | Tenant isolation: add a permission to the Staff role of `qa_school_b`, log in as Staff of `qa_school` | `qa_school` map unchanged | planned |
-| TC-AUTH-05-A11 | Student and Parent maps on a tenant whose plan lacks `_own`/`_related` and `profile` | maps contain none of those actions (documents the seed behaviour in Known gaps) | planned |
-| TC-AUTH-05-E01 | Web: Admin opens Administration > Users | table with columns Username, Email, Role, Entity, Status, Actions is shown | planned |
-| TC-AUTH-05-E02 | Web: Staff opens `/admin/users` by URL | "Access Denied" with "You don't have permission to view users." | planned |
-| TC-AUTH-05-E03 | Web: as Admin revoke `user_management:update` from a custom role user; that user's UI | edit and reset buttons stay visible until re-login; after re-login they are gone | planned |
-| TC-AUTH-05-E04 | Web: log in as Teacher | no Fee entries in the sidebar; Teacher cannot create fee categories even if the backend grants it | planned |
-| TC-AUTH-05-E05 | Mobile: Staff opens the Administration users screen | "Access Denied" panel from `ScreenAccessGate` | planned |
-| TC-AUTH-05-E06 | Mobile: Parent opens Student Attendance | screen opens (guard satisfied by `student_attendance:read_related`) | planned |
+| TC-AUTH-05-A01 | Login as Admin; compare `permissions` with `resource_permissions` rows where `is_granted` | equal sets; includes `role_management` with create, read, update, delete, list | passing |
+| TC-AUTH-05-A02 | Login as Staff, Teacher, Student, Parent | each map equals its role's granted rows; Teacher has no `fee_*`; Student has no plain `read` on `students` | passing |
+| TC-AUTH-05-A03 | Every action list in the response | sorted alphabetically | passing |
+| TC-AUTH-05-A04 | Set one of the role's permissions to `is_granted` false (TEN F15), log in again | that action is absent from `permissions` | passing |
+| TC-AUTH-05-A05 | Grant a new permission (TEN F15), call an endpoint needing it with the old token | 200 immediately (no re-login needed on the API); the old login response still lacks it | passing |
+| TC-AUTH-05-A06 | Revoke a permission, call the endpoint with the old token | 403 "Permission not found in database: <role> cannot <action> <resource>. Contact administrator to configure permissions." | passing |
+| TC-AUTH-05-A07 | Custom role with no grants, user logs in | 200; `permissions` is `{}`; `menu` is `[]` | passing |
+| TC-AUTH-05-A08 | Role matrix on `GET /admin/users/` (needs `user_management:list`) | Admin 200; Staff, Teacher, Student, Parent 403 | passing |
+| TC-AUTH-05-A09 | Permission map in the set-password response (F04) | equals the map a normal login returns afterwards | passing |
+| TC-AUTH-05-A10 | Tenant isolation: add a permission to the Staff role of `qa_school_b`, log in as Staff of `qa_school` | `qa_school` map unchanged | passing |
+| TC-AUTH-05-A11 | Student and Parent maps on a tenant whose plan lacks `_own`/`_related` and `profile` | maps contain none of those actions (documents the seed behaviour in Known gaps) | passing |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-AUTH-05-E01 | P1 | Web | Admin | Signed in as Admin | 1. Open Administration > "Users". | Page "User Management" with the badge "N users", the filters "All Roles" and "All Status", and the columns Username, Email, Role, Entity, Status, Actions; each row has the buttons "View", "Edit", "Reset Password" | planned |
+| TC-AUTH-05-E02 | P2 | Web | Staff | Signed in as Staff | 1. Type `/admin/users` in the address bar and press Enter. | "Access Denied" with "You don't have permission to view users."; no user rows | planned |
+| TC-AUTH-05-E03 | P3 | Web | Admin | Custom role "QA Clerk" holding `user_management:list`, `read` and `update`; a spare login "QA Clerk User" moved to it with `PUT /admin/users/{id}/role`; browser A signed in as QA Clerk User | 1. In browser A open Administration > "Users"; note the "Edit" buttons.<br>2. In browser B sign in as Admin, open Masters > "Roles and Permissions" > "Permissions", filter "QA Clerk", edit the `user_management` `update` row, switch off "Permission Granted", save.<br>3. In browser A reload Administration > "Users".<br>4. In browser A log out and sign in again as QA Clerk User. | After step 3 "Edit" and "Reset Password" are still shown (saving fails with "Failed to update user"); after step 4 they are gone | planned |
+| TC-AUTH-05-E04 | P2 | Web | Teacher | Signed in as Teacher | 1. Look at the sidebar.<br>2. Type `/fee/categories` in the address bar and press Enter. | The sidebar has no Fee entry; on the fee categories page no create button is shown even if the backend grants `fee_categories:create` (teacher matrix) | planned |
+| TC-AUTH-05-E05 | P2 | Mobile | Staff | Signed in as Staff on mobile | 1. On Home tap the module "Administration".<br>2. Open `/admin/users` by URL. | The card "User Management" shows "No access - contact admin"; the screen shows "Access Denied" with "You don't have permission to view this screen. Please contact your administrator." | planned |
+| TC-AUTH-05-E06 | P2 | Mobile | Parent | Seeded parent of Harsha Raju (004) and Tanvi Raju (005), password already set (F04); the Parent role holds `student_attendance:read_related` (grant through TEN F15, the `Full` plan does not seed it) | 1. Sign in as that parent.<br>2. On Home tap "Students".<br>3. Open "Attendance". | The attendance screen opens without "Access Denied" (guard satisfied by `read_related`) | planned |
 
 Implemented in: `backend/tests/unit/auth/test_auth_permissions_menu.py` (U01-U03); `web/src/__tests__/auth/authStore.test.ts` (U04-U09); `mobile/__tests__/auth/authUtils.test.ts` and `mobile/__tests__/auth/permissions.test.ts` (U10-U13).
 
@@ -481,15 +508,15 @@ Show each user only the navigation entries their role may open.
 Menu visibility comes from `role_menu_permissions.can_view` for the user's role, not from `resource_permissions`; a menu does not imply API access. Admin, Staff and Teacher receive every menu of the tenant's plan; Student and Parent receive only the menus whose URL is in `STUDENT_PARENT_MENU_URLS`: `/dashboard`, `/students`, `/students/admission`, `/students/attendance`, `/students/studenttransport`, `/students/studentdocuments`, `/students/studentcertificates`, `/fee`, `/fee/my-fees`, `/fee/my-receipts`, `/exam`, `/exam/exams`, `/exam/marks`, `/exam/hall-tickets`, `/exam/results`.
 
 ### Preconditions
-A shared menu catalog with plan access (TEN F06) and a provisioned tenant (TEN F07). The QA tenant uses the demo catalog (`scripts/seed_demo_catalog.py`): Dashboard, Masters, Students, Staff, Fee, Transport, Exam, Expense, Communication, Timetable, Calendar, Reports, Administration (Users, School Settings).
+A shared menu catalog with plan access (TEN F06) and a provisioned tenant (TEN F07). The QA tenant uses the demo catalog (`scripts/seed_demo_catalog.py`): Dashboard, Billing Admin, Masters, Students, Staff, Fee, Transport, Exam, Expense, Communication, Timetable, Calendar, Reports, Administration (Users, School Settings).
 
 ### Steps, web
 1. Log in. `useMenuData` turns the login `menu` into the sidebar.
-2. The sidebar is built by `menuUtils.ts`: hides the items "Route Stops", "Transport Trips" and "Student Transport" for everyone; removes Fee items for `teacher`; removes "My Fees" for `student`; for `student` and `parent` adds a Fee node ("My Receipts" `/fee/my-receipts`, "My Transactions" `/fee/my-transactions`) when the backend sent none; gives a flat "Fee" entry the eight admin children (Fee Categories, Fee Types, Fee Terms, Fee Mappings, Fee Term Amounts, Fee Collection, Fee Receipts, Fee Refunds) for roles other than student, parent and teacher; adds "School Registration" (`/settings/school`) under Masters for roles other than teacher and student when absent; orders top-level items by the agreed list (dashboard, students, staff, exam management or exams, fee, expense, communication, reports, masters, administration, transport; names not in the list, such as "Exam", "Timetable", "Calendar", go last in catalog order).
-3. The Administration dashboard (`/admin`) shows cards for the children of the "Administration" menu.
+2. The sidebar is built by `menuUtils.ts`: hides the items "Route Stops", "Transport Trips" and "Student Transport" for everyone; removes Fee items for `teacher`; removes "My Fees" for `student`; for `student` and `parent` adds a Fee node ("My Receipts" `/fee/my-receipts`, "My Transactions" `/fee/my-transactions`) when the backend sent none; gives a flat "Fee" entry the eight admin children (Fee Categories, Fee Types, Fee Terms, Fee Mappings, Fee Term Amounts, Fee Collection, Fee Receipts, Fee Refunds) for roles other than student, parent and teacher; adds "School Registration" (`/settings/school`) under Masters for roles other than teacher and student when absent; orders top-level items by the agreed list (dashboard, students, staff, exam management or exams, fee, expense, communication, reports, masters, administration, transport; names not in the list, such as "Billing Admin", "Exam", "Timetable", "Calendar", go last in catalog order). On the QA tenant the Admin sidebar reads Dashboard, Students, Staff, Fee, Expense, Communication, Reports, Masters, Administration, Transport, Billing Admin, Exam, Timetable, Calendar; Teacher has the same without Fee (Administration with Users and School Settings stays visible); Student and Parent have Dashboard, Students (Admission, Attendance, Student Documents, Student Certificates), Fee and Exam (Exams, Marks, Hall Tickets, Results), where Fee holds "My Receipts" and "My Transactions" for Student and "My Fees", "My Receipts", "My Transactions" for Parent.
+3. The Administration dashboard (`/admin`) shows "ADMINISTRATION SECTIONS" with a card per child of the "Administration" menu ("Users" "Manage users", "School Settings" "Manage school settings").
 
 ### Steps, mobile
-1. Log in. The drawer and hubs use the stored menu mapped to mobile paths (`menuMap.ts`) and filtered by `src/lib/menuUtils.ts`: same hidden items, Fee removed for Teacher, "My Fees" removed for Student, School Settings hidden for Teacher and Student, and Communication, Reports, Masters, Transport removed for Student and Parent (also guardian, father, mother).
+1. Log in. The Home "Modules" list, the drawer and the hubs use the stored menu mapped to mobile paths (`menuMap.ts`) and filtered by `src/lib/menuUtils.ts`: same hidden items, Fee removed for Teacher, "My Fees" removed for Student, the School Settings menu entry hidden for Teacher and Student, and Communication, Reports, Masters, Transport removed for Student and Parent (also guardian, father, mother). Module names differ from web: "Staff Management", "Exam Management", "Fee Management". On the QA tenant Student and Parent see Students, Exam Management, Fee Management; Teacher sees every module except Fee Management. The Administration screen still lists a "School Settings" card for Teacher, marked "No access - contact admin".
 
 ### Expected results
 `menu` is a tree of `{id, name, path, display_order, children?}` sorted by `display_order` at each level; leaf items have no `children` key; items whose parent the role cannot view are dropped.
@@ -532,24 +559,29 @@ A shared menu catalog with plan access (TEN F06) and a provisioned tenant (TEN F
 | TC-AUTH-06-U13 | Web `reorderMenu` with Reports, Dashboard, Zeta, Students | Dashboard, Students, Reports, Zeta | passing |
 | TC-AUTH-06-U14 | Mobile `applyRoleMenuRules` for `parent` | Communication, Reports, Masters, Transport removed | passing |
 | TC-AUTH-06-U15 | Mobile `roleBlocksFees('Teacher')` and `roleBlocksSchoolSettings('student')` | true; true | passing |
-| TC-AUTH-06-A01 | Admin login on the QA tenant | `menu` contains Administration with children Users (`/admin/users`) and School Settings (`/settings/school`), and Masters | planned |
-| TC-AUTH-06-A02 | Student login | every `path` (all levels) is in the allowlist; no Masters, Administration, Transport, Communication, Reports | planned |
-| TC-AUTH-06-A03 | Parent login | same allowlist rule as A02 | planned |
-| TC-AUTH-06-A04 | Staff and Teacher login | menu equals Admin's menu minus entries the role has no link for (compare with `role_menu_permissions`) | planned |
-| TC-AUTH-06-A05 | Delete the link of an L0 menu for Staff, keep its child's link, log in | the child does not appear (dropped with its parent) | planned |
-| TC-AUTH-06-A06 | Each level of the response | siblings sorted by `display_order` ascending | planned |
-| TC-AUTH-06-A07 | Custom role with no links | `menu` is `[]` | planned |
-| TC-AUTH-06-A08 | Same tenant after a plan sync that removes a menu from the plan (TEN F09), log in as Admin | that menu is gone | planned |
-| TC-AUTH-06-A09 | Menus of `qa_school_b` roles | do not appear in `qa_school` responses (role links are tenant rows) | planned |
-| TC-AUTH-06-A10 | Role matrix on `GET /auth/menus/` (needs `menu_management:list`) | Admin 200; Staff, Teacher, Student, Parent 403 | planned |
-| TC-AUTH-06-E01 | Web: Admin sidebar on the demo catalog | order Dashboard, Students, Staff, Fee, Expense, Communication, Reports, Masters, Administration, Transport, then Exam, Timetable, Calendar (names missing from the agreed list keep catalog order at the end) | planned |
-| TC-AUTH-06-E02 | Web: Teacher sidebar | no Fee entry; no "Route Stops" or "Student Transport" | planned |
-| TC-AUTH-06-E03 | Web: Student sidebar | Dashboard, Students, Fee (My Receipts, My Transactions), Exam only; no Masters | planned |
-| TC-AUTH-06-E04 | Web: Parent sidebar | same as Student | planned |
-| TC-AUTH-06-E05 | Web: Admin opens `/admin` | cards "Users" and "School Settings" appear; clicking a card with a path navigates to it | planned |
-| TC-AUTH-06-E06 | Web: Staff sidebar on the demo catalog (School Settings already exists under Administration) | the settings page is listed once and "School Registration" is not added under Masters | planned |
-| TC-AUTH-06-E07 | Mobile: Parent drawer | no Communication, Reports, Masters or Transport | planned |
-| TC-AUTH-06-E08 | Mobile: Teacher drawer | no Fee and no School Settings | planned |
+| TC-AUTH-06-A01 | Admin login on the QA tenant | `menu` contains Administration with children Users (`/admin/users`) and School Settings (`/settings/school`), and Masters | passing |
+| TC-AUTH-06-A02 | Student login | every `path` (all levels) is in the allowlist; no Masters, Administration, Transport, Communication, Reports | passing |
+| TC-AUTH-06-A03 | Parent login | same allowlist rule as A02 | passing |
+| TC-AUTH-06-A04 | Staff and Teacher login | menu equals Admin's menu minus entries the role has no link for (compare with `role_menu_permissions`) | passing |
+| TC-AUTH-06-A05 | Delete the link of an L0 menu for Staff, keep its child's link, log in | the child does not appear (dropped with its parent) | passing |
+| TC-AUTH-06-A06 | Each level of the response | siblings sorted by `display_order` ascending | passing |
+| TC-AUTH-06-A07 | Custom role with no links | `menu` is `[]` | passing |
+| TC-AUTH-06-A08 | Same tenant after a plan sync that removes a menu from the plan (TEN F09), log in as Admin | that menu is gone | passing |
+| TC-AUTH-06-A09 | Menus of `qa_school_b` roles | do not appear in `qa_school` responses (role links are tenant rows) | passing |
+| TC-AUTH-06-A10 | Role matrix on `GET /auth/menus/` (needs `menu_management:list`) | Admin 200; Staff, Teacher, Student, Parent 403 | passing |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-AUTH-06-E01 | P1 | Web | Admin | Tenant `qa_manual` (demo catalog); signed out | 1. Sign in with the QA Admin login.<br>2. Read the top-level sidebar entries from top to bottom. | Order: Dashboard, Students, Staff, Fee, Expense, Communication, Reports, Masters, Administration, Transport, Billing Admin, Exam, Timetable, Calendar (names missing from the agreed list keep catalog order at the end) | planned |
+| TC-AUTH-06-E02 | P2 | Web | Teacher | Signed in as Teacher | 1. Read the sidebar.<br>2. Expand "Students".<br>3. Expand "Transport". | No Fee entry; Students holds Admission, Attendance, Student Documents, Student Certificates, Certificate Types, Certificate Templates (no "Student Transport"); Transport has no "Route Stops" or "Transport Trips"; Administration still lists Users and School Settings | planned |
+| TC-AUTH-06-E03 | P1 | Web | Student | Signed in as Student | 1. Read the sidebar.<br>2. Expand "Students", "Fee" and "Exam" in turn. | Only Dashboard, Students, Fee, Exam; Students holds Admission, Attendance, Student Documents, Student Certificates; Fee holds "My Receipts" and "My Transactions"; Exam holds Exams, Marks, Hall Tickets, Results; no Masters or Administration | planned |
+| TC-AUTH-06-E04 | P2 | Web | Parent | Signed in as Parent | 1. Read the sidebar.<br>2. Expand "Fee". | Same top-level entries as Student; Fee holds "My Fees", "My Receipts" and "My Transactions" | planned |
+| TC-AUTH-06-E05 | P2 | Web | Admin | Signed in as Admin | 1. Open Administration (`/admin`).<br>2. Click the card "Users". | "ADMINISTRATION SECTIONS" shows the cards "Users" ("Manage users") and "School Settings" ("Manage school settings"); step 2 opens `/admin/users` | planned |
+| TC-AUTH-06-E06 | P3 | Web | Staff | Signed in as Staff | 1. Expand "Administration".<br>2. Expand "Masters". | Administration lists "Users" and "School Settings" once each; Masters lists Academic Years, Classes and Sections, Subject Categories, Subjects, Class Subject Mappings, Holidays, Parents, Roles and Permissions, and no "School Registration" | planned |
+| TC-AUTH-06-E07 | P2 | Mobile | Parent | Signed in as Parent on mobile | 1. Read the Home "Modules" list.<br>2. Open the drawer (menu button top right). | Modules: Students, Exam Management, Fee Management only; no Communication, Reports, Masters or Transport in the list or the drawer | planned |
+| TC-AUTH-06-E08 | P2 | Mobile | Teacher | Signed in as Teacher on mobile | 1. Read the Home "Modules" list.<br>2. Tap "Administration". | No "Fee Management" module; on Administration the "School Settings" card shows "No access - contact admin" | planned |
 
 Implemented in: `backend/tests/unit/auth/test_auth_permissions_menu.py` (U01-U05); `web/src/__tests__/auth/menuUtils.test.ts` (U06-U13, through the exported useMenuData with react-query mocked); `mobile/__tests__/auth/permissions.test.ts` (U14, U15).
 
@@ -612,19 +644,24 @@ Mobile `isTokenExpired` (buffer), `storeAuthData` expiry fallback, `getStoredTok
 | TC-AUTH-07-U09 | Web `_app` `beforeLoad` with `isAuthenticated` false | throws a redirect to `/login` | passing |
 | TC-AUTH-07-U10 | Web `_auth` `beforeLoad` with `isAuthenticated` true | throws a redirect to `/dashboard` | passing |
 | TC-AUTH-07-U11 | Web store `partialize` | persisted keys are exactly the 14 listed; no functions | passing |
-| TC-AUTH-07-A01 | Use one access token for three consecutive authenticated calls | all 200 (stateless) | planned |
-| TC-AUTH-07-A02 | Refresh token used as bearer on an authenticated endpoint | 401 "Invalid token type" | planned |
-| TC-AUTH-07-A03 | Access token used as `refresh_token` | 401 "Invalid token type" | planned |
-| TC-AUTH-07-A04 | Access token with a tampered payload (signature unchanged) | 401 "Invalid token" | planned |
-| TC-AUTH-07-A05 | Authenticated call with header `Authorization: Token abc` or without it (header `cschema` present) | 401 "Authorization header missing or invalid" | planned |
-| TC-AUTH-07-E01 | Web: log in, reload the page | still on `/dashboard`; sidebar intact | planned |
-| TC-AUTH-07-E02 | Web: log in, close the tab, open a new tab on `/dashboard` | session restored | planned |
-| TC-AUTH-07-E03 | Web: signed out, open `/dashboard` | redirected to `/login` | planned |
-| TC-AUTH-07-E04 | Web: signed in, open `/login` and `/forgot-password` | both redirect to `/dashboard` | planned |
-| TC-AUTH-07-E05 | Web: clear `localStorage['auth-storage']`, reload | redirected to `/login` | planned |
-| TC-AUTH-07-E06 | Mobile (Expo web): log in, reload | tabs reopen without login | planned |
-| TC-AUTH-07-E07 | Mobile: set `@secure/auth_token_expiry` to the past, reload | app refreshes the token and stays signed in | planned |
-| TC-AUTH-07-E08 | Mobile: corrupt the stored refresh token and set expiry to the past, reload | login screen opens at "Select Organization" | planned |
+| TC-AUTH-07-A01 | Use one access token for three consecutive authenticated calls | all 200 (stateless) | passing |
+| TC-AUTH-07-A02 | Refresh token used as bearer on an authenticated endpoint | 401 "Invalid token type" | passing |
+| TC-AUTH-07-A03 | Access token used as `refresh_token` | 401 "Invalid token type" | passing |
+| TC-AUTH-07-A04 | Access token with a tampered payload (signature unchanged) | 401 "Invalid token" | passing |
+| TC-AUTH-07-A05 | Authenticated call with header `Authorization: Token abc` or without it (header `cschema` present) | 401 "Authorization header missing or invalid" | passing |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-AUTH-07-E01 | P1 | Web | Admin | Signed in as Admin on `/dashboard` | 1. Press F5 to reload the page. | Still on `/dashboard` with "Welcome back, qa_admin (Admin)"; sidebar and navbar intact; no login page | planned |
+| TC-AUTH-07-E02 | P2 | Web | Admin | Signed in as Admin | 1. Close the browser tab.<br>2. Open a new tab on `/dashboard`. | The session is restored; the dashboard opens without signing in | planned |
+| TC-AUTH-07-E03 | P2 | Web | Admin | Signed out (no `auth-storage` session) | 1. Open `/dashboard` directly. | Redirected to `/login` | planned |
+| TC-AUTH-07-E04 | P2 | Web | Staff | Signed in as Staff | 1. Open `/login` by URL.<br>2. Open `/forgot-password` by URL. | Both redirect to `/dashboard` | planned |
+| TC-AUTH-07-E05 | P3 | Web | Admin | Signed in as Admin | 1. In devtools > Application > Local Storage delete the key `auth-storage`.<br>2. Reload the page. | Redirected to `/login` | planned |
+| TC-AUTH-07-E06 | P2 | Mobile | Staff | Signed in as Staff on mobile (Expo web) | 1. Reload the browser page. | Home reopens signed in; no organisation or sign-in screen | planned |
+| TC-AUTH-07-E07 | P3 | Mobile | Staff | Signed in as Staff on mobile (Expo web) | 1. In devtools > Local Storage set `@secure/auth_token_expiry` to a past timestamp (for example "1000").<br>2. Reload the page. | The app refreshes the token (one `POST /auth/refresh` in the network log) and stays signed in on Home | planned |
+| TC-AUTH-07-E08 | P3 | Mobile | Staff | Signed in as Staff on mobile (Expo web) | 1. Set `@secure/auth_refresh_token` to "bad".<br>2. Set `@secure/auth_token_expiry` to "1000".<br>3. Reload the page. | The session is cleared and `/login` opens at "Select Organization" | planned |
 
 Implemented in: `mobile/__tests__/auth/authUtils.test.ts` (U01-U08); `web/src/__tests__/auth/tenantAndGuards.test.ts` (U09, U10); `web/src/__tests__/auth/authStore.test.ts` (U11).
 
@@ -642,6 +679,7 @@ A session created by F03 or F04. Access tokens last 24 hours, refresh tokens 7 d
 ### Steps, web
 1. Use the app normally. When any request answers 401 (except `/auth/login*`), the interceptor in `web/src/api/index.ts` runs one shared `POST /auth/refresh` with the stored refresh token and the tenant header, stores the new pair, and retries each failed request once. A request that failed after another one already refreshed is retried with the newer token instead of refreshing again.
 2. If the refresh fails, the store is logged out and the browser goes to `/login`.
+3. Known gap: web sends its stored access token even when it is expired or invalid, and without a `cschema` header most endpoints answer that with 400 "Tenant must be specified" instead of 401, so in practice the refresh in step 1 is not reached for an expired token (`docs/modules/auth.md` rule 4).
 
 ### Steps, mobile
 1. `getValidAccessToken` refreshes before a request when the stored expiry is within five minutes; a 401 triggers one shared refresh through `refreshPromise` and a retry.
@@ -689,28 +727,33 @@ New `access_token` and `refresh_token` with fresh lifetimes; the user's role nam
 | TC-AUTH-08-U13 | Web request interceptor for `/admin/users/` with a token | `Authorization: Bearer <token>`; no `cschema` header | passing |
 | TC-AUTH-08-U14 | Mobile `getValidAccessToken(false)` with an expired token | returns `null` (no refresh) | passing |
 | TC-AUTH-08-U15 | Mobile `refreshAccessToken` failure | session cleared and `null` returned (no throw) | passing |
-| TC-AUTH-08-A01 | `POST /auth/refresh` with the login refresh token and header `cschema: qa_school` | 200; new tokens differ from the old ones; `expires_in` 86400; academic year fields equal the login values | planned |
-| TC-AUTH-08-A02 | New access token used on an authenticated endpoint | 200 | planned |
-| TC-AUTH-08-A03 | Decode the new access token | same `sub`, `tenant_id`, `client_name`, academic year; `exp` later than the old one | planned |
-| TC-AUTH-08-A04 | Use the old refresh token again after A01 | 200 (no rotation) | planned |
-| TC-AUTH-08-A05 | Change the user's role (TEN F13), then refresh | new access token carries the new role name | planned |
-| TC-AUTH-08-A06 | Deactivate the user (TEN F13), then refresh | 401 "Account is inactive. Please contact the administrator." | planned |
-| TC-AUTH-08-A07 | Logout (F14), then refresh with the same refresh token | 401 "Refresh token has been invalidated. Please login again." | planned |
-| TC-AUTH-08-A08 | Refresh with an access token | 401 "Invalid token type" | planned |
-| TC-AUTH-08-A09 | Refresh with a random string | 401 "Invalid refresh token" | planned |
-| TC-AUTH-08-A10 | Refresh with a refresh token whose `exp` is in the past | 401 "Invalid refresh token" | planned |
-| TC-AUTH-08-A11 | Refresh token of `qa_school` with header `qa_school_b` | 403 "Tenant does not match your session" | planned |
-| TC-AUTH-08-A12 | Refresh token minted without `tenant_id` | 401 "Your session is out of date. Please log in again." | planned |
-| TC-AUTH-08-A13 | Refresh with no header | request rejected by the tenant middleware (F01 rule) | planned |
-| TC-AUTH-08-A14 | Body without `refresh_token` | 422 naming `refresh_token` | planned |
-| TC-AUTH-08-A15 | Super admin refresh token (TEN F02) sent to `/auth/refresh` | 401 "Your session is out of date. Please log in again." | planned |
-| TC-AUTH-08-A16 | Access token whose `exp` is in the past on `GET /auth/available-resources` | 401 "Invalid token" | planned |
-| TC-AUTH-08-A17 | Deactivate the tenant, then refresh with its header | 404 "Tenant 'qa_school_b' not found or inactive" | planned |
-| TC-AUTH-08-E01 | Web: log in, replace `accessToken` in `auth-storage` with `bad`, click a sidebar item | page loads; network log shows one `/auth/refresh` call; user stays signed in | planned |
-| TC-AUTH-08-E02 | Web: also replace `refreshToken` with `bad`, click a sidebar item | store cleared; redirected to `/login` | planned |
-| TC-AUTH-08-E03 | Web: dashboard that fires several requests with a bad access token | network log shows a single `/auth/refresh` | planned |
-| TC-AUTH-08-E04 | Mobile: expiry in the past with a valid refresh token, open the app | home opens; stored expiry moved about 24 h ahead | planned |
-| TC-AUTH-08-E05 | Mobile: refresh token invalid and expiry in the past | login screen shows "Select Organization" | planned |
+| TC-AUTH-08-A01 | `POST /auth/refresh` with the login refresh token and header `cschema: qa_school` | 200; new tokens differ from the old ones; `expires_in` 86400; academic year fields equal the login values | passing |
+| TC-AUTH-08-A02 | New access token used on an authenticated endpoint | 200 | passing |
+| TC-AUTH-08-A03 | Decode the new access token | same `sub`, `tenant_id`, `client_name`, academic year; `exp` later than the old one | passing |
+| TC-AUTH-08-A04 | Use the old refresh token again after A01 | 200 (no rotation) | passing |
+| TC-AUTH-08-A05 | Change the user's role (TEN F13), then refresh | new access token carries the new role name | passing |
+| TC-AUTH-08-A06 | Deactivate the user (TEN F13), then refresh | 401 "Account is inactive. Please contact the administrator." | passing |
+| TC-AUTH-08-A07 | Logout (F14), then refresh with the same refresh token | 401 "Refresh token has been invalidated. Please login again." | passing |
+| TC-AUTH-08-A08 | Refresh with an access token | 401 "Invalid token type" | passing |
+| TC-AUTH-08-A09 | Refresh with a random string | 401 "Invalid refresh token" | passing |
+| TC-AUTH-08-A10 | Refresh with a refresh token whose `exp` is in the past | 401 "Invalid refresh token" | passing |
+| TC-AUTH-08-A11 | Refresh token of `qa_school` with header `qa_school_b` | 403 "Tenant does not match your session" | passing |
+| TC-AUTH-08-A12 | Refresh token minted without `tenant_id` | 401 "Your session is out of date. Please log in again." | passing |
+| TC-AUTH-08-A13 | Refresh with no header | request rejected by the tenant middleware (F01 rule) | passing |
+| TC-AUTH-08-A14 | Body without `refresh_token` | 422 naming `refresh_token` | passing |
+| TC-AUTH-08-A15 | Super admin refresh token (TEN F02) sent to `/auth/refresh` | 401 "Your session is out of date. Please log in again." | passing |
+| TC-AUTH-08-A16 | Access token whose `exp` is in the past on `GET /auth/available-resources` | 401 "Invalid token" | passing |
+| TC-AUTH-08-A17 | Deactivate the tenant, then refresh with its header | 404 "Tenant 'qa_school_b' not found or inactive" | passing |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-AUTH-08-E01 | P2 | Web | Admin | Signed in as Admin | 1. In devtools edit `auth-storage` and set `state.accessToken` to "bad".<br>2. Click the sidebar entry "Students". | The page loads; the network log shows one `POST /auth/refresh`; the user stays signed in | blocked: an invalid bearer token sent without a `cschema` header gets 400, not 401, so the web refresh never runs (docs/modules/auth.md Known gaps) |
+| TC-AUTH-08-E02 | P2 | Web | Admin | Signed in as Admin | 1. Set `state.accessToken` and `state.refreshToken` in `auth-storage` to "bad".<br>2. Click the sidebar entry "Students". | The store is cleared and the browser goes to `/login` | blocked: same 400 instead of 401 gap as TC-AUTH-08-E01, so the refresh and the logout are never triggered |
+| TC-AUTH-08-E03 | P3 | Web | Admin | Signed in as Admin | 1. Set `state.accessToken` to "bad".<br>2. Open `/dashboard` (several requests at once). | The network log shows a single `/auth/refresh` call shared by all failed requests | blocked: same 400 instead of 401 gap as TC-AUTH-08-E01 |
+| TC-AUTH-08-E04 | P1 | Mobile | Staff | Signed in as Staff on mobile (Expo web) | 1. Set `@secure/auth_token_expiry` to "1000" in devtools Local Storage.<br>2. Reload the page.<br>3. Read `@secure/auth_token_expiry` again. | Home opens signed in; the stored expiry is about 24 hours ahead | planned |
+| TC-AUTH-08-E05 | P2 | Mobile | Staff | Signed in as Staff on mobile (Expo web) | 1. Set `@secure/auth_refresh_token` to "bad" and `@secure/auth_token_expiry` to "1000".<br>2. Reload the page. | The login screen shows "Select Organization"; the stored organisation and tokens are gone | planned |
 
 Implemented in: `backend/tests/unit/auth/test_auth_login_service.py` (U01-U07); `web/src/__tests__/auth/apiInterceptors.test.ts` (U08-U13); `mobile/__tests__/auth/authUtils.test.ts` (U14, U15).
 
@@ -771,25 +814,30 @@ Web `StudentSelector` filter, `useAuthStore.selectStudent`, `setAvailableStudent
 | TC-AUTH-09-U05 | Web request interceptor with a selected student | headers `X-Student-ID`, `X-Academic-Year-ID`, `X-Class-ID` set from it | passing |
 | TC-AUTH-09-U06 | Mobile `completeLogin` for a Parent (mock API) | `setSelectedStudentForInterceptor` is called before the single `LOGIN_SUCCESS` dispatch, which carries `selectedStudent` and `availableStudents` | blocked: completeLogin is inside AuthProvider and not exported (mobile/contexts/AuthContext.tsx) |
 | TC-AUTH-09-U07 | Mobile `completeLogin` when the children call fails | `LOGIN_SUCCESS` still dispatched; error "Could not load student information. Please refresh." | blocked: completeLogin is inside AuthProvider and not exported (mobile/contexts/AuthContext.tsx) |
-| TC-AUTH-09-A01 | `GET /student-parent-links/my-children` as Parent with two linked children | 200; two rows ordered by first name; each has the 14 documented fields | planned |
-| TC-AUTH-09-A02 | Same call as Admin, Staff, Teacher, Student | 403 "Only parents can access this endpoint" for each | planned |
-| TC-AUTH-09-A03 | Parent user with no `parents` row | 404 "Parent profile not found" | planned |
-| TC-AUTH-09-A04 | Parent with a child that has two admissions | one row; class, section and year from the latest admission | planned |
-| TC-AUTH-09-A05 | Parent with a child without admissions | row with `admission_number`, `class_name`, `section_name` null | planned |
-| TC-AUTH-09-A06 | `GET /student-parent-links/parent/{own_parent_id}/students` as Parent | 200; the linked students | planned |
-| TC-AUTH-09-A07 | Same with another parent's id | 403 "You can only view your own children" | planned |
-| TC-AUTH-09-A08 | Same path as Admin (needs `parent_management:read`) | 200; as Teacher, Student 403 | planned |
-| TC-AUTH-09-A09 | Children of a parent in `qa_school_b` requested with a `qa_school` Parent token | empty or not found; no `qa_school_b` child is ever returned | planned |
-| TC-AUTH-09-A10 | No token (header only) | 401 "Authorization header missing or invalid" | planned |
-| TC-AUTH-09-A11 | Send `X-Student-ID` of an unrelated student on `my-children` | response unchanged (header ignored) | planned |
-| TC-AUTH-09-E01 | Web: Parent with two children logs in | navbar combobox shows the first child's name and class | planned |
-| TC-AUTH-09-E02 | Web: open the combobox, type the second child's admission number, select | combobox shows the second child; the "Selected" badge moves | planned |
-| TC-AUTH-09-E03 | Web: reload after selecting | the second child stays selected | planned |
-| TC-AUTH-09-E04 | Web: Parent with no children | no combobox in the navbar | planned |
-| TC-AUTH-09-E05 | Web: type a name that matches nobody | "No students found." | planned |
-| TC-AUTH-09-E06 | Mobile: Parent with two children opens "Select Child" | two cards; the current child marked | planned |
-| TC-AUTH-09-E07 | Mobile: tap the second child | screen closes; header shows the second child; child-scoped screens reload | planned |
-| TC-AUTH-09-E08 | Mobile: Parent with no linked children | "No children linked to your account." | planned |
+| TC-AUTH-09-A01 | `GET /student-parent-links/my-children` as Parent with two linked children | 200; two rows ordered by first name; each has the 14 documented fields | passing |
+| TC-AUTH-09-A02 | Same call as Admin, Staff, Teacher, Student | 403 "Only parents can access this endpoint" for each | passing |
+| TC-AUTH-09-A03 | Parent user with no `parents` row | 404 "Parent profile not found" | passing |
+| TC-AUTH-09-A04 | Parent with a child that has two admissions | one row; class, section and year from the latest admission | skipped: blocked: no API creates a second admission for an existing student |
+| TC-AUTH-09-A05 | Parent with a child without admissions | row with `admission_number`, `class_name`, `section_name` null | skipped: blocked: admission is mandatory at creation, so a child without admission cannot be produced |
+| TC-AUTH-09-A06 | `GET /student-parent-links/parent/{own_parent_id}/students` as Parent | 200; the linked students | passing |
+| TC-AUTH-09-A07 | Same with another parent's id | 403 "You can only view your own children" | passing |
+| TC-AUTH-09-A08 | Same path as Admin (needs `parent_management:read`) | 200; as Teacher, Student 403 | passing |
+| TC-AUTH-09-A09 | Children of a parent in `qa_school_b` requested with a `qa_school` Parent token | empty or not found; no `qa_school_b` child is ever returned | passing |
+| TC-AUTH-09-A10 | No token (header only) | 401 "Authorization header missing or invalid" | passing |
+| TC-AUTH-09-A11 | Send `X-Student-ID` of an unrelated student on `my-children` | response unchanged (header ignored) | passing |
+
+UI test cases ("the Raju parent" is the seeded parent login of the siblings Harsha Raju (004) and Tanvi Raju (005), with its password already set through F04; the QA Parent login has no children):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-AUTH-09-E01 | P2 | Web | Parent | The Raju parent; signed out; window at least 768 px wide | 1. Sign in with the Raju parent login.<br>2. Look at the navbar. | The child combobox shows "Harsha Raju" (first by first name) with its "class - section" | planned |
+| TC-AUTH-09-E02 | P1 | Web | Parent | TC-AUTH-09-E01 done | 1. Click the child combobox.<br>2. Type "005" in "Search students...".<br>3. Click "Tanvi Raju". | The combobox shows Tanvi Raju; reopening it shows the "Selected" badge on Tanvi Raju | planned |
+| TC-AUTH-09-E03 | P2 | Web | Parent | TC-AUTH-09-E02 done | 1. Reload the page. | Tanvi Raju is still selected | planned |
+| TC-AUTH-09-E04 | P3 | Web | Parent | QA Parent login (no linked children) | 1. Sign in with the QA Parent login.<br>2. Look at the navbar. | No child combobox; the navbar shows only "Year", the theme buttons and "qa_parent" | planned |
+| TC-AUTH-09-E05 | P3 | Web | Parent | TC-AUTH-09-E01 done | 1. Click the child combobox.<br>2. Type "QA Nobody" in "Search students...". | Text "No students found." | planned |
+| TC-AUTH-09-E06 | P2 | Mobile | Parent | The Raju parent | 1. Sign in on mobile with the Raju parent login.<br>2. Open "Select Child" (`/parents/select-child`). | "Select which child you want to view information for." with two cards (Harsha Raju, Tanvi Raju); the current child (Harsha Raju) is marked | planned |
+| TC-AUTH-09-E07 | P2 | Mobile | Parent | TC-AUTH-09-E06 done | 1. Tap the card "Tanvi Raju". | The screen closes; the header selector shows Tanvi Raju; child-scoped screens load Tanvi Raju's data | planned |
+| TC-AUTH-09-E08 | P3 | Mobile | Parent | QA Parent login (no linked children) | 1. Sign in on mobile with the QA Parent login.<br>2. Open `/parents/select-child`. | "Select which child you want to view information for." and "No children linked to your account." | planned |
 
 Implemented in: `web/src/__tests__/auth/authStore.test.ts` (U01, U02); `web/src/__tests__/auth/apiAuthHooks.test.ts` (U04); `web/src/__tests__/auth/apiInterceptors.test.ts` (U05).
 
@@ -809,13 +857,13 @@ A signed-in user with the grant and a matching record (`students`, `staff` or `p
 2. Student: cards "Personal Information" and "Academic Information"; click "Edit Email", change the Email field in the dialog "Edit Email" and submit.
 3. Staff: click "Edit Email & Phone", change Email and Phone, submit.
 4. Parent: the button "Edit Profile" opens the editor (email, phone, occupation); it is shown only with `parent_profile:update_own`, a resource no role holds, and saves with `PUT /profile/parent` (see Known gaps).
-5. Admin, Teacher and users without a staff record or without `profile:read_own`: when the staff profile call answers 403 or 404 the page shows "My Profile" with "Account Information" (Username, Email, Role, Academic Year).
-6. Admin only: the page `/admin/profile` ("Admin Profile": Username, Email, Status, Role) has "Edit Email" and "Change Password" (F11). It is reached by URL or by a menu entry whose path is `/admin/profile`.
+5. Admin, Teacher and users without a staff record or without `profile:read_own`: when the staff profile call answers 403 or 404 the page shows "My Profile" with "Account Information" (Username, Email, Role, Academic Year). A Student whose call fails shows "Error loading profile: <detail>" (for example "Student profile not found" for a Student login with no student record); a Parent whose call fails shows "Failed to load profile. Please try again."
+6. Admin only: the page `/admin/profile` ("Admin Profile", card "Profile Information": Username, Email, Status, Role) has "Edit Email" (dialog "Edit Email" with "Email", "Cancel", "Update") and "Change Password" (F11). It is reached by URL or by a menu entry whose path is `/admin/profile`. On 2026-10-07 the Role line showed "N/A" for the QA Admin.
 
 ### Steps, mobile
-1. Open the Profile tab. Student, Staff, Teacher, Admin and Parent roles each load their profile view; with no `profile:read_own` the fallback view shows the account details and a "Logout" button.
+1. Open the Profile tab. Student, Staff, Teacher, Admin and Parent roles each load their profile view; with no `profile:read_own` (or no linked record) the fallback view shows the username, role, "Active", "Account Information" (Username, Email, Role) and a "Logout" button. This is what every QA role login sees, Admin included.
 2. Tap "Edit Profile". Staff form fields "Email *" (placeholder "Enter email address") and "Phone *" (placeholder "Enter 10-digit phone number"); Student edits the email; Parent edits email, phone and occupation. Save or cancel.
-3. Admin: "My Profile" (`/admin/profile`) lists Username, Email, Full Name, Role, Status and has the "Change Password" row (F11).
+3. Admin: "My Profile" (`/admin/profile`, opened by URL; the Profile tab shows the fallback view) lists "Account Details" (Username, Email, Full Name, Role, Status) and has the "Change Password" row (F11).
 
 ### Expected results
 The edited values are stored on the row named above and returned in the response; the profile page shows them. Student `users.email` is also a login identifier, and Staff `phone` is a login identifier through `staff.phone`.
@@ -859,35 +907,41 @@ Attendance percentage rounding; `StudentProfileUpdate`, `StaffProfileUpdate`, `P
 | TC-AUTH-10-U06 | Staff update service with `email=None, phone=None` | no change recorded; no audit row written | passing |
 | TC-AUTH-10-U07 | Web `ProfileRouter` with roles student, parent, admin, teacher, null | StudentProfile, ParentProfile, StaffProfile, StaffProfile, "Please log in to view your profile" | passing |
 | TC-AUTH-10-U08 | Web `StaffProfile` when the query fails with status 403, and with 404 | "My Profile" fallback with Username, Email, Role, Academic Year | blocked: StaffProfile uses component hooks (useState, useForm) so it cannot be called without rendering (web/src/pages/staff/StaffProfile.tsx) |
-| TC-AUTH-10-A01 | `GET /profile/student/me` as Student (grant present) | 200; all 14 documented fields; `profile_photo_url` null | planned |
-| TC-AUTH-10-A02 | `GET /profile/staff/me` as Staff | 200; fields match the staff row | planned |
-| TC-AUTH-10-A03 | `GET /profile/parent/me` as Parent with two children | 200; `children` has two items with `student_id, first_name, last_name, admission_number, class_name, section_name, is_active` | planned |
-| TC-AUTH-10-A04 | Role matrix for each GET endpoint with the grant held by all five roles | only the matching role returns 200; the other four roles return 404 "<Student/Staff/Parent> profile not found" (Admin and Teacher have no student, parent record; Teacher may have a staff row) | planned |
-| TC-AUTH-10-A05 | Same GET calls when the role lacks `profile:read_own` | 403 with `error` "permission_denied" | planned |
-| TC-AUTH-10-A06 | `PUT /profile/student/me` `{"email":"new.student@example.com"}` | 200; response email updated; `users.email` updated; login with the new email succeeds | planned |
-| TC-AUTH-10-A07 | `PUT /profile/student/me` with `{"email":"a@example.com","phone":"9999999999","address":"x"}` | 200; email updated; no other column changes | planned |
-| TC-AUTH-10-A08 | `PUT /profile/staff/me` `{"email":"s2@example.com","phone":"9123456780"}` | 200; `staff.email` and `staff.phone` changed; `users.email` and username unchanged | planned |
-| TC-AUTH-10-A09 | After A08 log in with the new phone number | 200 (phone lookup uses `staff.phone`) | planned |
-| TC-AUTH-10-A10 | `PUT /profile/parent/me` `{"occupation":"Engineer"}` | 200; occupation "Engineer"; email and phone unchanged | planned |
-| TC-AUTH-10-A11 | `PUT` with `{}` on each endpoint | 200; values unchanged | planned |
-| TC-AUTH-10-A12 | `PUT /profile/student/me` `{"email":"not-an-email"}` | 200 and stored (documents that the backend does not validate) | planned |
-| TC-AUTH-10-A13 | `PUT` without `profile:update_own` | 403 `permission_denied` | planned |
-| TC-AUTH-10-A14 | No token (header only) | 401 "Authorization header missing or invalid" | planned |
-| TC-AUTH-10-A15 | After one GET and one PUT, count `profile_audit_logs` rows for the user | two view rows (the GET and the re-read made by the PUT) and one update row | planned |
-| TC-AUTH-10-A16 | `PUT /profile/student/me` with an email of 101 characters | non-2xx; stored email unchanged | planned |
-| TC-AUTH-10-A17 | Student of `qa_school_b` and Student of `qa_school` each GET their profile | each sees only its own record; ids differ | planned |
-| TC-AUTH-10-A18 | Student with no admission | `admission_number`, `class_name`, `section_name` null; `attendance_percentage` null | planned |
-| TC-AUTH-10-E01 | Web: Student opens avatar menu > Profile | page "Student Profile" with "Personal Information" and "Academic Information" | planned |
-| TC-AUTH-10-E02 | Web: Student clicks "Edit Email", enters `e2e.student@example.com`, submits | dialog closes; email shown updated | planned |
-| TC-AUTH-10-E03 | Web: Student enters `abc` in the dialog | form message "Invalid email address"; no request | planned |
-| TC-AUTH-10-E04 | Web: Staff opens Profile, "Edit Email & Phone", changes both | values shown updated | planned |
-| TC-AUTH-10-E05 | Web: Admin opens Profile | "My Profile" with "Account Information" (Username, Email, Role, Academic Year) | planned |
-| TC-AUTH-10-E06 | Web: Parent opens Profile | "My Profile" lists the children; the "Edit Profile" button is absent (documented gap) | planned |
-| TC-AUTH-10-E07 | Web: Admin opens `/admin/profile`, "Edit Email", saves | toast "Admin profile updated successfully!" | planned |
-| TC-AUTH-10-E08 | Mobile: Staff opens the Profile tab, "Edit Profile", changes Phone, saves | profile shows the new phone | planned |
-| TC-AUTH-10-E09 | Mobile: Student edits email | profile shows the new email | planned |
-| TC-AUTH-10-E10 | Mobile: Parent edits occupation | profile shows the new occupation | planned |
-| TC-AUTH-10-E11 | Mobile: user without `profile:read_own` | fallback account view and a "Logout" button | planned |
+| TC-AUTH-10-A01 | `GET /profile/student/me` as Student (grant present) | 200; all 14 documented fields; `profile_photo_url` null | passing |
+| TC-AUTH-10-A02 | `GET /profile/staff/me` as Staff | 200; fields match the staff row | passing |
+| TC-AUTH-10-A03 | `GET /profile/parent/me` as Parent with two children | 200; `children` has two items with `student_id, first_name, last_name, admission_number, class_name, section_name, is_active` | passing |
+| TC-AUTH-10-A04 | Role matrix for each GET endpoint with the grant held by all five roles | only the matching role returns 200; the other four roles return 404 "<Student/Staff/Parent> profile not found" (Admin and Teacher have no student, parent record; Teacher may have a staff row) | passing |
+| TC-AUTH-10-A05 | Same GET calls when the role lacks `profile:read_own` | 403 with `error` "permission_denied" | passing |
+| TC-AUTH-10-A06 | `PUT /profile/student/me` `{"email":"new.student@example.com"}` | 200; response email updated; `users.email` updated; login with the new email succeeds | passing |
+| TC-AUTH-10-A07 | `PUT /profile/student/me` with `{"email":"a@example.com","phone":"9999999999","address":"x"}` | 200; email updated; no other column changes | passing |
+| TC-AUTH-10-A08 | `PUT /profile/staff/me` `{"email":"s2@example.com","phone":"9123456780"}` | 200; `staff.email` and `staff.phone` changed; `users.email` and username unchanged | passing |
+| TC-AUTH-10-A09 | After A08 log in with the new phone number | 200 (phone lookup uses `staff.phone`) | passing |
+| TC-AUTH-10-A10 | `PUT /profile/parent/me` `{"occupation":"Engineer"}` | 200; occupation "Engineer"; email and phone unchanged | passing |
+| TC-AUTH-10-A11 | `PUT` with `{}` on each endpoint | 200; values unchanged | passing |
+| TC-AUTH-10-A12 | `PUT /profile/student/me` `{"email":"not-an-email"}` | 200 and stored (documents that the backend does not validate) | passing |
+| TC-AUTH-10-A13 | `PUT` without `profile:update_own` | 403 `permission_denied` | passing |
+| TC-AUTH-10-A14 | No token (header only) | 401 "Authorization header missing or invalid" | passing |
+| TC-AUTH-10-A15 | After one GET and one PUT, count `profile_audit_logs` rows for the user | two view rows (the GET and the re-read made by the PUT) and one update row | skipped: blocked: profile_audit_logs rows cannot be read through the API and the database must not be touched |
+| TC-AUTH-10-A16 | `PUT /profile/student/me` with an email of 101 characters | non-2xx; stored email unchanged | passing |
+| TC-AUTH-10-A17 | Student of `qa_school_b` and Student of `qa_school` each GET their profile | each sees only its own record; ids differ | passing |
+| TC-AUTH-10-A18 | Student with no admission | `admission_number`, `class_name`, `section_name` null; `attendance_percentage` null | skipped: blocked: a student cannot exist without an admission through the API |
+
+UI test cases (the Student, Staff and Parent cases need `profile:read_own` and `profile:update_own` granted to that role first, through Masters > Roles and Permissions > "Add Permission" (TEN F15), because the `Full` plan seeds none; revoke them afterwards):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-AUTH-10-E01 | P1 | Web | Student | Seeded student Karthik Reddy (001), password already set (F04); Student role holds the two profile grants | 1. Sign in as 001.<br>2. Open the avatar menu (top right) and click "Profile". | Page "Student Profile" with the cards "Personal Information" (Karthik Reddy) and "Academic Information" (class and section from the admission) | planned |
+| TC-AUTH-10-E02 | P2 | Web | Student | TC-AUTH-10-E01 done | 1. Click "Edit Email".<br>2. Enter "qa.karthik@example.com" in "Email".<br>3. Submit the dialog "Edit Email". | The dialog closes; the profile shows qa.karthik@example.com; the student can now also sign in with that email | planned |
+| TC-AUTH-10-E03 | P3 | Web | Student | TC-AUTH-10-E01 done | 1. Click "Edit Email".<br>2. Enter "abc".<br>3. Submit. | Form message "Invalid email address"; no request sent; the dialog stays open | planned |
+| TC-AUTH-10-E04 | P2 | Web | Staff | Seeded staff Sunitha Reddy, password set (TC-AUTH-04-E02); Staff role holds the two profile grants | 1. Sign in as Sunitha Reddy.<br>2. Avatar menu > "Profile".<br>3. Click "Edit Email & Phone".<br>4. Enter Email "qa.sunitha@example.com" and Phone "9876501234".<br>5. Submit. | "Staff Profile" shows the new email and phone; the login username is unchanged | planned |
+| TC-AUTH-10-E05 | P1 | Web | Admin | Signed in with the QA Admin login (no staff record) | 1. Open the avatar menu "qa_admin".<br>2. Click "Profile". | Page "My Profile" with "Account Information": Username qa_admin, Email qa_admin@example.com, Role Admin, Academic Year 2026-2027 | planned |
+| TC-AUTH-10-E06 | P3 | Web | Parent | The Raju parent (seeded parent of 004 and 005), password set; Parent role holds the two profile grants | 1. Sign in as the Raju parent.<br>2. Avatar menu > "Profile". | "My Profile" lists the children Harsha Raju and Tanvi Raju; no "Edit Profile" button (Known gaps 9) | planned |
+| TC-AUTH-10-E07 | P2 | Web | Admin | Signed in as Admin | 1. Open `/admin/profile`.<br>2. Click "Edit Email".<br>3. Change "Email" to "qa.admin.e2e@example.com" and click "Update".<br>4. Repeat with "qa_admin@example.com" to restore. | Toast "Admin profile updated successfully!"; "Profile Information" shows the new email; after step 4 the original email is back | planned |
+| TC-AUTH-10-E08 | P2 | Mobile | Staff | As TC-AUTH-10-E04 | 1. Sign in on mobile as Sunitha Reddy.<br>2. Open the Profile tab and tap "Edit Profile".<br>3. Enter "9876501235" in "Phone *".<br>4. Save. | The profile shows phone 9876501235 | planned |
+| TC-AUTH-10-E09 | P2 | Mobile | Student | As TC-AUTH-10-E01 | 1. Sign in on mobile as 001.<br>2. Profile tab > "Edit Profile".<br>3. Enter "qa.karthik2@example.com" as email.<br>4. Save. | The profile shows qa.karthik2@example.com | planned |
+| TC-AUTH-10-E10 | P3 | Mobile | Parent | As TC-AUTH-10-E06 | 1. Sign in on mobile as the Raju parent.<br>2. Profile tab > "Edit Profile".<br>3. Enter "QA Engineer" as occupation.<br>4. Save. | The profile shows occupation QA Engineer; email and phone unchanged | planned |
+| TC-AUTH-10-E11 | P2 | Mobile | Teacher | QA Teacher login (no `profile:read_own`, no staff record) | 1. Sign in on mobile as Teacher.<br>2. Open the Profile tab. | Header "qa_teacher", "Teacher", "Active"; "Account Information" with Username, Email, Role; a "Logout" button; no "Edit Profile" | planned |
+| TC-AUTH-10-E12 | P3 | Web | Student | QA Student login (not linked to a student record) | 1. Sign in with the QA Student login.<br>2. Avatar menu > "Profile". | Text starting "Error loading profile:" with the server message ("Student profile not found" when the Student role holds `profile:read_own`, a permission-denied message otherwise); no profile cards | planned |
 
 Implemented in: `backend/tests/unit/auth/test_auth_profile_blacklist.py` (U01-U06); `web/src/__tests__/auth/profileAndForgot.test.ts` (U07).
 
@@ -945,29 +999,34 @@ A signed-in user who knows the current password, holding the permission.
 | TC-AUTH-11-U06 | `change_password` success | stored value verifies against the new password and not the old; audit called once with `org_id` equal to the user id | passing |
 | TC-AUTH-11-U07 | `role_to_profile_type` for Student, Staff, Parent, Admin, SuperAdmin, Teacher, "Librarian" | student, staff, parent, admin, superadmin, unknown, unknown | passing |
 | TC-AUTH-11-U08 | Mobile `handleSubmit` with empty current; 7-character new; mismatching confirm | the three messages listed in the steps, in that order of precedence | blocked: handleSubmit is inline in mobile/app/profile/change-password.tsx and not exported |
-| TC-AUTH-11-A01 | Admin (grant held) posts a valid change `{current, new "NewPass#2026", confirm same}` | 200 `{"message":"Password changed successfully","success":true}` | planned |
-| TC-AUTH-11-A02 | After A01 log in with the old and with the new password | old 401 "Invalid Credentials"; new 200 | planned |
-| TC-AUTH-11-A03 | Same change as Staff, Teacher, Student, Parent (each with the grant) | 200 each | planned |
-| TC-AUTH-11-A04 | Wrong `current_password` | 400 "Current password is incorrect" | planned |
-| TC-AUTH-11-A05 | `new_password` and `confirm_password` differ | 400 "New password and confirmation do not match" | planned |
-| TC-AUTH-11-A06 | Wrong current and mismatch at once | 400 "New password and confirmation do not match" | planned |
-| TC-AUTH-11-A07 | `new_password` and `confirm_password` of 7 characters | 422 on both fields | planned |
-| TC-AUTH-11-A08 | `new_password` of exactly 8 characters | 200 | planned |
-| TC-AUTH-11-A09 | `current_password` empty | 422 | planned |
-| TC-AUTH-11-A10 | New password equal to the current one | 200 (no rule against reuse) | planned |
-| TC-AUTH-11-A11 | Role without `profile:update_own` (parametrised over Staff, Teacher, Student, Parent, Admin) | 403 `permission_denied` for each | planned |
-| TC-AUTH-11-A12 | No token (header only) | 401 "Authorization header missing or invalid" | planned |
-| TC-AUTH-11-A13 | Use the access token issued before the change on `GET /auth/available-resources`, then refresh | 200 and 200 (tokens survive a password change) | planned |
-| TC-AUTH-11-A14 | Audit: row in `profile_audit_logs` for the change | exists, flagged sensitive, `profile_type` per role (Teacher `unknown`) | planned |
-| TC-AUTH-11-A15 | Tenant isolation: two users with the same username in `qa_school` and `qa_school_b`; change one password | the other tenant's user still logs in with the old password | planned |
-| TC-AUTH-11-E01 | Web: Admin opens `/admin/profile`, "Change Password", correct values | toast "Password changed successfully!"; dialog closed | planned |
-| TC-AUTH-11-E02 | Web: confirm field differs | field message "Passwords do not match"; no request | planned |
-| TC-AUTH-11-E03 | Web: 7-character new password | message "Password must be at least 8 characters" | planned |
-| TC-AUTH-11-E04 | Web: wrong current password | toast starting "Failed to change password:" with "Current password is incorrect" | planned |
-| TC-AUTH-11-E05 | Web: after a change log out and log in with the new password | login succeeds | planned |
-| TC-AUTH-11-E06 | Mobile: Admin "My Profile" > "Change Password" with valid values | toast "Password changed successfully" | planned |
-| TC-AUTH-11-E07 | Mobile: confirmation differs | inline text "Passwords do not match"; submit shows the same message | planned |
-| TC-AUTH-11-E08 | Mobile: wrong current password | error toast with "Current password is incorrect" | planned |
+| TC-AUTH-11-A01 | Admin (grant held) posts a valid change `{current, new "NewPass#2026", confirm same}` | 200 `{"message":"Password changed successfully","success":true}` | passing |
+| TC-AUTH-11-A02 | After A01 log in with the old and with the new password | old 401 "Invalid Credentials"; new 200 | passing |
+| TC-AUTH-11-A03 | Same change as Staff, Teacher, Student, Parent (each with the grant) | 200 each | passing |
+| TC-AUTH-11-A04 | Wrong `current_password` | 400 "Current password is incorrect" | passing |
+| TC-AUTH-11-A05 | `new_password` and `confirm_password` differ | 400 "New password and confirmation do not match" | passing |
+| TC-AUTH-11-A06 | Wrong current and mismatch at once | 400 "New password and confirmation do not match" | passing |
+| TC-AUTH-11-A07 | `new_password` and `confirm_password` of 7 characters | 422 on both fields | passing |
+| TC-AUTH-11-A08 | `new_password` of exactly 8 characters | 200 | passing |
+| TC-AUTH-11-A09 | `current_password` empty | 422 | passing |
+| TC-AUTH-11-A10 | New password equal to the current one | 200 (no rule against reuse) | passing |
+| TC-AUTH-11-A11 | Role without `profile:update_own` (parametrised over Staff, Teacher, Student, Parent, Admin) | 403 `permission_denied` for each | passing |
+| TC-AUTH-11-A12 | No token (header only) | 401 "Authorization header missing or invalid" | passing |
+| TC-AUTH-11-A13 | Use the access token issued before the change on `GET /auth/available-resources`, then refresh | 200 and 200 (tokens survive a password change) | passing |
+| TC-AUTH-11-A14 | Audit: row in `profile_audit_logs` for the change | exists, flagged sensitive, `profile_type` per role (Teacher `unknown`) | skipped: blocked: profile_audit_logs rows cannot be read through the API and the database must not be touched |
+| TC-AUTH-11-A15 | Tenant isolation: two users with the same username in `qa_school` and `qa_school_b`; change one password | the other tenant's user still logs in with the old password | passing |
+
+UI test cases ("spare Admin": seeded staff Lakshmi Narayana Rao, password set through F04, moved to the Admin role with `PUT /admin/users/{id}/role`, so the shared QA Admin password is never changed; the Admin role must hold `profile:update_own`, granted through TEN F15 because the `Full` plan seeds none):
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-AUTH-11-E01 | P1 | Web | Admin | Spare Admin signed in on web; current password known | 1. Open `/admin/profile`.<br>2. Click "Change Password".<br>3. Enter the current password in "Current Password".<br>4. Enter "QA Pass 2027" in "New Password" and "Confirm New Password".<br>5. Click "Change Password". | Button shows "Changing..." then toast "Password changed successfully!"; the dialog closes | planned |
+| TC-AUTH-11-E02 | P3 | Web | Admin | Spare Admin on `/admin/profile` | 1. Click "Change Password".<br>2. Fill "Current Password".<br>3. Enter "QA Pass 2027" in "New Password" and "QA Pass 2028" in "Confirm New Password".<br>4. Click "Change Password". | Field message "Passwords do not match"; no request sent | planned |
+| TC-AUTH-11-E03 | P3 | Web | Admin | Spare Admin on `/admin/profile` | 1. Click "Change Password".<br>2. Fill "Current Password".<br>3. Enter "QA12345" in both new fields.<br>4. Click "Change Password". | Message "Password must be at least 8 characters"; no request sent | planned |
+| TC-AUTH-11-E04 | P2 | Web | Admin | Spare Admin on `/admin/profile` | 1. Click "Change Password".<br>2. Enter "QA Wrong 999" in "Current Password".<br>3. Enter "QA Pass 2028" in both new fields.<br>4. Click "Change Password". | Toast "Failed to change password: Current password is incorrect"; the password is unchanged | planned |
+| TC-AUTH-11-E05 | P2 | Web | Admin | TC-AUTH-11-E01 done | 1. Avatar menu > "Logout".<br>2. Sign in as the spare Admin with "QA Pass 2027". | Sign-in succeeds; the old password gives "Invalid Credentials" | planned |
+| TC-AUTH-11-E06 | P2 | Mobile | Admin | Spare Admin signed in on mobile | 1. Open `/admin/profile` ("My Profile").<br>2. Tap the row "Change Password".<br>3. Fill "Current Password *", then "QA Pass 2029" in "New Password *" and "Confirm New Password *".<br>4. Tap "Change Password". | Toast "Password changed successfully"; the next sign-in uses QA Pass 2029 | planned |
+| TC-AUTH-11-E07 | P3 | Mobile | Admin | Spare Admin on the mobile "Change Password" screen | 1. Fill "Current Password *".<br>2. Enter "QA Pass 2030" in "New Password *" and "QA Pass 2031" in "Confirm New Password *".<br>3. Tap "Change Password". | Inline text "Passwords do not match" under the confirmation; tapping submit shows the same message; no request | planned |
+| TC-AUTH-11-E08 | P3 | Mobile | Admin | Spare Admin on the mobile "Change Password" screen | 1. Enter "QA Wrong 999" in "Current Password *".<br>2. Enter "QA Pass 2030" in both new fields.<br>3. Tap "Change Password". | Error toast containing "Current password is incorrect" | planned |
 
 Implemented in: `backend/tests/unit/auth/test_auth_profile_blacklist.py` (U01-U07).
 
@@ -1014,14 +1073,19 @@ None in the backend. Web `ForgotPasswordForm` and mobile `ForgotPasswordScreen` 
 |---|---|---|---|
 | TC-AUTH-12-U01 | Render web `ForgotPasswordForm` | shows the three texts above and a link to `/login` | passing |
 | TC-AUTH-12-U02 | Render mobile `ForgotPasswordScreen` | shows "Forgot Password?" and "Back to Login"; pressing it replaces the route with `/login` | blocked: mobile ForgotPasswordScreen needs rendering (mobile/app/forgot-password.tsx) |
-| TC-AUTH-12-A01 | `POST /auth/forgot-password` and `POST /auth/reset-password` with header `cschema` | 404 for both (no such routes) | planned |
-| TC-AUTH-12-A02 | Admin resets a Staff password through `POST /admin/users/{id}/reset-password`, then Staff logs in with the new password | 200 with tokens and no first-login challenge | planned |
-| TC-AUTH-12-A03 | After A02 the old password | 401 "Invalid Credentials" | planned |
-| TC-AUTH-12-A04 | Reset by a non-Admin (Staff, Teacher, Student, Parent) | 403 "Permission not found in database: <role> cannot update user_management. Contact administrator to configure permissions." | planned |
-| TC-AUTH-12-E01 | Web: on `/login` click "Forgot your password?" | page `/forgot-password` with the explanation text; "Back to login" returns to `/login` | planned |
-| TC-AUTH-12-E02 | Web: Admin resets a user's password in Administration > Users, then that user signs in | sign-in succeeds on the first try with the new password | planned |
-| TC-AUTH-12-E03 | Mobile: tap "Forgot Password?" | screen with "Password reset by email is not available yet." and the administrator note | planned |
-| TC-AUTH-12-E04 | Mobile: tap "Back to Login" (top) and "Back to Login" (button) | both return to the sign-in form | planned |
+| TC-AUTH-12-A01 | `POST /auth/forgot-password` and `POST /auth/reset-password` with header `cschema` | 404 for both (no such routes) | passing |
+| TC-AUTH-12-A02 | Admin resets a Staff password through `POST /admin/users/{id}/reset-password`, then Staff logs in with the new password | 200 with tokens and no first-login challenge | passing |
+| TC-AUTH-12-A03 | After A02 the old password | 401 "Invalid Credentials" | passing |
+| TC-AUTH-12-A04 | Reset by a non-Admin (Staff, Teacher, Student, Parent) | 403 "Permission not found in database: <role> cannot update user_management. Contact administrator to configure permissions." | passing |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-AUTH-12-E01 | P1 | Web | Staff | Signed out | 1. Open `/login`.<br>2. Click "Forgot your password?".<br>3. Click "Back to login". | Step 2 opens `/forgot-password` with "Forgot your password?", "Password reset by email is not available yet." and "Please contact your school administrator. They can reset your password and give you a temporary one to sign in with."; step 3 returns to `/login` | planned |
+| TC-AUTH-12-E02 | P2 | Web | Admin | Seeded staff Venkatesh Kumar exists; signed in as Admin | 1. Open Administration > "Users".<br>2. Type Venkatesh Kumar's username in "Search username or email...".<br>3. Click "Reset Password" on his row.<br>4. Enter "QA Reset 2026" in "New Password" and "Confirm Password".<br>5. Click "Reset Password".<br>6. Log out and sign in as Venkatesh Kumar with "QA Reset 2026". | Toast "Password reset successfully"; the sign-in succeeds at the first try and goes to `/dashboard` without the set-password page (the reset does not set `is_first_login`) | planned |
+| TC-AUTH-12-E03 | P2 | Mobile | Staff | Sign-in form for `qa_manual` open | 1. Tap "Forgot Password?". | Screen "Forgot Password?" with "Password reset by email is not available yet." and "Please contact your school administrator. They can reset your password and give you a temporary one to sign in with." | planned |
+| TC-AUTH-12-E04 | P3 | Mobile | Staff | TC-AUTH-12-E03 done | 1. Tap "Back to Login" at the top.<br>2. Tap "Forgot Password?" again.<br>3. Tap the "Back to Login" button at the bottom. | Both taps return to the sign-in form | planned |
 
 Implemented in: `web/src/__tests__/auth/profileAndForgot.test.ts` (U01, component function called without rendering).
 
@@ -1082,20 +1146,20 @@ A JSON verdict with `has_access`, the resolved resource and action and a denial 
 | TC-AUTH-13-U07 | `AccessValidationRequest(action="DELETE")`, `action="bogus"` | `delete`; validation error listing the nine valid actions | passing |
 | TC-AUTH-13-U08 | `AccessValidationRequest` with neither `endpoint` nor `menu_item` | model accepted (action `read`) | passing |
 | TC-AUTH-13-U09 | `get_all_actions()` | `approve, bulk_delete, create, delete, export, import, list, read, update` | passing |
-| TC-AUTH-13-A01 | `POST /auth/validate-access` for the Admin user, endpoint `/api/v1/fee/categories` | 200; `has_access` true; `resource` `fee_categories`; `action` `list`; `user_role` "Admin" | planned |
-| TC-AUTH-13-A02 | Same for the Teacher user | 200; `has_access` false; `reason` starts "Access denied: Teacher cannot list fee_categories" | planned |
-| TC-AUTH-13-A03 | `menu_item` `fee_categories` for Admin | `has_access` true; action `read` | planned |
-| TC-AUTH-13-A04 | Endpoint `/api/v1/nothing/here` | `has_access` false; reason "Could not resolve resource from endpoint or menu item" | planned |
-| TC-AUTH-13-A05 | Random `user_id` | `has_access` false; reason "User not found or inactive" | planned |
-| TC-AUTH-13-A06 | Deactivated user | `has_access` false; reason "User not found or inactive" | planned |
-| TC-AUTH-13-A07 | `action` "bogus" | 422 | planned |
-| TC-AUTH-13-A08 | Staff token validating the Admin user's access | 200 (any authenticated user may ask) | planned |
-| TC-AUTH-13-A09 | `POST /auth/validate-endpoint-access?user_id=<admin>&endpoint=/api/v1/fee/types` | 200 `{has_access:true, user_id, endpoint, action:"read", http_method:"GET"}` | planned |
-| TC-AUTH-13-A10 | `POST /auth/validate-menu-access?user_id=<student>&menu_item=fee_categories` | 200; `has_access` false | planned |
-| TC-AUTH-13-A11 | `GET /auth/available-resources` | 200; `total_resources` equals `len(resources)`; `total_actions` 9 | planned |
-| TC-AUTH-13-A12 | Any of the four calls without a token (header only) | 401 "Authorization header missing or invalid" | planned |
-| TC-AUTH-13-A13 | `user_id` of a `qa_school_b` user with a `qa_school` token | `has_access` false; reason "User not found or inactive" (tenant isolation) | planned |
-| TC-AUTH-13-A14 | Neither `endpoint` nor `menu_item` | 200; `has_access` false; "Could not resolve resource from endpoint or menu item" | planned |
+| TC-AUTH-13-A01 | `POST /auth/validate-access` for the Admin user, endpoint `/api/v1/fee/categories` | 200; `has_access` true; `resource` `fee_categories`; `action` `list`; `user_role` "Admin" | passing |
+| TC-AUTH-13-A02 | Same for the Teacher user | 200; `has_access` false; `reason` starts "Access denied: Teacher cannot list fee_categories" | passing |
+| TC-AUTH-13-A03 | `menu_item` `fee_categories` for Admin | `has_access` true; action `read` | passing |
+| TC-AUTH-13-A04 | Endpoint `/api/v1/nothing/here` | `has_access` false; reason "Could not resolve resource from endpoint or menu item" | passing |
+| TC-AUTH-13-A05 | Random `user_id` | `has_access` false; reason "User not found or inactive" | passing |
+| TC-AUTH-13-A06 | Deactivated user | `has_access` false; reason "User not found or inactive" | passing |
+| TC-AUTH-13-A07 | `action` "bogus" | 422 | passing |
+| TC-AUTH-13-A08 | Staff token validating the Admin user's access | 200 (any authenticated user may ask) | passing |
+| TC-AUTH-13-A09 | `POST /auth/validate-endpoint-access?user_id=<admin>&endpoint=/api/v1/fee/types` | 200 `{has_access:true, user_id, endpoint, action:"read", http_method:"GET"}` | passing |
+| TC-AUTH-13-A10 | `POST /auth/validate-menu-access?user_id=<student>&menu_item=fee_categories` | 200; `has_access` false | passing |
+| TC-AUTH-13-A11 | `GET /auth/available-resources` | 200; `total_resources` equals `len(resources)`; `total_actions` 9 | passing |
+| TC-AUTH-13-A12 | Any of the four calls without a token (header only) | 401 "Authorization header missing or invalid" | passing |
+| TC-AUTH-13-A13 | `user_id` of a `qa_school_b` user with a `qa_school` token | `has_access` false; reason "User not found or inactive" (tenant isolation) | passing |
+| TC-AUTH-13-A14 | Neither `endpoint` nor `menu_item` | 200; `has_access` false; "Could not resolve resource from endpoint or menu item" | passing |
 
 Implemented in: `backend/tests/unit/auth/test_auth_permissions_menu.py` (U01-U09).
 
@@ -1115,7 +1179,7 @@ A signed-in session.
 2. The app calls `POST /auth/logout` with the access token (header) and the refresh token (body), clears the store and the query cache, and goes to `/login`. If the call fails, the local session is still cleared.
 
 ### Steps, mobile
-1. Open the Profile tab and tap "Logout"; confirm in the dialog titled "Logout" (button "Logout").
+1. Open the Profile tab and tap "Logout"; the dialog "Logout" asks "Are you sure you want to logout?" with "Cancel" and "Logout"; tap "Logout".
 2. The app reads its tokens, clears all stored session data (including the saved organisation), sends `POST /auth/logout` in the background with both tokens, resets the parent student headers, and opens `/login`, which asks for the organisation again.
 
 ### Expected results
@@ -1154,27 +1218,32 @@ Both tokens are blacklisted (SHA-256 hash in `public.token_blacklist` with the t
 | TC-AUTH-14-U07 | Logout handler with invalid access and invalid refresh tokens | HTTPException 401 "Invalid or expired token" | passing |
 | TC-AUTH-14-U08 | Web `useLogoutMutation` when the request rejects | `logout()` and `queryClient.clear()` still called | passing |
 | TC-AUTH-14-U09 | Mobile `logoutUser` | reads the tokens, then clears storage, then posts logout with `_retry` set; a failing post does not throw | passing |
-| TC-AUTH-14-A01 | Logout with access token in the header and refresh token in the body | 200 with the documented body | planned |
-| TC-AUTH-14-A02 | Use the access token after A01 on `GET /auth/available-resources` | 401 "Token has been invalidated. Please login again." | planned |
-| TC-AUTH-14-A03 | Refresh with the refresh token after A01 | 401 "Refresh token has been invalidated. Please login again." | planned |
-| TC-AUTH-14-A04 | Logout with the access token only, then refresh | logout 200; refresh 200 (documents that only sent tokens are revoked) | planned |
-| TC-AUTH-14-A05 | Logout with an expired access token and a valid refresh token in the body | 200; refresh token no longer works | planned |
-| TC-AUTH-14-A06 | Logout with no Authorization header and no body | 401 "Authorization header missing or invalid" | planned |
-| TC-AUTH-14-A07 | Logout with a garbage bearer token and no body | 401 "Invalid token" | planned |
-| TC-AUTH-14-A08 | Logout with a garbage bearer token and a garbage refresh token | 401 "Invalid or expired token" | planned |
-| TC-AUTH-14-A09 | Repeat A01 with the same tokens | 200 again; one row per token in `public.token_blacklist` | planned |
-| TC-AUTH-14-A10 | Inspect the blacklist row | `token_hash` is the SHA-256 of the token; the raw token is not stored; `expires_at` equals the token expiry | planned |
-| TC-AUTH-14-A11 | Same user logs in twice (two sessions), logs out session 1 | session 2 tokens still work | planned |
-| TC-AUTH-14-A12 | Staff logs out | Admin's tokens unaffected | planned |
-| TC-AUTH-14-A13 | Role parametrisation of A01 for Admin, Staff, Teacher, Student, Parent | 200 for each (no permission needed) | planned |
-| TC-AUTH-14-A14 | Logout, then log in again with the same credentials | 200 with new tokens (login is not blocked) | planned |
-| TC-AUTH-14-E01 | Web: avatar menu > "Logout" | redirected to `/login`; `auth-storage` holds no tokens | planned |
-| TC-AUTH-14-E02 | Web: after logout press the browser back button | `/login` (private page not shown) | planned |
-| TC-AUTH-14-E03 | Web: capture the access token, log out, call the API with it | 401 "Token has been invalidated. Please login again." | planned |
-| TC-AUTH-14-E04 | Web: network logged offline during logout | UI still returns to `/login` with an empty store | planned |
-| TC-AUTH-14-E05 | Mobile: Profile tab > "Logout" > confirm | login screen opens at "Select Organization" | planned |
-| TC-AUTH-14-E06 | Mobile: Profile tab > "Logout" > cancel | dialog closes; session stays | planned |
-| TC-AUTH-14-E07 | Mobile: Parent logs out and another Parent logs in | no child from the first parent is shown | planned |
+| TC-AUTH-14-A01 | Logout with access token in the header and refresh token in the body | 200 with the documented body | passing |
+| TC-AUTH-14-A02 | Use the access token after A01 on `GET /auth/available-resources` | 401 "Token has been invalidated. Please login again." | passing |
+| TC-AUTH-14-A03 | Refresh with the refresh token after A01 | 401 "Refresh token has been invalidated. Please login again." | passing |
+| TC-AUTH-14-A04 | Logout with the access token only, then refresh | logout 200; refresh 200 (documents that only sent tokens are revoked) | passing |
+| TC-AUTH-14-A05 | Logout with an expired access token and a valid refresh token in the body | 200; refresh token no longer works | passing |
+| TC-AUTH-14-A06 | Logout with no Authorization header and no body | 401 "Authorization header missing or invalid" | passing |
+| TC-AUTH-14-A07 | Logout with a garbage bearer token and no body | 401 "Invalid token" | passing |
+| TC-AUTH-14-A08 | Logout with a garbage bearer token and a garbage refresh token | 401 "Invalid or expired token" | passing |
+| TC-AUTH-14-A09 | Repeat A01 with the same tokens | 200 again; one row per token in `public.token_blacklist` | passing |
+| TC-AUTH-14-A10 | Inspect the blacklist row | `token_hash` is the SHA-256 of the token; the raw token is not stored; `expires_at` equals the token expiry | skipped: blocked: public.token_blacklist rows cannot be read through the API and the database must not be touched |
+| TC-AUTH-14-A11 | Same user logs in twice (two sessions), logs out session 1 | session 2 tokens still work | passing |
+| TC-AUTH-14-A12 | Staff logs out | Admin's tokens unaffected | passing |
+| TC-AUTH-14-A13 | Role parametrisation of A01 for Admin, Staff, Teacher, Student, Parent | 200 for each (no permission needed) | passing |
+| TC-AUTH-14-A14 | Logout, then log in again with the same credentials | 200 with new tokens (login is not blocked) | passing |
+
+UI test cases:
+
+| ID | Priority | Platform | Role | Preconditions | Steps | Expected | Status |
+|---|---|---|---|---|---|---|---|
+| TC-AUTH-14-E01 | P1 | Web | Staff | Signed in as Staff | 1. Click the avatar menu "qa_staff" (top right; it shows the username, email, "Profile" and "Logout").<br>2. Click "Logout". | Redirected to `/login`; `auth-storage` holds `user` null, no tokens, empty permissions and menu | planned |
+| TC-AUTH-14-E02 | P2 | Web | Staff | TC-AUTH-14-E01 done | 1. Press the browser back button. | Still on `/login`; the private page is not shown | planned |
+| TC-AUTH-14-E03 | P3 | Web | Staff | Signed in as Staff; devtools open | 1. Copy `state.accessToken` from `auth-storage`.<br>2. Log out through the avatar menu.<br>3. Call `GET http://127.0.0.1:8100/api/v1/auth/available-resources` with header `Authorization: Bearer <copied token>` (curl or a REST client). | 401 "Token has been invalidated. Please login again." | planned |
+| TC-AUTH-14-E04 | P3 | Web | Staff | Signed in as Staff | 1. Set the devtools network to Offline.<br>2. Avatar menu > "Logout". | The UI still goes to `/login` with an empty store | planned |
+| TC-AUTH-14-E05 | P1 | Mobile | Staff | Signed in as Staff on mobile | 1. Open the Profile tab.<br>2. Tap "Logout".<br>3. In the dialog "Logout" ("Are you sure you want to logout?") tap "Logout". | `/login` opens at "Select Organization" (the stored organisation is cleared) | planned |
+| TC-AUTH-14-E06 | P2 | Mobile | Staff | Signed in as Staff on mobile | 1. Profile tab > "Logout".<br>2. Tap "Cancel". | The dialog closes; the user stays signed in on Profile | planned |
+| TC-AUTH-14-E07 | P2 | Mobile | Parent | The Raju parent (seeded parent of 004 and 005) and the seeded parent of Karthik Reddy (001), both with passwords set (F04) | 1. Sign in as the Raju parent and open "Select Child".<br>2. Profile tab > "Logout" > "Logout".<br>3. Enter "qa_manual", sign in as the parent of 001.<br>4. Open "Select Child". | Step 4 lists only Karthik Reddy; Harsha and Tanvi Raju are not shown | planned |
 
 Implemented in: `backend/tests/unit/auth/test_auth_profile_blacklist.py` (U01-U07); `web/src/__tests__/auth/apiAuthHooks.test.ts` (U08); `mobile/__tests__/auth/authUtils.test.ts` (U09).
 

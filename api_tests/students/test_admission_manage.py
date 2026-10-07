@@ -330,7 +330,7 @@ def test_delete_with_fee_or_exam_history_is_409():
 
 
 @pytest.mark.api
-@pytest.mark.tc("TC-STU-09-A08")
+@pytest.mark.tc("TC-STU-09-A11")
 def test_delete_unknown_admission(admin):
     response = admin.delete(f"/students/admission/{UNKNOWN}")
     assert response.status_code == 404
