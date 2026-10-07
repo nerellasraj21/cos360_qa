@@ -13,3 +13,5 @@ reports/*.log
 reports/*.err
 reports/full_backup/
 reports/design/
+ui_tests/.auth/
+ui_tests/test-results*/

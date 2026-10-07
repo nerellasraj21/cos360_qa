@@ -93,10 +93,12 @@ UI cases (`-E<NN>`) are written so that a manual tester and a Playwright spec fo
 
 Automation rules (`COS360_QA/ui_tests`):
 - Spec files live under `ui_tests/tests/<module>/`, named `<feature>.web.spec.js` or `<feature>.mobile.spec.js` (the suffix picks the project). Test titles start with the case ID: `test('TC-FEE-03-E01 add a term', ...)`.
-- Projects: `web` at 1280x800 against `http://127.0.0.1:5174`; `mobile` is the Expo web build at 390x844 (Pixel 5 profile) against `http://127.0.0.1:8082`. The config starts the test API and both dev servers if they are not already running, and refuses a non-local API or a tenant without the `qa_` prefix.
+- Projects: `web` at 1280x800 against `http://localhost:5174`; `mobile` is the Expo web build at 390x844 (Pixel 5 profile) against `http://localhost:8082`. The config starts the test API and both dev servers if they are not already running, and refuses a non-local API or a tenant without the `qa_` prefix.
 - Web specs sign in by injecting an API token into storage (`helpers/session.js` `signInWeb`). Mobile specs sign in through the form (`signInMobileViaForm`); a token-only session is not enough for the mobile app. Auth specs that test the form always use the form.
 - Selectors prefer role and accessible name, then visible text, then `data-testid`. Do not select by CSS class or position. Mobile renders plain elements without roles, so mobile specs use visible text.
-- Each spec states the baseline data it relies on at the top.
+- Each spec states the baseline data it relies on at the top. UI tests run against the seeded `qa_manual` tenant, never change seeded rows, create their own data with `unique('QA ...')` and remove it in the `cleanup` fixture (`helpers/fixtures.js`).
+- A test that changes tenant-wide state (the active academic year, School Registration, role permissions, caste or location seeds) restores it in `cleanup` and carries `@serial` in its title. Run those alone: `npx playwright test --grep @serial --workers=1`; run everything else with `--grep-invert @serial`.
+- A case the app fails is kept with the correct assertion and marked `test.fail(true, 'UI-<MOD>-<NN>: <defect>')`; it reports as a known defect until the bug is fixed, and the defect is listed in the feature doc's and module doc's known gaps.
 - Assert visible outcomes (toast text, row appears, status badge) and, where cheap, the API state behind them.
 
 ## Environments and data safety

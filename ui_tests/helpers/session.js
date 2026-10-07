@@ -38,11 +38,14 @@ async function signInWeb(page, role) {
   const data = await login(role);
   const persisted = JSON.stringify(webAuthState(data));
   await page.addInitScript(
-    ([auth, token]) => {
+    ([auth, token, yearId]) => {
       window.localStorage.setItem('auth-storage', auth);
       window.localStorage.setItem('authToken', token);
+      if (yearId && !window.localStorage.getItem('academic-year-storage')) {
+        window.localStorage.setItem('academic-year-storage', JSON.stringify({ state: { selectedAcademicYearId: yearId }, version: 0 }));
+      }
     },
-    [persisted, data.access_token],
+    [persisted, data.access_token, data.academic_year_id || null],
   );
   return data;
 }

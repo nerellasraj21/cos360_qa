@@ -1,5 +1,5 @@
 const API_URL = (process.env.QA_API_URL || 'http://127.0.0.1:8100/api/v1').replace(/\/$/, '');
-const TENANT = process.env.QA_TENANT || 'qa_school';
+const TENANT = process.env.UI_TENANT || 'qa_manual';
 
 const ROLES = ['admin', 'staff', 'teacher', 'student', 'parent'];
 

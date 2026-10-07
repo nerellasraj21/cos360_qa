@@ -5,9 +5,9 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const APP_ROOT = path.resolve(path.join(__dirname, '..'), process.env.COS360_APP || '../COS360_Full_App');
 
 const API_URL = process.env.QA_API_URL || 'http://127.0.0.1:8100/api/v1';
-const TENANT = process.env.QA_TENANT || 'qa_school';
-const WEB_URL = process.env.WEB_URL || 'http://127.0.0.1:5174';
-const MOBILE_URL = process.env.MOBILE_URL || 'http://127.0.0.1:8082';
+const TENANT = process.env.UI_TENANT || 'qa_manual';
+const WEB_URL = process.env.WEB_URL || 'http://localhost:5174';
+const MOBILE_URL = process.env.MOBILE_URL || 'http://localhost:8082';
 
 if (!/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(API_URL + '/')) {
   throw new Error(`E2E refuses to run against a non-local API: ${API_URL}`);
@@ -26,7 +26,7 @@ module.exports = defineConfig({
   fullyParallel: true,
   workers: process.env.CI ? 2 : 3,
   retries: 0,
-  reporter: [['list'], ['html', { open: 'never' }]],
+  reporter: [['list'], ['html', { open: 'never' }], ['json', { outputFile: path.join(__dirname, '..', 'reports', 'ui-results.json') }]],
   use: {
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',

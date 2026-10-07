@@ -209,6 +209,12 @@ def read_results() -> dict:
             for _, entry in json.load(handle).items():
                 for case_id in entry["tc"]:
                     merged.setdefault(case_id, []).append(entry["outcome"])
+    try:
+        import ui_results
+        for case_id, entries in ui_results.load().items():
+            merged.setdefault(case_id, []).extend(outcome for outcome, _, _ in entries)
+    except ImportError:
+        pass
     summary = {}
     for case_id, outcomes in merged.items():
         for status in ("failed", "xpassed", "xfailed", "skipped", "passed"):
