@@ -129,7 +129,7 @@ test.describe('Communication compose, logs and quick send (web)', () => {
     await expect(page.getByText(first)).toHaveCount(0);
   });
 
-  test('TC-COM-06-E01 failed log list and E04 detail', async ({ page, signIn, api, cleanup }) => {
+  test('TC-COM-06-E01 failed log list and TC-COM-06-E04 detail', async ({ page, signIn, api, cleanup }) => {
     const { staff, name } = await qaStaff(api, cleanup);
     const tpl = await createTemplate(api, cleanup, { name: unique('QA Broken SMS'), body: 'Hi {% if %}' });
     const sent = await api('POST', '/communication/send', { body: { template_id: tpl.id, target_type: 'multiple_staff', target_ref: { staff_ids: [staff.id] }, variables: {} } });
